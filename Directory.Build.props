@@ -20,7 +20,7 @@
       NU1900  the vulnerability data could not be fetched
       NU1901-NU1904  an advisory of low, moderate, high or critical severity
       NU1905  the audit source provides no vulnerability data
-    CI reports advisories in a dedicated vulnerable-package check. MSBuildWarningsNotAsErrors
+    A dedicated CI check fails on them instead (ADR-0008). MSBuildWarningsNotAsErrors
     defaults to WarningsNotAsErrors, so the exceptions apply to both switches.
   -->
   <PropertyGroup>

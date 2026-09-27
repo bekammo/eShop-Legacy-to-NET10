@@ -17,6 +17,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) | Migration strategy: side-by-side, then cutover | Accepted | 2.1 |
 | [ADR-0006](#adr-0006-solution-structure-and-build-conventions) | Solution structure and build conventions | Accepted | 2.1 |
 | [ADR-0007](#adr-0007-test-strategy) | Test strategy | Accepted | 2.2 |
+| [ADR-0008](#adr-0008-continuous-integration) | Continuous integration | Accepted | 2.3 |
 
 ## Template
 
@@ -410,3 +411,72 @@ Each of the two policy tests was checked against a deliberate break: including a
 - Until Stage 4.2 no test needs Docker. From then on the integration tests do, and Stage 10.2 documents a Docker-free subset.
 - HTTP behaviour is pinned through literal routes. Persistence behaviour is tested against a real SQL Server, never an in-memory substitute.
 - The factory is the one place that later stages change to add the database, configuration overrides or authentication (Stage 12).
+
+---
+
+## ADR-0008: Continuous integration
+
+- **Status:** Accepted
+- **Date:** 2026-09-27
+- **Plan stage:** 2.3
+
+### Context
+
+- From Stage 2.3 on, a pull request should merge into `main` only when the new solution builds and its tests pass.
+- Local builds keep NuGet audit warnings as warnings on purpose ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). Something else has to turn a vulnerable package into a failure.
+- From Stage 4.2 the integration tests start SQL Server in a Linux container ([ADR-0007](#adr-0007-test-strategy)). GitHub-hosted Linux runners have Docker. Windows runners cannot run Linux containers.
+- The legacy solution builds only on Windows, with Visual Studio's MSBuild and the .NET Framework 4.6.1 targeting pack ([audit: toolchain](docs/legacy-audit.md#83-toolchain-prerequisites)).
+- Workflow steps run with a token that can read the repository. A third-party action referenced by a tag can change under the workflow, because tags can be moved.
+
+### Decision
+
+One workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml). It runs on every pull request, on every push to `main`, every Monday at 05:17 UTC, and on demand.
+
+**Job "Build and test"** (`ubuntu-24.04`)
+
+1. Install the SDK that `global.json` selects.
+2. Restore, then build `eShop.Catalog.slnx` in Release. Warnings are errors ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)).
+3. Build the Stage 1.2 capture tool (`dotnet build docs/legacy/capture/capture.cs`). This checks that its stop-files still keep the repo-wide build settings away from it.
+4. Run `dotnet test --solution eShop.Catalog.slnx` with a TRX report per test project.
+5. Upload the TRX files as the `test-results` artifact, also when tests fail.
+
+**Job "Vulnerable packages"** (`ubuntu-24.04`)
+
+1. List every vulnerable package, direct or transitive, for the log.
+2. Restore with the NuGet audit warnings NU1900–NU1905 turned back into errors. The job fails on an advisory of any severity, and when the vulnerability data cannot be fetched.
+
+The weekly run catches an advisory published for a package that no commit has touched. An advisory with no fixed version can be accepted with a `NuGetAuditSuppress` item, which the gate honours. Each suppression carries a comment with the reason and a date to review it.
+
+**Hardening**
+
+- The workflow token can only read the repository contents (`permissions: contents: read`), and the checkout does not keep it (`persist-credentials: false`).
+- Every action is pinned to a full commit SHA, with the release tag in a comment.
+- A new push to a pull request cancels the run still going for its previous commit.
+- Every job has a timeout.
+
+**Not in CI**
+
+- The legacy MSBuild build. It needs Windows and Visual Studio, and it is checked locally whenever a repo-wide build file changes ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)).
+- Running the capture tool. That needs Windows, IIS Express and LocalDB. Only its build is checked.
+- Coverage and published test reports (Stage 10).
+
+"Build and test" and "Vulnerable packages" are meant to be required status checks for `main`. That is a repository setting on GitHub, outside the code.
+
+**Verification at 2.3.** Every command of both jobs was run locally with `CI=true`: the Release build had 0 warnings, 3 of 3 tests passed with a TRX file per project, and the gate passed. The capture tool also builds for `linux-x64`, the runner's platform. The gate was also run against a probe project that references Newtonsoft.Json 12.0.1: it failed with `error NU1903`, and it passed once the advisory was listed in `NuGetAuditSuppress`.
+
+### Alternatives considered
+
+- **`ubuntu-latest`.** The label moves to a new image without notice. A pinned image makes that upgrade a visible commit.
+- **A Windows job for the legacy build.** GitHub's Windows images carry a different Visual Studio from the one the audit used, and it is not certain that they have the .NET Framework 4.6.1 targeting pack. A red legacy job could block every pull request for reasons that have nothing to do with the change. The legacy build is frozen, checked locally, and gone after cutover.
+- **`dotnet package list --vulnerable` as the gate.** It exits with 0 even when it finds advisories, so it cannot fail a job by itself. A script that failed on its output would still count the advisories accepted with `NuGetAuditSuppress`, because the command ignores them, and it would stay red for good. Both behaviours were checked. The job still runs the command, for its readable table.
+- **NuGet audit warnings as errors in the build itself.** [ADR-0006](#adr-0006-solution-structure-and-build-conventions) rejected this because every build, pull requests included, would break on a new advisory or an unreachable feed. The separate gate has the same effect on merges while it is a required check (see Consequences), but it is one isolated check: local builds keep working, and "Build and test" still reports on the change itself.
+- **Actions pinned by tag** (`@v6`). A tag can be moved to another commit. A commit SHA cannot.
+- **NuGet package caching.** Restore takes seconds for this solution, and `setup-dotnet` keys its cache on lock files, which ADR-0006 does not use.
+
+### Consequences
+
+- Every pull request shows whether the new solution builds, whether its tests pass, and whether any package is vulnerable.
+- A new advisory can turn `main` red without a code change. While "Vulnerable packages" is a required check, it also blocks every pull request, including those that touch no package, until a package update or a documented suppression lands on `main`. An unreachable vulnerability feed (NU1900) blocks merges until a re-run passes.
+- GitHub disables the schedule of a public repository after 60 days without activity. After a quiet period, the weekly run has to be re-enabled from the Actions tab.
+- Action and runner upgrades are deliberate commits that change a SHA or an image name.
+- The legacy build stays a local check until Stage 11 removes it.

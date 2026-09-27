@@ -1,0 +1,98 @@
+# Continuous integration for the new .NET 10 solution (ADR-0008).
+# The legacy solution needs Visual Studio's MSBuild on Windows. It is built locally until cutover
+# (ADR-0005, ADR-0006).
+# GitHub disables the weekly schedule of a public repository after 60 days without activity;
+# re-enable it from the Actions tab.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly, so that a new advisory for a package that has not changed still turns the check red.
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET (SDK from global.json)
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore eShop.Catalog.slnx
+
+      - name: Build
+        run: dotnet build eShop.Catalog.slnx --configuration Release --no-restore
+
+      # The Stage 1.2 capture tool sits outside the solution. Building it checks that its stop-files
+      # still keep the repo-wide build settings away from it (ADR-0006).
+      - name: Build the capture tool
+        run: dotnet build docs/legacy/capture/capture.cs
+
+      - name: Test
+        run: >-
+          dotnet test --solution eShop.Catalog.slnx
+          --configuration Release --no-build
+          --report-xunit-trx --results-directory TestResults
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results
+          path: TestResults/*.trx
+          if-no-files-found: warn
+
+  vulnerable-packages:
+    name: Vulnerable packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET (SDK from global.json)
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # For the log: every vulnerable package, direct or transitive, with its advisory.
+      - name: List vulnerable packages
+        run: dotnet package list --project eShop.Catalog.slnx --vulnerable --include-transitive
+
+      # The gate. Directory.Build.props treats warnings as errors but exempts the NuGet audit
+      # warnings NU1900-NU1905. Clearing WarningsNotAsErrors makes them errors again, so any
+      # advisory at any severity, or vulnerability data that cannot be fetched, fails the restore.
+      # Advisories suppressed with NuGetAuditSuppress are honoured.
+      - name: Fail on vulnerable packages (NuGet audit)
+        run: dotnet restore eShop.Catalog.slnx --force -p:WarningsNotAsErrors=

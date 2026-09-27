@@ -126,7 +126,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 
   ADRs: migration strategy; solution structure and build conventions. Acceptance: the new solution builds, and the legacy MSBuild build is still green.
 - [x] 2.2 Add `tests/eShop.Catalog.Api.UnitTests` and `tests/eShop.Catalog.Api.IntegrationTests` (xUnit v3) with a shared `CatalogApiFactory`. First test: `/health/live` returns 200. ADR: test strategy. README: test commands.
-- [ ] 2.3 Add a GitHub Actions workflow that restores, builds and tests (with TRX output) and runs a vulnerable-package check.
+- [x] 2.3 Add a GitHub Actions workflow that restores, builds and tests (with TRX output) and runs a vulnerable-package check.
 
 ### Stage 3 — Configuration
 - [ ] 3.1 Set up configuration:
@@ -244,7 +244,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 ## Working conventions
 
 - **Before every commit:**
-  - `dotnet build eShop.Catalog.slnx` and `dotnet test --solution eShop.Catalog.slnx` pass (Docker must be running for the integration tests).
+  - `dotnet build eShop.Catalog.slnx` and `dotnet test --solution eShop.Catalog.slnx` pass. From Stage 4.2, Docker must be running for the integration tests.
   - If the commit touches repo-wide build files, the legacy MSBuild build also passes, and so does `dotnet build docs/legacy/capture/capture.cs`.
   - Always pass the solution explicitly: two solutions coexist until cutover.
 - **Commits:** an imperative subject of at most 72 characters, and a body that explains what changed and why. One logical change per commit.

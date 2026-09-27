@@ -1,5 +1,7 @@
 # eShop Legacy → .NET 10
 
+[![CI](https://github.com/bekammo/eShop-Legacy-to-NET10/actions/workflows/ci.yml/badge.svg)](https://github.com/bekammo/eShop-Legacy-to-NET10/actions/workflows/ci.yml)
+
 This project is based on Microsoft's [eShopModernizing](https://github.com/dotnet-architecture/eShopModernizing) sample. This fork keeps only the `eShopLegacyMVC` app. Its Web API layer is the starting point for an independent .NET Framework → .NET 10 modernization. The work is API-focused and does not cover the Razor/MVC UI.
 
 ## Migration status
@@ -10,7 +12,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 |---|---|
 | 0 — Plan | Done |
 | 1 — Baseline audit | Done |
-| 2 — Scaffolding | In progress |
+| 2 — Scaffolding | Done |
 | 3 — Configuration | Not started |
 | 4 — Domain & EF Core | Not started |
 | 5 — Application services & DI | Not started |
@@ -35,6 +37,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 ## Repository layout
 
 ```
+.github/workflows/ci.yml     CI: build, tests, vulnerable-package check
 eShop.Catalog.slnx           New solution (.NET 10, built with the dotnet CLI)
 eShopLegacyMVC.sln           Legacy solution (built with MSBuild until cutover)
 global.json                  .NET SDK and test runner selection
@@ -115,6 +118,17 @@ Write a TRX report per test project into `TestResults/`:
 ```bash
 dotnet test --solution eShop.Catalog.slnx --report-xunit-trx --results-directory TestResults
 ```
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request, on every push to `main` and once a week ([ADR-0008](DECISIONS.md#adr-0008-continuous-integration)). It has two jobs:
+
+- **Build and test.** Builds the new solution in Release with warnings as errors, builds the Stage 1.2 capture tool, runs every test, and uploads the TRX reports as the `test-results` artifact.
+- **Vulnerable packages.** Fails when any direct or transitive package has a known vulnerability, at any severity, or when the vulnerability data cannot be fetched. An advisory accepted with `NuGetAuditSuppress` does not fail it.
+
+The legacy solution is not built in CI. It needs Windows and Visual Studio, so it is built locally whenever a repo-wide build file changes.
+
+GitHub disables the weekly run after 60 days without repository activity. Re-enable it from the Actions tab.
 
 ## Building the baseline
 
