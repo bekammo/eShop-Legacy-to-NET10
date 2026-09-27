@@ -10,7 +10,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 |---|---|
 | 0 — Plan | Done |
 | 1 — Baseline audit | Done |
-| 2 — Scaffolding | Not started |
+| 2 — Scaffolding | In progress |
 | 3 — Configuration | Not started |
 | 4 — Domain & EF Core | Not started |
 | 5 — Application services & DI | Not started |
@@ -35,7 +35,13 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 ## Repository layout
 
 ```
+eShop.Catalog.slnx           New solution (.NET 10, built with the dotnet CLI)
 eShopLegacyMVC.sln           Legacy solution (built with MSBuild until cutover)
+global.json                  .NET SDK and test runner selection
+Directory.Build.props        Build settings for the new solution
+Directory.Packages.props     Central package versions for the new solution
+nuget.config                 Package sources (both solutions)
+.editorconfig                Code style and analyzer severities for the new solution
 MIGRATION_PLAN.md
 DECISIONS.md
 docs/
@@ -43,9 +49,12 @@ docs/
   behavior-changes.md
   legacy/                    Characterization data and the tool that captures it
 src/
+  eShop.Catalog.Api/         The new ASP.NET Core API (.NET 10)
   eShopLegacyMVC/            ASP.NET Web API 2 + MVC 5 app (.NET Framework 4.7.2)
   eShopLegacy.Utilities/     Shared class library (.NET Framework 4.6.1)
 ```
+
+The build files at the repository root reach every project below them. Three folders opt out with stop-files (`Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`): the two legacy project folders and the Stage 1.2 capture tool in `docs/legacy/capture` ([ADR-0006](DECISIONS.md#adr-0006-solution-structure-and-build-conventions)).
 
 ## Legacy baseline (as-is)
 
@@ -67,6 +76,20 @@ src/
 | Data access | Synchronous | `async`/`await` |
 | API docs | None | Built-in OpenAPI + Swagger UI |
 | Tests | None | xUnit v3 + `WebApplicationFactory` + Testcontainers SQL Server |
+
+## Building the new API
+
+The new API needs a [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0): 10.0.100 or a later 10.0 feature band ([global.json](global.json)). It builds on Windows, Linux and macOS. Two solutions coexist until cutover, so always name the solution:
+
+```bash
+dotnet build eShop.Catalog.slnx
+```
+
+```bash
+dotnet run --project src/eShop.Catalog.Api --launch-profile http
+```
+
+The app listens on `http://localhost:5043`. `GET /health/live` returns `200 Healthy` while the process is up. It does not check the database or any other dependency.
 
 ## Building the baseline
 

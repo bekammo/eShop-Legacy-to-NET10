@@ -1,0 +1,4 @@
+# Stop-file (ADR-0006). `root = true` ends the upward .editorconfig search here, so the style and
+# analyzer settings of the new .NET 10 solution do not apply to the Stage 1.2 capture tool. It stays
+# after cutover, together with docs/legacy.
+root = true
