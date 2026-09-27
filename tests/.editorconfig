@@ -1,0 +1,6 @@
+# Test-only analyzer settings (ADR-0007). Inherits everything else from the root .editorconfig.
+
+[*.cs]
+# Test names use underscores to read as sentences (Subject_condition_expected_result).
+# xUnit finds tests by attribute, so the names are never called from code.
+dotnet_diagnostic.CA1707.severity = none

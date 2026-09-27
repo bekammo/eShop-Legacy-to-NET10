@@ -9,4 +9,8 @@
   <Folder Name="/src/">
     <Project Path="src/eShop.Catalog.Api/eShop.Catalog.Api.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/eShop.Catalog.Api.IntegrationTests/eShop.Catalog.Api.IntegrationTests.csproj" />
+    <Project Path="tests/eShop.Catalog.Api.UnitTests/eShop.Catalog.Api.UnitTests.csproj" />
+  </Folder>
 </Solution>

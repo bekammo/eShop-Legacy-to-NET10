@@ -52,6 +52,9 @@ src/
   eShop.Catalog.Api/         The new ASP.NET Core API (.NET 10)
   eShopLegacyMVC/            ASP.NET Web API 2 + MVC 5 app (.NET Framework 4.7.2)
   eShopLegacy.Utilities/     Shared class library (.NET Framework 4.6.1)
+tests/
+  eShop.Catalog.Api.UnitTests/         Tests without a host (xUnit v3)
+  eShop.Catalog.Api.IntegrationTests/  HTTP tests against the in-memory host (xUnit v3)
 ```
 
 The build files at the repository root reach every project below them. Three folders opt out with stop-files (`Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`): the two legacy project folders and the Stage 1.2 capture tool in `docs/legacy/capture` ([ADR-0006](DECISIONS.md#adr-0006-solution-structure-and-build-conventions)).
@@ -90,6 +93,28 @@ dotnet run --project src/eShop.Catalog.Api --launch-profile http
 ```
 
 The app listens on `http://localhost:5043`. `GET /health/live` returns `200 Healthy` while the process is up. It does not check the database or any other dependency.
+
+## Running the tests
+
+The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). No test needs Docker yet. From Stage 4.2 the integration tests start SQL Server in a container, so Docker must be running.
+
+Run every test:
+
+```bash
+dotnet test --solution eShop.Catalog.slnx
+```
+
+Run one test project, for example only the unit tests:
+
+```bash
+dotnet test --project tests/eShop.Catalog.Api.UnitTests
+```
+
+Write a TRX report per test project into `TestResults/`:
+
+```bash
+dotnet test --solution eShop.Catalog.slnx --report-xunit-trx --results-directory TestResults
+```
 
 ## Building the baseline
 

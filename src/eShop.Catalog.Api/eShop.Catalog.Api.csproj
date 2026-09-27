@@ -2,4 +2,9 @@
 
   <!-- TargetFramework, nullable, implicit usings and analyzers come from Directory.Build.props. -->
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="eShop.Catalog.Api.UnitTests" />
+    <InternalsVisibleTo Include="eShop.Catalog.Api.IntegrationTests" />
+  </ItemGroup>
+
 </Project>

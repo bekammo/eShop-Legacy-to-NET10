@@ -125,7 +125,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - `src/eShop.Catalog.Api`: a minimal host with `/health/live`
 
   ADRs: migration strategy; solution structure and build conventions. Acceptance: the new solution builds, and the legacy MSBuild build is still green.
-- [ ] 2.2 Add `tests/eShop.Catalog.Api.UnitTests` and `tests/eShop.Catalog.Api.IntegrationTests` (xUnit v3) with a shared `CatalogApiFactory`. First test: `/health/live` returns 200. ADR: test strategy. README: test commands.
+- [x] 2.2 Add `tests/eShop.Catalog.Api.UnitTests` and `tests/eShop.Catalog.Api.IntegrationTests` (xUnit v3) with a shared `CatalogApiFactory`. First test: `/health/live` returns 200. ADR: test strategy. README: test commands.
 - [ ] 2.3 Add a GitHub Actions workflow that restores, builds and tests (with TRX output) and runs a vulnerable-package check.
 
 ### Stage 3 — Configuration
