@@ -1,0 +1,26 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Shared by the test projects (ADR-0007). -->
+
+  <!--
+    xUnit v3 test projects are executables that run on Microsoft.Testing.Platform (MTP).
+    UseMicrosoftTestingPlatformRunner makes a direct run (the exe, dotnet run, F5) use MTP too,
+    with the same options as dotnet test, instead of xUnit's own console runner.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

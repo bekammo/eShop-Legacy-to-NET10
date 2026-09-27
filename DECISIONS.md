@@ -14,6 +14,10 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0002](#adr-0002-wire-contract-policy) | Wire-contract policy | Accepted | 1.3 |
 | [ADR-0003](#adr-0003-non-goals) | Non-goals | Accepted | 1.3 |
 | [ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover) | Write endpoints stay anonymous until after cutover | Accepted | 1.3 |
+| [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) | Migration strategy: side-by-side, then cutover | Accepted | 2.1 |
+| [ADR-0006](#adr-0006-solution-structure-and-build-conventions) | Solution structure and build conventions | Accepted | 2.1 |
+| [ADR-0007](#adr-0007-test-strategy) | Test strategy | Accepted | 2.2 |
+| [ADR-0008](#adr-0008-continuous-integration) | Continuous integration | Accepted | 2.3 |
 
 ## Template
 
@@ -212,3 +216,267 @@ The new API exposes the item writes directly (`POST`, `PUT` and `DELETE` on `/ap
 - Until Stage 12, anyone who can reach the new API can change the catalog, as with the legacy UI today.
 - Browser-based cross-site writes remain hard: the new API uses no cookies (no ambient credentials to abuse), it accepts JSON bodies (which need a CORS preflight), and it enables no CORS.
 - Stage 12 has a defined scope, and its tests (401, 403, 2xx) are planned.
+
+---
+
+## ADR-0005: Migration strategy: side-by-side, then cutover
+
+- **Status:** Accepted
+- **Date:** 2026-09-27
+- **Plan stage:** 2.1
+
+### Context
+
+- The legacy app is one System.Web application. Web API 2 and MVC 5 share the IIS integrated pipeline, `Global.asax` drives startup, and Autofac, log4net and EF6 are wired through it ([audit: architecture](docs/legacy-audit.md#2-architecture-and-request-pipeline)). System.Web has no .NET 10 equivalent.
+- The plan requires every commit to build and pass its tests on its own.
+- The HTTP surface is small: about ten endpoints once the Razor-only capabilities are re-exposed ([ADR-0001](#adr-0001-migration-scope)).
+- The golden exchanges and the defect evidence were captured from the running legacy app ([docs/legacy](docs/legacy/README.md)). Until the new API matches them, the legacy app is the reference, and it must stay runnable so that a capture can be repeated.
+- The two apps need different toolchains: Visual Studio's MSBuild on Windows for the legacy app ([audit: build](docs/legacy-audit.md#8-build-tooling-and-tests)), and the .NET 10 SDK for the new one.
+
+### Decision
+
+1. **A new project next to the old ones.** The new API is `src/eShop.Catalog.Api`, in its own solution `eShop.Catalog.slnx` ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). The legacy projects and `eShopLegacyMVC.sln` are not edited until Stage 11. The only files added beside them are the stop-files of ADR-0006.
+2. **No runtime coexistence.** There is no reverse proxy, no `SystemWebAdapters` and no shared database. The new API gets its own database. Adopting an existing legacy database is a separate, tested procedure (Stage 4.3).
+3. **One cutover step, in Stage 11.** The `legacy-final` tag marks the rollback point: the last commit where the legacy app is complete and runnable. After it, the pictures move into the API project, and the legacy projects, their solution and their stop-files are deleted.
+4. **Rollback** means redeploying the `legacy-final` tag. Stage 11.1 records the rollback procedure, including which database the legacy app runs against.
+5. **The legacy build stays green until cutover.** A commit that changes a repo-wide build file also runs the legacy MSBuild build, and builds the Stage 1.2 capture tool (`dotnet build docs/legacy/capture/capture.cs`).
+
+### Alternatives considered
+
+- **In-place conversion.** This means retargeting the legacy projects to SDK-style `net10.0`, by hand or with the .NET Upgrade Assistant. Nothing compiles until every System.Web dependency is gone, so there are no buildable intermediate commits. The reference implementation also disappears with the first commit.
+- **Incremental strangler.** YARP sits in front of the IIS app, `Microsoft.AspNetCore.SystemWebAdapters` bridges the two, and routes move one at a time in production. This pays off for a large surface that must move gradually under live traffic. Here it would mean running and proxying two hosts to move about ten endpoints ([ADR-0003](#adr-0003-non-goals)). A single cutover, guarded by the drop-in contract ([ADR-0002](#adr-0002-wire-contract-policy)) and the contract replay tests, costs less.
+- **A separate repository for the new API.** The history would no longer tell the migration as one story, and the characterization data would have to be copied and kept in sync.
+
+### Consequences
+
+- Two solutions and two toolchains coexist until Stage 11. Every command names its solution.
+- The legacy code is frozen. Its defects are fixed only in the new API, and each fix that changes behaviour is recorded in [docs/behavior-changes.md](docs/behavior-changes.md).
+- The golden exchanges can be re-captured from the legacy app at any point before cutover.
+- Cutover is a single switch for clients. The drop-in contract ([ADR-0002](#adr-0002-wire-contract-policy)) and the contract replay tests are what make that switch safe.
+- Until Stage 11.2 the new API serves the pictures from the legacy `Pics` folder, through `Catalog:PicturesPath` (Stage 7.4).
+
+---
+
+## ADR-0006: Solution structure and build conventions
+
+- **Status:** Accepted
+- **Date:** 2026-09-27
+- **Plan stage:** 2.1
+
+### Context
+
+- The legacy projects are non-SDK-style and keep their package versions inline. They build only with Visual Studio's MSBuild, with 6 tolerated warnings and two vulnerable packages ([audit: build](docs/legacy-audit.md#8-build-tooling-and-tests), [packages](docs/legacy-audit.md#3-package-inventory)).
+- The new code should start with strict defaults, so that no later stage has to retrofit them: nullable reference types, warnings as errors, and the async analyzers of the async-first port (plan decision 6).
+- Three kinds of repo-wide file reach every project below them:
+  - MSBuild imports the nearest `Directory.Build.props` above a project.
+  - NuGet imports the nearest `Directory.Packages.props`.
+  - `.editorconfig` files apply up to the first one marked `root = true`.
+
+  Two kinds of code in the repository must not pick up the new settings, and files at the repository root reach both:
+  - the legacy projects, which stay untouched until cutover ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover))
+  - the Stage 1.2 capture tool `docs/legacy/capture/capture.cs`, a .NET 10 file-based app that pins its package inline (`#:package Microsoft.Data.SqlClient@6.1.1`) and stays with `docs/legacy` after cutover
+
+  This was checked. Without the stop-files below, both fail with `NU1008`, because Central Package Management forbids inline versions. Past that, the capture tool fails with dozens of analyzer and style errors from the new settings.
+
+### Decision
+
+**Layout**
+
+| Path | Purpose |
+|---|---|
+| `eShop.Catalog.slnx` | The new solution, in the XML `.slnx` format. |
+| `src/eShop.Catalog.Api` | The one API project. It is organized by feature folders (`Health/` now; brands, items and the rest as they arrive). Its types are `internal` unless something outside the assembly needs them. |
+| `tests/eShop.Catalog.Api.UnitTests`, `tests/eShop.Catalog.Api.IntegrationTests` | The test projects (Stage 2.2). |
+
+**Repo-wide build files**
+
+| File | What it sets |
+|---|---|
+| `global.json` | SDK 10.0.100 or a later 10.0 feature band (`rollForward: latestFeature`), no previews. `dotnet test` runs on Microsoft.Testing.Platform. |
+| `Directory.Build.props` | <ul><li>`net10.0`, nullable, implicit usings.</li><li>Compiler, analyzer, NuGet and MSBuild warnings as errors, except the NuGet audit warnings NU1900–NU1905 (an advisory, or vulnerability data that could not be fetched).</li><li>Analyzers pinned to `AnalysisLevel` 10.0 in `Recommended` mode, and code style enforced at build.</li><li>NuGet audit of direct and transitive packages at every severity.</li><li>`ContinuousIntegrationBuild` on CI.</li></ul> |
+| `Directory.Packages.props` | Central Package Management with transitive pinning. A version is added in the commit that adds its first consumer. |
+| `nuget.config` | nuget.org as the only source, with package source mapping. It applies to both solutions. |
+| `.editorconfig` | Formatting (IDE0055), style and naming rules, all enforced at build. The async analyzers CA2016, CA1849 and CA2012 are errors. |
+
+**Stop-files.** `src/eShopLegacyMVC`, `src/eShopLegacy.Utilities` and `docs/legacy/capture` each get three files:
+
+- an empty `Directory.Build.props`
+- a `Directory.Packages.props` that turns Central Package Management off
+- an `.editorconfig` with `root = true`
+
+They are the only files added to the legacy project folders and to the capture tool's folder. Stage 11.3 deletes the ones in the legacy project folders with the projects. The ones in `docs/legacy/capture` stay, because `docs/legacy` stays.
+
+**Rules**
+
+- Every command names its solution: `dotnet build eShop.Catalog.slnx`, `MSBuild.exe eShopLegacyMVC.sln`.
+- A commit that changes a repo-wide build file also runs the legacy MSBuild build and `dotnet build docs/legacy/capture/capture.cs`.
+- Shared settings go in `Directory.Build.props`. A project file holds only what is specific to that project.
+- An analyzer rule is relaxed only in `.editorconfig`, for the narrowest set of files, with a comment that says why.
+
+**Verification at 2.1**
+
+- `dotnet build eShop.Catalog.slnx`: 0 warnings, 0 errors.
+- `MSBuild.exe eShopLegacyMVC.sln -restore -t:Rebuild`: 6 warnings, 0 errors, the same result as the audit.
+- `dotnet build docs/legacy/capture/capture.cs`: builds, as before this change.
+- Throwaway probe projects confirmed the enforcement:
+  - IDE0055, IDE0161, IDE1006, IDE0044, CS0649, CA2016, CA1849 and an MSBuild warning (MSB9999) fail the build.
+  - NU1903 (Newtonsoft.Json 12.0.1) stays a warning.
+
+### Alternatives considered
+
+- **One project per layer** (API, application, domain, infrastructure). About ten endpoints over one small model do not repay the extra project boundaries. Folders and `internal` visibility give the separation that matters. A second host that needs the domain, such as a worker, would reopen this.
+- **A `.sln` file.** `.slnx` is what the .NET 10 CLI creates by default. It is readable XML that merges cleanly, and Visual Studio 2026 opens it. The legacy solution stays a `.sln`, untouched.
+- **`AnalysisLevel` `latest`.** Any SDK update could then add new errors with no code change. Pinning makes analyzer upgrades a deliberate commit.
+- **NuGet audit warnings as errors.** A newly published advisory would break every build, including pull requests that do not touch packages. So would a vulnerability feed that cannot be reached (NU1900), even though every package restores. The CI vulnerable-package check (Stage 2.3) reports advisories instead.
+- **Moving the legacy projects into a `legacy/` folder** to isolate them by directory. This edits the legacy tree and breaks the paths that the audit and the characterization data cite.
+- **Opting out inside the legacy project files** (`ImportDirectoryBuildProps=false` and similar). This edits legacy files, which ADR-0005 rules out.
+- **NuGet lock files** (`packages.lock.json`). Central versions fix every direct package. NuGet resolves each transitive package to the lowest version the graph allows, so an unchanged graph does not drift. nuget.org packages are immutable, and source mapping allows only nuget.org. Lock files would add churn to every package change. A second package source would reopen this.
+
+### Consequences
+
+- The new code starts strict: nullable, warning-free and async-checked from the first commit.
+- Upgrading the analyzer rule set is a deliberate change of `AnalysisLevel`.
+- New vulnerability advisories do not break local builds, so the CI check has to catch them.
+- Six stop-files live in the legacy project folders until Stage 11.3. Three more stay in `docs/legacy/capture` for good.
+- Any other code later placed under the repository root, outside the solution, gets the new settings unless it is given stop-files too.
+- Contributors need the .NET 10 SDK for the new solution, and Visual Studio 2026 for the legacy one.
+
+---
+
+## ADR-0007: Test strategy
+
+- **Status:** Accepted
+- **Date:** 2026-09-27
+- **Plan stage:** 2.2
+
+### Context
+
+- The legacy app has no tests. Its behaviour is pinned by the Stage 1.2 characterization, not by code ([audit: tests](docs/legacy-audit.md#84-tests)).
+- Plan decision 8 sets the direction:
+  - xUnit v3 on Microsoft.Testing.Platform (MTP)
+  - `WebApplicationFactory` through one shared factory
+  - Testcontainers SQL Server, with one container per test assembly and one database per test class
+  - no EF Core InMemory provider and no SQLite, because neither can run the `catalog_hilo` sequence
+- The .NET 10 SDK runs MTP test projects natively once `global.json` selects the MTP runner ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). xUnit v3 4.0 supports only MTP v2, and the `xunit.v3` package brings it in.
+- Some logic can be tested without a host: policies, validation, paging, model metadata. Most of what the migration promises, though, is HTTP behaviour ([ADR-0002](#adr-0002-wire-contract-policy)), and that can only be tested through a host.
+
+### Decision
+
+**Framework.** xUnit v3 (`xunit.v3` 4.0.1). The test projects are executables that run on MTP v2, whether started by `dotnet test`, by an IDE or directly (`UseMicrosoftTestingPlatformRunner`). `dotnet test --solution eShop.Catalog.slnx` runs them all. There is no `Microsoft.NET.Test.Sdk` and no VSTest adapter. `tests/Directory.Build.props` holds what the test projects share: the executable output type, the MTP runner, the `xunit.v3` reference and a global `using Xunit;`.
+
+**Two test projects**
+
+| Project | What it tests | Needs |
+|---|---|---|
+| `tests/eShop.Catalog.Api.UnitTests` | Logic that runs without a host and without I/O. | Only the SDK. |
+| `tests/eShop.Catalog.Api.IntegrationTests` | <ul><li>Behaviour through HTTP, against the app hosted in memory by `CatalogApiFactory`.</li><li>From Stage 4.2, persistence behaviour against a real SQL Server in Testcontainers: migrations, schema, seeding, and the service contract suite. These tests reach the database through the factory's services.</li></ul> | Docker, from Stage 4.2. |
+
+Both projects can see the API's `internal` types (`InternalsVisibleTo`). The API keeps its types internal ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)), and the persistence tests need the `DbContext`, the seeder and the services.
+
+**`CatalogApiFactory`** is the one `WebApplicationFactory<Program>` subclass.
+
+- Each integration test class receives it through `IClassFixture<CatalogApiFactory>`. The tests of one class share one host, and each class gets its own. Stage 4.2 attaches the per-class database here.
+- The host runs in the `Testing` environment. User secrets and Development-only features, such as Swagger UI in Stage 9, stay off unless a test turns them on.
+- A test that needs a different host configuration derives one with `WithWebHostBuilder` and disposes it.
+
+**Conventions**
+
+- HTTP tests call routes by their literal path, such as `/health/live`, and never through constants from the API. Routes are contract ([ADR-0002](#adr-0002-wire-contract-policy)), so a route change must break a test.
+- One test class per subject, named `<Subject>Tests`, in a folder that mirrors the API's feature folder.
+- Test method names are sentences with underscores, for example `Get_returns_200_Healthy_as_plain_text`. The analyzer rule against underscores (CA1707) is turned off for `tests/` only, in `tests/.editorconfig`.
+- Assertions use xUnit's `Assert`.
+- Tests are async all the way down. Every call that takes a `CancellationToken` gets `TestContext.Current.CancellationToken`. The xUnit analyzer xUnit1051 fails the build otherwise.
+
+**First tests**
+
+| Test | What it pins |
+|---|---|
+| `LivenessPolicyTests.Liveness_runs_no_registered_check` (unit) | The liveness predicate excludes every registered health check. |
+| `LivenessEndpointTests.Get_returns_200_Healthy_as_plain_text` (integration) | `GET /health/live` answers `200`, `text/plain`, `Healthy`. |
+| `LivenessEndpointTests.Get_stays_healthy_when_a_registered_check_fails` (integration) | The endpoint applies that predicate, so a failing dependency cannot fail liveness. |
+
+Each of the two policy tests was checked against a deliberate break: including all checks in the predicate fails the unit test, and mapping the endpoint without the liveness options fails the second integration test.
+
+### Alternatives considered
+
+- **VSTest** (`Microsoft.NET.Test.Sdk` and `xunit.runner.visualstudio`). xUnit v3 4.0 targets MTP v2 by default, and the .NET 10 SDK runs MTP natively once `global.json` opts in, which it does. VSTest would need adapter packages and a separate test host process. MTP test projects are plain executables that can also be run or debugged directly.
+- **NUnit or MSTest.** Both run on MTP. xUnit v3 is the plan's choice (plan decision 8). Its class and assembly fixtures fit the per-class host and database, and its per-test `TestContext` carries a cancellation token.
+- **One test project, split by traits.** Separate projects keep host-only packages, such as `Microsoft.AspNetCore.Mvc.Testing`, out of the unit tests, and they make "run only the fast tests" a project choice rather than a filter. The Docker trait of Stage 10.2 still splits the integration tests.
+- **One host for the whole assembly** (an xUnit assembly fixture). It starts faster, but per-class databases and per-class host customization are simpler with one host per class. This can be revisited if host startup starts to dominate the test time.
+- **A third-party assertion library** (FluentAssertions, Shouldly). FluentAssertions 8 needs a paid licence for commercial use, and xUnit's `Assert` covers what the tests need without another dependency.
+
+### Consequences
+
+- `dotnet test --solution eShop.Catalog.slnx` is the single command for every test, locally and in CI.
+- Until Stage 4.2 no test needs Docker. From then on the integration tests do, and Stage 10.2 documents a Docker-free subset.
+- HTTP behaviour is pinned through literal routes. Persistence behaviour is tested against a real SQL Server, never an in-memory substitute.
+- The factory is the one place that later stages change to add the database, configuration overrides or authentication (Stage 12).
+
+---
+
+## ADR-0008: Continuous integration
+
+- **Status:** Accepted
+- **Date:** 2026-09-27
+- **Plan stage:** 2.3
+
+### Context
+
+- From Stage 2.3 on, a pull request should merge into `main` only when the new solution builds and its tests pass.
+- Local builds keep NuGet audit warnings as warnings on purpose ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). Something else has to turn a vulnerable package into a failure.
+- From Stage 4.2 the integration tests start SQL Server in a Linux container ([ADR-0007](#adr-0007-test-strategy)). GitHub-hosted Linux runners have Docker. Windows runners cannot run Linux containers.
+- The legacy solution builds only on Windows, with Visual Studio's MSBuild and the .NET Framework 4.6.1 targeting pack ([audit: toolchain](docs/legacy-audit.md#83-toolchain-prerequisites)).
+- Workflow steps run with a token that can read the repository. A third-party action referenced by a tag can change under the workflow, because tags can be moved.
+
+### Decision
+
+One workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml). It runs on every pull request, on every push to `main`, every Monday at 05:17 UTC, and on demand.
+
+**Job "Build and test"** (`ubuntu-24.04`)
+
+1. Install the SDK that `global.json` selects.
+2. Restore, then build `eShop.Catalog.slnx` in Release. Warnings are errors ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)).
+3. Build the Stage 1.2 capture tool (`dotnet build docs/legacy/capture/capture.cs`). This checks that its stop-files still keep the repo-wide build settings away from it.
+4. Run `dotnet test --solution eShop.Catalog.slnx` with a TRX report per test project.
+5. Upload the TRX files as the `test-results` artifact, also when tests fail.
+
+**Job "Vulnerable packages"** (`ubuntu-24.04`)
+
+1. List every vulnerable package, direct or transitive, for the log.
+2. Restore with the NuGet audit warnings NU1900–NU1905 turned back into errors. The job fails on an advisory of any severity, and when the vulnerability data cannot be fetched.
+
+The weekly run catches an advisory published for a package that no commit has touched. An advisory with no fixed version can be accepted with a `NuGetAuditSuppress` item, which the gate honours. Each suppression carries a comment with the reason and a date to review it.
+
+**Hardening**
+
+- The workflow token can only read the repository contents (`permissions: contents: read`), and the checkout does not keep it (`persist-credentials: false`).
+- Every action is pinned to a full commit SHA, with the release tag in a comment.
+- A new push to a pull request cancels the run still going for its previous commit.
+- Every job has a timeout.
+
+**Not in CI**
+
+- The legacy MSBuild build. It needs Windows and Visual Studio, and it is checked locally whenever a repo-wide build file changes ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)).
+- Running the capture tool. That needs Windows, IIS Express and LocalDB. Only its build is checked.
+- Coverage and published test reports (Stage 10).
+
+"Build and test" and "Vulnerable packages" are meant to be required status checks for `main`. That is a repository setting on GitHub, outside the code.
+
+**Verification at 2.3.** Every command of both jobs was run locally with `CI=true`: the Release build had 0 warnings, 3 of 3 tests passed with a TRX file per project, and the gate passed. The capture tool also builds for `linux-x64`, the runner's platform. The gate was also run against a probe project that references Newtonsoft.Json 12.0.1: it failed with `error NU1903`, and it passed once the advisory was listed in `NuGetAuditSuppress`.
+
+### Alternatives considered
+
+- **`ubuntu-latest`.** The label moves to a new image without notice. A pinned image makes that upgrade a visible commit.
+- **A Windows job for the legacy build.** GitHub's Windows images carry a different Visual Studio from the one the audit used, and it is not certain that they have the .NET Framework 4.6.1 targeting pack. A red legacy job could block every pull request for reasons that have nothing to do with the change. The legacy build is frozen, checked locally, and gone after cutover.
+- **`dotnet package list --vulnerable` as the gate.** It exits with 0 even when it finds advisories, so it cannot fail a job by itself. A script that failed on its output would still count the advisories accepted with `NuGetAuditSuppress`, because the command ignores them, and it would stay red for good. Both behaviours were checked. The job still runs the command, for its readable table.
+- **NuGet audit warnings as errors in the build itself.** [ADR-0006](#adr-0006-solution-structure-and-build-conventions) rejected this because every build, pull requests included, would break on a new advisory or an unreachable feed. The separate gate has the same effect on merges while it is a required check (see Consequences), but it is one isolated check: local builds keep working, and "Build and test" still reports on the change itself.
+- **Actions pinned by tag** (`@v6`). A tag can be moved to another commit. A commit SHA cannot.
+- **NuGet package caching.** Restore takes seconds for this solution, and `setup-dotnet` keys its cache on lock files, which ADR-0006 does not use.
+
+### Consequences
+
+- Every pull request shows whether the new solution builds, whether its tests pass, and whether any package is vulnerable.
+- A new advisory can turn `main` red without a code change. While "Vulnerable packages" is a required check, it also blocks every pull request, including those that touch no package, until a package update or a documented suppression lands on `main`. An unreachable vulnerability feed (NU1900) blocks merges until a re-run passes.
+- GitHub disables the schedule of a public repository after 60 days without activity. After a quiet period, the weekly run has to be re-enabled from the Actions tab.
+- Action and runner upgrades are deliberate commits that change a SHA or an image name.
+- The legacy build stays a local check until Stage 11 removes it.

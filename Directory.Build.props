@@ -1,0 +1,55 @@
+<Project>
+
+  <!--
+    Build settings for the projects of eShop.Catalog.slnx (ADR-0006). MSBuild imports this file into
+    every SDK project below the repository root, so the folders that must not get these settings hold
+    an empty Directory.Build.props that stops the upward search: the legacy projects
+    (src/eShopLegacyMVC, src/eShopLegacy.Utilities) and the Stage 1.2 capture tool (docs/legacy/capture).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!--
+    Warnings are errors: compiler, analyzer, NuGet and MSBuild warnings alike. NuGet audit warnings
+    are the exception, so that neither a newly published advisory nor an unreachable vulnerability
+    feed breaks every local build:
+      NU1900  the vulnerability data could not be fetched
+      NU1901-NU1904  an advisory of low, moderate, high or critical severity
+      NU1905  the audit source provides no vulnerability data
+    A dedicated CI check fails on them instead (ADR-0008). MSBuildWarningsNotAsErrors
+    defaults to WarningsNotAsErrors, so the exceptions apply to both switches.
+  -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904;NU1905</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <!--
+    The analyzer rule set is pinned to the .NET 10 "recommended" set, so an SDK update cannot
+    add new errors without a deliberate change here. Code style rules in .editorconfig are
+    enforced at build time.
+  -->
+  <PropertyGroup>
+    <AnalysisLevel>10.0</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!-- Audit direct and transitive packages against every advisory severity. -->
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+
+  <!-- Reproducible build output on CI (GitHub Actions sets CI=true). -->
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

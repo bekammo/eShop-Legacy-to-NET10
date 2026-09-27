@@ -1,0 +1,4 @@
+# Stop-file (ADR-0006). `root = true` ends the upward .editorconfig search here, so the style and
+# analyzer settings of the new .NET 10 solution do not apply to the legacy code, which stays
+# untouched until cutover. Removed at cutover (Stage 11.3).
+root = true

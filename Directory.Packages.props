@@ -1,0 +1,23 @@
+<Project>
+
+  <!--
+    Central Package Management for eShop.Catalog.slnx (ADR-0006).
+    Projects reference packages without a version; the version lives here, once.
+    A package is added in the commit that introduces its first consumer.
+    The legacy projects and the Stage 1.2 capture tool keep their inline versions: their folders
+    hold a Directory.Packages.props that stops the upward search and turns Central Package
+    Management off.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!-- Tests (ADR-0007). -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageVersion Include="xunit.v3" Version="4.0.1" />
+  </ItemGroup>
+
+</Project>

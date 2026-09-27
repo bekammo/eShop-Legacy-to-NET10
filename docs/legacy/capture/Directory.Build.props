@@ -1,0 +1,8 @@
+<Project>
+  <!--
+    Stop-file (ADR-0006). A file-based app such as capture.cs imports the first Directory.Build.props
+    it finds walking up from its folder. This empty one keeps the repo-wide settings of the new .NET 10
+    solution (warnings as errors, analyzers) away from the Stage 1.2 capture tool, which stays as it was
+    written. It stays after cutover, together with docs/legacy.
+  -->
+</Project>

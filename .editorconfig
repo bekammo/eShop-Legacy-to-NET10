@@ -1,0 +1,89 @@
+# Editor and analyzer settings for eShop.Catalog.slnx (ADR-0006).
+# The legacy project folders (src/eShopLegacyMVC, src/eShopLegacy.Utilities) and the Stage 1.2
+# capture tool (docs/legacy/capture) have their own `root = true` .editorconfig, so nothing here
+# applies to them.
+
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{json,xml,csproj,props,targets,slnx,config,yml,yaml}]
+indent_size = 2
+
+[*.cs]
+
+#### Formatting ####
+
+# Report formatting differences (IDE0055) at build time, so that the build enforces the
+# indentation, spacing and new-line options of this file.
+dotnet_diagnostic.IDE0055.severity = warning
+
+#### Layout ####
+
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_new_line_before_open_brace = all
+csharp_prefer_braces = true:warning
+
+#### Language preferences ####
+
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_prefer_static_local_function = true:suggestion
+dotnet_style_readonly_field = true:warning
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_predefined_type_for_member_access = true:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+
+#### Naming ####
+
+# Report naming violations (IDE1006) at build time; the rules below set what they are.
+dotnet_diagnostic.IDE1006.severity = warning
+
+# Private and internal fields: _camelCase.
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel_case
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private, internal
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+
+# Constants and static readonly fields: PascalCase. Their required modifiers make these rules
+# more specific than the one above, so they take precedence for those fields.
+dotnet_naming_rule.constants_pascal.symbols = constants
+dotnet_naming_rule.constants_pascal.style = pascal_case
+dotnet_naming_rule.constants_pascal.severity = warning
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+dotnet_naming_rule.static_readonly_pascal.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_pascal.style = pascal_case
+dotnet_naming_rule.static_readonly_pascal.severity = warning
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+
+#### Async analyzers (ADR-0006; async-first port, plan decision 6) ####
+
+# Forward the CancellationToken to methods that accept one.
+dotnet_diagnostic.CA2016.severity = error
+# Call the async overload when inside an async method.
+dotnet_diagnostic.CA1849.severity = error
+# Use ValueTask correctly (await it once, never block on it).
+dotnet_diagnostic.CA2012.severity = error

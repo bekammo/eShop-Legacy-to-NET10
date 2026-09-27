@@ -115,18 +115,18 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   Also create `docs/behavior-changes.md`, and update `README.md` with migration status and a documentation index.
 
 ### Stage 2 — Scaffolding
-- [ ] 2.1 Add the build infrastructure and the new project:
+- [x] 2.1 Add the build infrastructure and the new project:
   - `global.json` (SDK 10.0.x, Microsoft.Testing.Platform runner)
-  - `Directory.Build.props` (net10.0, nullable, implicit usings, warnings as errors except NuGet audit NU1901–NU1904, pinned analysis level)
+  - `Directory.Build.props` (net10.0, nullable, implicit usings, warnings as errors except the NuGet audit warnings NU1900–NU1905, pinned analysis level)
   - `Directory.Packages.props`
   - `.editorconfig`, with async analyzers CA2016, CA1849 and CA2012 set to error
-  - stop-files in the legacy project folders
+  - stop-files in the legacy project folders and in `docs/legacy/capture`
   - `eShop.Catalog.slnx`
   - `src/eShop.Catalog.Api`: a minimal host with `/health/live`
 
   ADRs: migration strategy; solution structure and build conventions. Acceptance: the new solution builds, and the legacy MSBuild build is still green.
-- [ ] 2.2 Add `tests/eShop.Catalog.Api.UnitTests` and `tests/eShop.Catalog.Api.IntegrationTests` (xUnit v3) with a shared `CatalogApiFactory`. First test: `/health/live` returns 200. ADR: test strategy. README: test commands.
-- [ ] 2.3 Add a GitHub Actions workflow that restores, builds and tests (with TRX output) and runs a vulnerable-package check.
+- [x] 2.2 Add `tests/eShop.Catalog.Api.UnitTests` and `tests/eShop.Catalog.Api.IntegrationTests` (xUnit v3) with a shared `CatalogApiFactory`. First test: `/health/live` returns 200. ADR: test strategy. README: test commands.
+- [x] 2.3 Add a GitHub Actions workflow that restores, builds and tests (with TRX output) and runs a vulnerable-package check.
 
 ### Stage 3 — Configuration
 - [ ] 3.1 Set up configuration:
@@ -233,7 +233,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 ### Stage 11 — Cutover & cleanup
 - [ ] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback.
 - [ ] 11.2 Move the pictures into the API project and switch the default `PicturesPath`.
-- [ ] 11.3 Delete the legacy projects, `eShopLegacyMVC.sln`, the stop-files and all legacy-only assets. `docs/legacy` stays as a reference. ADR summarizing the removals.
+- [ ] 11.3 Delete the legacy projects, `eShopLegacyMVC.sln`, the stop-files in the legacy project folders and all legacy-only assets. `docs/legacy` stays as a reference, with its capture tool and that tool's stop-files. ADR summarizing the removals.
 - [ ] 11.4 Package hygiene, dead-code removal, and a final pass on the README, this plan and `DECISIONS.md`.
 
 ### Stage 12 — Post-migration: write-endpoint authorization
@@ -244,8 +244,8 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 ## Working conventions
 
 - **Before every commit:**
-  - `dotnet build eShop.Catalog.slnx` and `dotnet test --solution eShop.Catalog.slnx` pass (Docker must be running for the integration tests).
-  - If the commit touches repo-wide build files, the legacy MSBuild build also passes.
+  - `dotnet build eShop.Catalog.slnx` and `dotnet test --solution eShop.Catalog.slnx` pass. From Stage 4.2, Docker must be running for the integration tests.
+  - If the commit touches repo-wide build files, the legacy MSBuild build also passes, and so does `dotnet build docs/legacy/capture/capture.cs`.
   - Always pass the solution explicitly: two solutions coexist until cutover.
 - **Commits:** an imperative subject of at most 72 characters, and a body that explains what changed and why. One logical change per commit.
 - **No commented-out legacy code.** Git history keeps it, and substantive removals are recorded in `DECISIONS.md`.

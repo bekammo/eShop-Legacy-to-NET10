@@ -1,5 +1,7 @@
 # eShop Legacy → .NET 10
 
+[![CI](https://github.com/bekammo/eShop-Legacy-to-NET10/actions/workflows/ci.yml/badge.svg)](https://github.com/bekammo/eShop-Legacy-to-NET10/actions/workflows/ci.yml)
+
 This project is based on Microsoft's [eShopModernizing](https://github.com/dotnet-architecture/eShopModernizing) sample. This fork keeps only the `eShopLegacyMVC` app. Its Web API layer is the starting point for an independent .NET Framework → .NET 10 modernization. The work is API-focused and does not cover the Razor/MVC UI.
 
 ## Migration status
@@ -10,7 +12,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 |---|---|
 | 0 — Plan | Done |
 | 1 — Baseline audit | Done |
-| 2 — Scaffolding | Not started |
+| 2 — Scaffolding | Done |
 | 3 — Configuration | Not started |
 | 4 — Domain & EF Core | Not started |
 | 5 — Application services & DI | Not started |
@@ -35,7 +37,14 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 ## Repository layout
 
 ```
+.github/workflows/ci.yml     CI: build, tests, vulnerable-package check
+eShop.Catalog.slnx           New solution (.NET 10, built with the dotnet CLI)
 eShopLegacyMVC.sln           Legacy solution (built with MSBuild until cutover)
+global.json                  .NET SDK and test runner selection
+Directory.Build.props        Build settings for the new solution
+Directory.Packages.props     Central package versions for the new solution
+nuget.config                 Package sources (both solutions)
+.editorconfig                Code style and analyzer severities for the new solution
 MIGRATION_PLAN.md
 DECISIONS.md
 docs/
@@ -43,9 +52,15 @@ docs/
   behavior-changes.md
   legacy/                    Characterization data and the tool that captures it
 src/
+  eShop.Catalog.Api/         The new ASP.NET Core API (.NET 10)
   eShopLegacyMVC/            ASP.NET Web API 2 + MVC 5 app (.NET Framework 4.7.2)
   eShopLegacy.Utilities/     Shared class library (.NET Framework 4.6.1)
+tests/
+  eShop.Catalog.Api.UnitTests/         Tests without a host (xUnit v3)
+  eShop.Catalog.Api.IntegrationTests/  HTTP tests against the in-memory host (xUnit v3)
 ```
+
+The build files at the repository root reach every project below them. Three folders opt out with stop-files (`Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`): the two legacy project folders and the Stage 1.2 capture tool in `docs/legacy/capture` ([ADR-0006](DECISIONS.md#adr-0006-solution-structure-and-build-conventions)).
 
 ## Legacy baseline (as-is)
 
@@ -67,6 +82,53 @@ src/
 | Data access | Synchronous | `async`/`await` |
 | API docs | None | Built-in OpenAPI + Swagger UI |
 | Tests | None | xUnit v3 + `WebApplicationFactory` + Testcontainers SQL Server |
+
+## Building the new API
+
+The new API needs a [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0): 10.0.100 or a later 10.0 feature band ([global.json](global.json)). It builds on Windows, Linux and macOS. Two solutions coexist until cutover, so always name the solution:
+
+```bash
+dotnet build eShop.Catalog.slnx
+```
+
+```bash
+dotnet run --project src/eShop.Catalog.Api --launch-profile http
+```
+
+The app listens on `http://localhost:5043`. `GET /health/live` returns `200 Healthy` while the process is up. It does not check the database or any other dependency.
+
+## Running the tests
+
+The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). No test needs Docker yet. From Stage 4.2 the integration tests start SQL Server in a container, so Docker must be running.
+
+Run every test:
+
+```bash
+dotnet test --solution eShop.Catalog.slnx
+```
+
+Run one test project, for example only the unit tests:
+
+```bash
+dotnet test --project tests/eShop.Catalog.Api.UnitTests
+```
+
+Write a TRX report per test project into `TestResults/`:
+
+```bash
+dotnet test --solution eShop.Catalog.slnx --report-xunit-trx --results-directory TestResults
+```
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request, on every push to `main` and once a week ([ADR-0008](DECISIONS.md#adr-0008-continuous-integration)). It has two jobs:
+
+- **Build and test.** Builds the new solution in Release with warnings as errors, builds the Stage 1.2 capture tool, runs every test, and uploads the TRX reports as the `test-results` artifact.
+- **Vulnerable packages.** Fails when any direct or transitive package has a known vulnerability, at any severity, or when the vulnerability data cannot be fetched. An advisory accepted with `NuGetAuditSuppress` does not fail it.
+
+The legacy solution is not built in CI. It needs Windows and Visual Studio, so it is built locally whenever a repo-wide build file changes.
+
+GitHub disables the weekly run after 60 days without repository activity. Re-enable it from the Actions tab.
 
 ## Building the baseline
 
