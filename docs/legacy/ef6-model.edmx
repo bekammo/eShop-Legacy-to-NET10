@@ -1,0 +1,211 @@
+<Edmx Version="3.0" xmlns="http://schemas.microsoft.com/ado/2009/11/edmx">
+  <Runtime>
+    <ConceptualModels>
+      <Schema Namespace="eShopLegacyMVC.Models" Alias="Self" annotation:UseStrongSpatialTypes="false" xmlns:annotation="http://schemas.microsoft.com/ado/2009/02/edm/annotation" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm">
+        <EntityType Name="CatalogBrand" customannotation:ClrType="eShopLegacyMVC.Models.CatalogBrand, eShopLegacyMVC, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="Brand" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
+        </EntityType>
+        <EntityType Name="CatalogItem" customannotation:ClrType="eShopLegacyMVC.Models.CatalogItem, eShopLegacyMVC, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="None" />
+          <Property Name="Name" Type="String" MaxLength="50" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Description" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+          <Property Name="Price" Type="Decimal" Precision="18" Scale="2" Nullable="false" />
+          <Property Name="PictureFileName" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="CatalogTypeId" Type="Int32" Nullable="false" />
+          <Property Name="CatalogBrandId" Type="Int32" Nullable="false" />
+          <Property Name="AvailableStock" Type="Int32" Nullable="false" />
+          <Property Name="RestockThreshold" Type="Int32" Nullable="false" />
+          <Property Name="MaxStockThreshold" Type="Int32" Nullable="false" />
+          <Property Name="OnReorder" Type="Boolean" Nullable="false" />
+          <NavigationProperty Name="CatalogBrand" Relationship="Self.CatalogItem_CatalogBrand" FromRole="CatalogItem_CatalogBrand_Source" ToRole="CatalogItem_CatalogBrand_Target" />
+          <NavigationProperty Name="CatalogType" Relationship="Self.CatalogItem_CatalogType" FromRole="CatalogItem_CatalogType_Source" ToRole="CatalogItem_CatalogType_Target" />
+        </EntityType>
+        <EntityType Name="CatalogType" customannotation:ClrType="eShopLegacyMVC.Models.CatalogType, eShopLegacyMVC, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="Type" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
+        </EntityType>
+        <Association Name="CatalogItem_CatalogBrand">
+          <End Role="CatalogItem_CatalogBrand_Source" Type="Self.CatalogItem" Multiplicity="*" />
+          <End Role="CatalogItem_CatalogBrand_Target" Type="Self.CatalogBrand" Multiplicity="1">
+            <OnDelete Action="Cascade" />
+          </End>
+          <ReferentialConstraint>
+            <Principal Role="CatalogItem_CatalogBrand_Target">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="CatalogItem_CatalogBrand_Source">
+              <PropertyRef Name="CatalogBrandId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="CatalogItem_CatalogType">
+          <End Role="CatalogItem_CatalogType_Source" Type="Self.CatalogItem" Multiplicity="*" />
+          <End Role="CatalogItem_CatalogType_Target" Type="Self.CatalogType" Multiplicity="1">
+            <OnDelete Action="Cascade" />
+          </End>
+          <ReferentialConstraint>
+            <Principal Role="CatalogItem_CatalogType_Target">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="CatalogItem_CatalogType_Source">
+              <PropertyRef Name="CatalogTypeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <EntityContainer Name="CatalogDBContext" customannotation:UseClrTypes="true">
+          <EntitySet Name="CatalogBrands" EntityType="Self.CatalogBrand" />
+          <EntitySet Name="CatalogItems" EntityType="Self.CatalogItem" />
+          <EntitySet Name="CatalogTypes" EntityType="Self.CatalogType" />
+          <AssociationSet Name="CatalogItem_CatalogBrand" Association="Self.CatalogItem_CatalogBrand">
+            <End Role="CatalogItem_CatalogBrand_Source" EntitySet="CatalogItems" />
+            <End Role="CatalogItem_CatalogBrand_Target" EntitySet="CatalogBrands" />
+          </AssociationSet>
+          <AssociationSet Name="CatalogItem_CatalogType" Association="Self.CatalogItem_CatalogType">
+            <End Role="CatalogItem_CatalogType_Source" EntitySet="CatalogItems" />
+            <End Role="CatalogItem_CatalogType_Target" EntitySet="CatalogTypes" />
+          </AssociationSet>
+        </EntityContainer>
+      </Schema>
+    </ConceptualModels>
+    <Mappings>
+      <Mapping Space="C-S" xmlns="http://schemas.microsoft.com/ado/2009/11/mapping/cs">
+        <EntityContainerMapping StorageEntityContainer="CodeFirstDatabase" CdmEntityContainer="CatalogDBContext">
+          <EntitySetMapping Name="CatalogBrands">
+            <EntityTypeMapping TypeName="eShopLegacyMVC.Models.CatalogBrand">
+              <MappingFragment StoreEntitySet="CatalogBrand">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="Brand" ColumnName="Brand" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+          <EntitySetMapping Name="CatalogItems">
+            <EntityTypeMapping TypeName="eShopLegacyMVC.Models.CatalogItem">
+              <MappingFragment StoreEntitySet="CatalogItem">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="Name" ColumnName="Name" />
+                <ScalarProperty Name="Description" ColumnName="Description" />
+                <ScalarProperty Name="Price" ColumnName="Price" />
+                <ScalarProperty Name="PictureFileName" ColumnName="PictureFileName" />
+                <ScalarProperty Name="CatalogTypeId" ColumnName="CatalogTypeId" />
+                <ScalarProperty Name="CatalogBrandId" ColumnName="CatalogBrandId" />
+                <ScalarProperty Name="AvailableStock" ColumnName="AvailableStock" />
+                <ScalarProperty Name="RestockThreshold" ColumnName="RestockThreshold" />
+                <ScalarProperty Name="MaxStockThreshold" ColumnName="MaxStockThreshold" />
+                <ScalarProperty Name="OnReorder" ColumnName="OnReorder" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+          <EntitySetMapping Name="CatalogTypes">
+            <EntityTypeMapping TypeName="eShopLegacyMVC.Models.CatalogType">
+              <MappingFragment StoreEntitySet="CatalogType">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="Type" ColumnName="Type" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+        </EntityContainerMapping>
+      </Mapping>
+    </Mappings>
+    <StorageModels>
+      <Schema Namespace="CodeFirstDatabaseSchema" Provider="System.Data.SqlClient" ProviderManifestToken="2012" Alias="Self" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm/ssdl">
+        <EntityType Name="CatalogBrand" customannotation:Index="{ }">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="Brand" Type="nvarchar" MaxLength="100" Nullable="false" />
+        </EntityType>
+        <EntityType Name="CatalogItem" customannotation:Index="{ }">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" Nullable="false" />
+          <Property Name="Name" Type="nvarchar" MaxLength="50" Nullable="false" />
+          <Property Name="Description" Type="nvarchar(max)" Nullable="true" />
+          <Property Name="Price" Type="decimal" Precision="18" Scale="2" Nullable="false" />
+          <Property Name="PictureFileName" Type="nvarchar(max)" Nullable="false" />
+          <Property Name="CatalogTypeId" Type="int" customannotation:Index="{ Name: IX_CatalogTypeId, Order: 0 }" Nullable="false" />
+          <Property Name="CatalogBrandId" Type="int" customannotation:Index="{ Name: IX_CatalogBrandId, Order: 0 }" Nullable="false" />
+          <Property Name="AvailableStock" Type="int" Nullable="false" />
+          <Property Name="RestockThreshold" Type="int" Nullable="false" />
+          <Property Name="MaxStockThreshold" Type="int" Nullable="false" />
+          <Property Name="OnReorder" Type="bit" Nullable="false" />
+        </EntityType>
+        <EntityType Name="CatalogType" customannotation:Index="{ }">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="Type" Type="nvarchar" MaxLength="100" Nullable="false" />
+        </EntityType>
+        <Association Name="CatalogItem_CatalogBrand">
+          <End Role="CatalogBrand" Type="Self.CatalogBrand" Multiplicity="1">
+            <OnDelete Action="Cascade" />
+          </End>
+          <End Role="CatalogItem" Type="Self.CatalogItem" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="CatalogBrand">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="CatalogItem">
+              <PropertyRef Name="CatalogBrandId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="CatalogItem_CatalogType">
+          <End Role="CatalogType" Type="Self.CatalogType" Multiplicity="1">
+            <OnDelete Action="Cascade" />
+          </End>
+          <End Role="CatalogItem" Type="Self.CatalogItem" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="CatalogType">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="CatalogItem">
+              <PropertyRef Name="CatalogTypeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <EntityContainer Name="CodeFirstDatabase">
+          <EntitySet Name="CatalogBrand" EntityType="Self.CatalogBrand" Schema="dbo" Table="CatalogBrand" />
+          <EntitySet Name="CatalogItem" EntityType="Self.CatalogItem" Schema="dbo" Table="Catalog" />
+          <EntitySet Name="CatalogType" EntityType="Self.CatalogType" Schema="dbo" Table="CatalogType" />
+          <AssociationSet Name="CatalogItem_CatalogBrand" Association="Self.CatalogItem_CatalogBrand">
+            <End Role="CatalogBrand" EntitySet="CatalogBrand" />
+            <End Role="CatalogItem" EntitySet="CatalogItem" />
+          </AssociationSet>
+          <AssociationSet Name="CatalogItem_CatalogType" Association="Self.CatalogItem_CatalogType">
+            <End Role="CatalogType" EntitySet="CatalogType" />
+            <End Role="CatalogItem" EntitySet="CatalogItem" />
+          </AssociationSet>
+        </EntityContainer>
+      </Schema>
+    </StorageModels>
+  </Runtime>
+  <Designer>
+    <Connection>
+      <DesignerInfoPropertySet>
+        <DesignerProperty Name="MetadataArtifactProcessing" Value="EmbedInOutputAssembly" />
+      </DesignerInfoPropertySet>
+    </Connection>
+    <Options>
+      <DesignerInfoPropertySet>
+        <DesignerProperty Name="ValidateOnBuild" Value="False" />
+        <DesignerProperty Name="CodeGenerationStrategy" Value="None" />
+        <DesignerProperty Name="ProcessDependentTemplatesOnSave" Value="False" />
+        <DesignerProperty Name="UseLegacyProvider" Value="False" />
+      </DesignerInfoPropertySet>
+    </Options>
+    <Diagrams />
+  </Designer>
+</Edmx>

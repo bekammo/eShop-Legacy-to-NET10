@@ -1,0 +1,80 @@
+{
+  "name": "unknown-item-writes",
+  "summary": "Edit and delete of an item that does not exist. UpdateCatalogItem updates zero rows and DeleteConfirmed passes null to DbSet.Remove; both surface as unhandled exceptions.",
+  "steps": [
+    {
+      "label": "Edit item 999",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Edit/999",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Id": "999",
+            "Name": "Unknown item",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100",
+            "PictureFileName": "dummy.png"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Store update, insert, or delete statement affected an unexpected number of rows (0). Entities may have been modified or deleted since entities were loaded. See http://go.microsoft.com/fwlink/?LinkId=472540 for information on understanding and handling optimistic concurrency exceptions.",
+          "exception": "System.Data.Entity.Core.OptimisticConcurrencyException: Store update, insert, or delete statement affected an unexpected number of rows (0). Entities may have been modified or deleted since entities were loaded. See http://go.microsoft.com/fwlink/?LinkId=472540 for information on understanding and handling optimistic concurrency exceptions."
+        }
+      }
+    },
+    {
+      "label": "Delete item 999",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Delete/999",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Value cannot be null.Parameter name: entity",
+          "exception": "System.ArgumentNullException: Value cannot be null."
+        }
+      }
+    }
+  ]
+}

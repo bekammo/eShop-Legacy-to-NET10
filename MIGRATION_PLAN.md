@@ -100,7 +100,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - test status (none)
 
   Also verify that the legacy solution builds with MSBuild, and record the result.
-- [ ] 1.2 Characterize the running legacy app against a fresh LocalDB database. Capture:
+- [x] 1.2 Characterize the running legacy app against a fresh LocalDB database. Capture:
   - `docs/legacy/schema.sql`, plus a machine-readable `schema.json` (columns, FKs with delete actions, indexes, sequences)
   - golden HTTP exchanges in `docs/legacy/contract/`, each as request (including `Accept`), status, content type and body. Cover JSON vs XML, missing and non-integer IDs, DELETE, `/api/files` headers, `/api`, and pictures.
   - the comparison rules

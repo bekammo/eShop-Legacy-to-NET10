@@ -1,0 +1,686 @@
+{
+  "group": "pictures",
+  "description": "GET /items/{catalogItemId}/pic: every seeded picture and the edge cases of the route.",
+  "exchanges": {
+    "pic-get--item-01": {
+      "description": "Picture of seeded item 1.",
+      "request": {
+        "method": "GET",
+        "path": "/items/1/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "151640",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 151640,
+          "sha256": "0487bc526da61586780355f4f50aa368f09c0a212809b1f08444382f4d789eb0",
+          "matchesFile": "src/eShopLegacyMVC/Pics/1.png"
+        }
+      }
+    },
+    "pic-get--item-02": {
+      "description": "Picture of seeded item 2.",
+      "request": {
+        "method": "GET",
+        "path": "/items/2/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "42041",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 42041,
+          "sha256": "54df72c9bbc39852b8d4e7fdb3f16b8b2eb549b7a3b441e28bfa0e5b75532958",
+          "matchesFile": "src/eShopLegacyMVC/Pics/2.png"
+        }
+      }
+    },
+    "pic-get--item-03": {
+      "description": "Picture of seeded item 3.",
+      "request": {
+        "method": "GET",
+        "path": "/items/3/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "174404",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 174404,
+          "sha256": "c721e5665a1569c652afad8972fc7235bfb3913fcb50082b546f386b323e667e",
+          "matchesFile": "src/eShopLegacyMVC/Pics/3.png"
+        }
+      }
+    },
+    "pic-get--item-04": {
+      "description": "Picture of seeded item 4.",
+      "request": {
+        "method": "GET",
+        "path": "/items/4/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "155987",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 155987,
+          "sha256": "bf39038d16dd49d50dae72d5008d77f797cdca5336d2d8d8326901f78612c27c",
+          "matchesFile": "src/eShopLegacyMVC/Pics/4.png"
+        }
+      }
+    },
+    "pic-get--item-05": {
+      "description": "Picture of seeded item 5.",
+      "request": {
+        "method": "GET",
+        "path": "/items/5/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "231538",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 231538,
+          "sha256": "242efa0c6c5324943d87591cb063bcca3d8d5ff28ef5811c0b203e17011bf33e",
+          "matchesFile": "src/eShopLegacyMVC/Pics/5.png"
+        }
+      }
+    },
+    "pic-get--item-06": {
+      "description": "Picture of seeded item 6.",
+      "request": {
+        "method": "GET",
+        "path": "/items/6/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "183340",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 183340,
+          "sha256": "fde6662ab684e4011ba626acd2540ef097cab86ee76174462bc2c7fe9b1e1e55",
+          "matchesFile": "src/eShopLegacyMVC/Pics/6.png"
+        }
+      }
+    },
+    "pic-get--item-07": {
+      "description": "Picture of seeded item 7.",
+      "request": {
+        "method": "GET",
+        "path": "/items/7/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "186669",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 186669,
+          "sha256": "7c449417583069379160f8c5bfe739d78be4e3302ee1b110b1b6673e4b206def",
+          "matchesFile": "src/eShopLegacyMVC/Pics/7.png"
+        }
+      }
+    },
+    "pic-get--item-08": {
+      "description": "Picture of seeded item 8.",
+      "request": {
+        "method": "GET",
+        "path": "/items/8/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "170576",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 170576,
+          "sha256": "118c3745f0a6cc4bbcaccadf4a30438c5ae9ce561480119430510434d5ab95cd",
+          "matchesFile": "src/eShopLegacyMVC/Pics/8.png"
+        }
+      }
+    },
+    "pic-get--item-09": {
+      "description": "Picture of seeded item 9.",
+      "request": {
+        "method": "GET",
+        "path": "/items/9/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "41499",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 41499,
+          "sha256": "72a5e94c1106ef57fd043389f96a2dc0752ef56af1e35c188c8983cf1821900c",
+          "matchesFile": "src/eShopLegacyMVC/Pics/9.png"
+        }
+      }
+    },
+    "pic-get--item-10": {
+      "description": "Picture of seeded item 10.",
+      "request": {
+        "method": "GET",
+        "path": "/items/10/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "228108",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 228108,
+          "sha256": "0d659c91d2a96c89cb7ee0e217513e2f4564443562460ebb6ff4361ca3d06bcb",
+          "matchesFile": "src/eShopLegacyMVC/Pics/10.png"
+        }
+      }
+    },
+    "pic-get--item-11": {
+      "description": "Picture of seeded item 11.",
+      "request": {
+        "method": "GET",
+        "path": "/items/11/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "217243",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 217243,
+          "sha256": "def8e1507c1d43c2349829c8a280b7e85e668d37c5f220105b35a5f71e20437f",
+          "matchesFile": "src/eShopLegacyMVC/Pics/11.png"
+        }
+      }
+    },
+    "pic-get--item-12": {
+      "description": "Picture of seeded item 12.",
+      "request": {
+        "method": "GET",
+        "path": "/items/12/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "168886",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 168886,
+          "sha256": "f6c852bd458ce80d724b0532750208eb1775bb269fe95fc0e41f905a904759c9",
+          "matchesFile": "src/eShopLegacyMVC/Pics/12.png"
+        }
+      }
+    },
+    "pic-get--accept-json": {
+      "description": "Picture with Accept: application/json; the action ignores Accept.",
+      "request": {
+        "method": "GET",
+        "path": "/items/1/pic",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "151640",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 151640,
+          "sha256": "0487bc526da61586780355f4f50aa368f09c0a212809b1f08444382f4d789eb0",
+          "matchesFile": "src/eShopLegacyMVC/Pics/1.png"
+        }
+      }
+    },
+    "pic-get--not-found": {
+      "description": "Picture of an item that does not exist.",
+      "request": {
+        "method": "GET",
+        "path": "/items/13/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 404.0 - Not Found"
+        }
+      }
+    },
+    "pic-get--zero": {
+      "description": "Picture of item 0.",
+      "request": {
+        "method": "GET",
+        "path": "/items/0/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 400.0 - Bad Request"
+        }
+      }
+    },
+    "pic-get--negative": {
+      "description": "Picture of item -1.",
+      "request": {
+        "method": "GET",
+        "path": "/items/-1/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 400.0 - Bad Request"
+        }
+      }
+    },
+    "pic-get--non-integer": {
+      "description": "Non-integer id; the :int route constraint does not match.",
+      "request": {
+        "method": "GET",
+        "path": "/items/abc/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The resource cannot be found."
+        }
+      }
+    },
+    "pic-get--overflow": {
+      "description": "Id larger than Int32.MaxValue; the :int route constraint does not match.",
+      "request": {
+        "method": "GET",
+        "path": "/items/2147483648/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The resource cannot be found."
+        }
+      }
+    },
+    "pic-get--range": {
+      "description": "Range request for the first 100 bytes.",
+      "request": {
+        "method": "GET",
+        "path": "/items/1/pic",
+        "headers": {
+          "Range": "bytes=0-99"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "151640",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 151640,
+          "sha256": "0487bc526da61586780355f4f50aa368f09c0a212809b1f08444382f4d789eb0",
+          "matchesFile": "src/eShopLegacyMVC/Pics/1.png"
+        }
+      }
+    },
+    "pic-get--path-upper-case": {
+      "description": "Route matching is case-insensitive.",
+      "request": {
+        "method": "GET",
+        "path": "/ITEMS/1/PIC",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "151640",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 151640,
+          "sha256": "0487bc526da61586780355f4f50aa368f09c0a212809b1f08444382f4d789eb0",
+          "matchesFile": "src/eShopLegacyMVC/Pics/1.png"
+        }
+      }
+    },
+    "pic-get--trailing-slash": {
+      "description": "Trailing slash after /pic.",
+      "request": {
+        "method": "GET",
+        "path": "/items/1/pic/",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "151640",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "Set-Cookie": [
+            "ASP.NET_SessionId=<redacted>; path=/; HttpOnly; SameSite=Lax"
+          ],
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 151640,
+          "sha256": "0487bc526da61586780355f4f50aa368f09c0a212809b1f08444382f4d789eb0",
+          "matchesFile": "src/eShopLegacyMVC/Pics/1.png"
+        }
+      }
+    },
+    "pic-head": {
+      "description": "HEAD on a picture.",
+      "request": {
+        "method": "HEAD",
+        "path": "/items/1/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "3559",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    },
+    "pic-post": {
+      "description": "POST to a picture route.",
+      "request": {
+        "method": "POST",
+        "path": "/items/1/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The resource cannot be found."
+        }
+      }
+    }
+  }
+}

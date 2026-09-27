@@ -1,0 +1,1249 @@
+{
+  "name": "create-item-validation",
+  "summary": "POST /Catalog/Create with the fields of the Create form, one rule or boundary exercised per step. 302 means the item was created; 200 means the form came back with the validation messages listed under response.body.validationErrors. The rules come from the data annotations on CatalogItem and the en-US culture pinned in Web.config.",
+  "steps": [
+    {
+      "label": "Valid item",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 01 valid",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 13,
+      "databaseRow": {
+        "Id": 13,
+        "Name": "Validation 01 valid",
+        "Description": "Characterization item",
+        "Price": 19.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Name missing",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Name",
+              "message": "The Name field is required."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Name with exactly 50 characters",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 14,
+      "databaseRow": {
+        "Id": 14,
+        "Name": "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
+        "Description": "Characterization item",
+        "Price": 19.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Name longer than the 50-character column (EF6 validates MaxLength on SaveChanges)",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Validation failed for one or more entities. See 'EntityValidationErrors' property for more details.",
+          "exception": "System.Data.Entity.Validation.DbEntityValidationException: Validation failed for one or more entities. See 'EntityValidationErrors' property for more details."
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Price with three decimals",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 03 price 1.234",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "1.234",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The field Price must be a positive number with maximum two decimals."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Negative price",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 04 price -1",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "-1",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The field Price must be a positive number with maximum two decimals."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Small negative price",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 04b price -0.01",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "-0.01",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The field Price must be a positive number with maximum two decimals."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Price zero",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 05 price 0",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "0",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 16,
+      "databaseRow": {
+        "Id": 16,
+        "Name": "Validation 05 price 0",
+        "Description": "Characterization item",
+        "Price": 0.00,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Price at the Range maximum",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 06 price 1000000",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "1000000",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 17,
+      "databaseRow": {
+        "Id": 17,
+        "Name": "Validation 06 price 1000000",
+        "Description": "Characterization item",
+        "Price": 1000000.00,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Price just above the Range maximum",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 07 price 1000000.01",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "1000000.01",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 18,
+      "databaseRow": {
+        "Id": 18,
+        "Name": "Validation 07 price 1000000.01",
+        "Description": "Characterization item",
+        "Price": 1000000.01,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Price half a unit above the Range maximum",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 07b price 1000000.50",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "1000000.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 19,
+      "databaseRow": {
+        "Id": 19,
+        "Name": "Validation 07b price 1000000.50",
+        "Description": "Characterization item",
+        "Price": 1000000.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Price more than half a unit above the Range maximum",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 07c price 1000000.51",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "1000000.51",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The field Price must be between 0 and 1000000."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Price one unit above the Range maximum",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 07d price 1000001",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "1000001",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The field Price must be between 0 and 1000000."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Non-numeric price",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 08 price abc",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "abc",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The value 'abc' is not valid for Price."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Price with a decimal comma",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 09 price 12,5",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "12,5",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The value '12,5' is not valid for Price."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Price with a group separator",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 10 price 1,000.50",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "1,000.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The value '1,000.50' is not valid for Price."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Price with one decimal",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 11 price 7.5",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "7.5",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 20,
+      "databaseRow": {
+        "Id": 20,
+        "Name": "Validation 11 price 7.5",
+        "Description": "Characterization item",
+        "Price": 7.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Price missing",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 12 price missing",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "Price",
+              "message": "The Price field is required."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Negative stock",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 13 stock -1",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "-1",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "AvailableStock",
+              "message": "The field Stock must be between 0 and 10 million."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Max stock above 10 million",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 14 max stock 10000001",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "10000001"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "MaxStockThreshold",
+              "message": "The field Max stock must be between 0 and 10 million."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Stock missing (non-nullable int)",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 15 stock missing",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Frame-Options": "SAMEORIGIN",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Create - Catalog manager (MVC)",
+          "validationErrors": [
+            {
+              "field": "AvailableStock",
+              "message": "The Stock field is required."
+            }
+          ]
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Description missing",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 16 description missing",
+            "Description": "",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 21,
+      "databaseRow": {
+        "Id": 21,
+        "Name": "Validation 16 description missing",
+        "Description": null,
+        "Price": 19.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Unknown brand (FK violation on SaveChanges)",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 17 brand 99",
+            "Description": "Characterization item",
+            "CatalogBrandId": "99",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The INSERT statement conflicted with the FOREIGN KEY constraint \"FK_dbo.Catalog_dbo.CatalogBrand_CatalogBrandId\". The conflict occurred in database \"Microsoft.eShopOnContainers.Services.CatalogDb\", table \"dbo.CatalogBrand\", column 'Id'.The statement has been terminated.",
+          "exception": "System.Data.SqlClient.SqlException: The INSERT statement conflicted with the FOREIGN KEY constraint \"FK_dbo.Catalog_dbo.CatalogBrand_CatalogBrandId\". The conflict occurred in database \"Microsoft.eShopOnContainers.Services.CatalogDb\", table \"dbo.CatalogBrand\", column 'Id'."
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Unknown type (FK violation on SaveChanges)",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Validation 18 type 99",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "99",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The INSERT statement conflicted with the FOREIGN KEY constraint \"FK_dbo.Catalog_dbo.CatalogType_CatalogTypeId\". The conflict occurred in database \"Microsoft.eShopOnContainers.Services.CatalogDb\", table \"dbo.CatalogType\", column 'Id'.The statement has been terminated.",
+          "exception": "System.Data.SqlClient.SqlException: The INSERT statement conflicted with the FOREIGN KEY constraint \"FK_dbo.Catalog_dbo.CatalogType_CatalogTypeId\". The conflict occurred in database \"Microsoft.eShopOnContainers.Services.CatalogDb\", table \"dbo.CatalogType\", column 'Id'."
+        }
+      },
+      "createdId": null,
+      "databaseRow": null
+    },
+    {
+      "label": "Anti-forgery token missing",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "Name": "Validation 19 no token",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The required anti-forgery form field \"__RequestVerificationToken\" is not present.",
+          "exception": "System.Web.Mvc.HttpAntiForgeryException: The required anti-forgery form field \"__RequestVerificationToken\" is not present."
+        }
+      },
+      "createdId": null
+    }
+  ]
+}

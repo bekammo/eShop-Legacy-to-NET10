@@ -1,0 +1,185 @@
+{
+  "name": "edit-overwrites-unposted-fields",
+  "summary": "CatalogService.UpdateCatalogItem attaches the bound object with EntityState.Modified, so every column is written. Fields the client does not post are saved as their defaults: OnReorder (not on the Edit form) is reset to false by every normal edit, and a partial post clears Description, zeroes the stock fields and resets PictureFileName to dummy.png (the CatalogItem constructor default). PictureFileName is read-only on the form but still bound, so it can be changed too.",
+  "steps": [
+    {
+      "label": "Post every [Bind] field, including OnReorder=true (the Edit form has no OnReorder field)",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Edit/2",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Id": "2",
+            "Name": ".NET Black & White Mug",
+            "Description": ".NET Black & White Mug",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "8.50",
+            "PictureFileName": "2.png",
+            "AvailableStock": "100",
+            "RestockThreshold": "0",
+            "MaxStockThreshold": "0",
+            "OnReorder": "true"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "databaseRow": {
+        "Id": 2,
+        "Name": ".NET Black & White Mug",
+        "Description": ".NET Black & White Mug",
+        "Price": 8.50,
+        "PictureFileName": "2.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 100,
+        "RestockThreshold": 0,
+        "MaxStockThreshold": 0,
+        "OnReorder": true
+      }
+    },
+    {
+      "label": "Post exactly the fields the Edit form renders",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Edit/2",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Id": "2",
+            "Name": ".NET Black & White Mug",
+            "Description": ".NET Black & White Mug",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "8.50",
+            "PictureFileName": "2.png",
+            "AvailableStock": "100",
+            "RestockThreshold": "0",
+            "MaxStockThreshold": "0"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "databaseRow": {
+        "Id": 2,
+        "Name": ".NET Black & White Mug",
+        "Description": ".NET Black & White Mug",
+        "Price": 8.50,
+        "PictureFileName": "2.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 100,
+        "RestockThreshold": 0,
+        "MaxStockThreshold": 0,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Post only Id, Name, brand, type and price",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Edit/2",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Id": "2",
+            "Name": ".NET Black & White Mug",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "8.50"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "databaseRow": {
+        "Id": 2,
+        "Name": ".NET Black & White Mug",
+        "Description": null,
+        "Price": 8.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 0,
+        "RestockThreshold": 0,
+        "MaxStockThreshold": 0,
+        "OnReorder": false
+      }
+    }
+  ],
+  "database": {
+    "item2Before": {
+      "Id": 2,
+      "Name": ".NET Black & White Mug",
+      "Description": ".NET Black & White Mug",
+      "Price": 8.50,
+      "PictureFileName": "2.png",
+      "CatalogTypeId": 1,
+      "CatalogBrandId": 2,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    }
+  }
+}

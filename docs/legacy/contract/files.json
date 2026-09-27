@@ -1,0 +1,92 @@
+{
+  "group": "files",
+  "description": "GET /api/files: the BinaryFormatter endpoint that the new API retires.",
+  "exchanges": {
+    "files-get": {
+      "description": "BinaryFormatter payload of the brand list (retired in the new API).",
+      "request": {
+        "method": "GET",
+        "path": "/api/files",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "721",
+          "Content-Type": "text/html",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 721,
+          "sha256": "1861b5d07585e5bd4ca696a5bcc72dd54d761a3867283dce75dc882b5fd97b93"
+        }
+      }
+    },
+    "files-get--accept-json": {
+      "description": "JSON requested; the action ignores content negotiation.",
+      "request": {
+        "method": "GET",
+        "path": "/api/files",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "721",
+          "Content-Type": "text/html",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 721,
+          "sha256": "1861b5d07585e5bd4ca696a5bcc72dd54d761a3867283dce75dc882b5fd97b93"
+        }
+      }
+    },
+    "files-get-by-id": {
+      "description": "Id on a controller that only has a parameterless Get.",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/1",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "721",
+          "Content-Type": "text/html",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 721,
+          "sha256": "1861b5d07585e5bd4ca696a5bcc72dd54d761a3867283dce75dc882b5fd97b93"
+        }
+      }
+    }
+  }
+}

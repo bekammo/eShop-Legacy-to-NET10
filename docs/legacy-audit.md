@@ -18,6 +18,7 @@ It is the reference for the later stages of [MIGRATION_PLAN.md](../MIGRATION_PLA
 7. [Defects and risks](#7-defects-and-risks)
 8. [Build, tooling and tests](#8-build-tooling-and-tests)
 9. [Corrections to the migration plan](#9-corrections-to-the-migration-plan)
+10. [Runtime confirmation](#10-runtime-confirmation)
 
 ## 1. Scope and method
 
@@ -541,3 +542,37 @@ The plan's "Key findings" were written before this audit. Where the code says ot
    - the hard-coded database name (D12)
    - the vulnerable packages (D5)
    - the missing exception logging and the other logging defects (D18)
+
+## 10. Runtime confirmation
+
+Stage 1.2 ran the legacy app against a fresh LocalDB database. The captured data is in [docs/legacy](legacy/README.md).
+
+### 10.1 What the run confirmed
+
+- **Schema.** [`schema.sql`](legacy/schema.sql) matches section 5 exactly: tables, types, nullability, identity columns, PK, FK and index names, cascades, and the three sequences. `__MigrationHistory` holds one row, `InitialCreate` with EF `6.2.0-61023`. It is not marked as a system object.
+- **Seed data.** [`seed-data.json`](legacy/seed-data.json) matches 5.4. `catalog_hilo` is 11 after seeding.
+- **Defects.** These were reproduced:
+
+| Defect | Evidence |
+|---|---|
+| D1 | [`pic-path-traversal-relative`](legacy/evidence/pic-path-traversal-relative.json) serves `Global.asax`; [`pic-path-traversal-absolute`](legacy/evidence/pic-path-traversal-absolute.json) serves `C:\Windows\win.ini` |
+| D2 | [`edit-overwrites-unposted-fields`](legacy/evidence/edit-overwrites-unposted-fields.json), [`create-ignores-posted-id`](legacy/evidence/create-ignores-posted-id.json) |
+| D6 | [`catalog-reads`](legacy/evidence/catalog-reads.json): `DivideByZeroException`, EF6 `ArgumentException` for negative values and for the overflow |
+| D7, D8 | [`pic-missing-file`](legacy/evidence/pic-missing-file.json), [`pic-extension-case`](legacy/evidence/pic-extension-case.json) |
+| D9, D10 | [`create-item-validation`](legacy/evidence/create-item-validation.json): 1000000.50 accepted and 1000000.51 rejected; 500s for a 51-character name and for an unknown brand or type |
+| D11 | [`unknown-item-writes`](legacy/evidence/unknown-item-writes.json) |
+| D14 | [`hilo-restart-gap`](legacy/evidence/hilo-restart-gap.json): failed inserts consume IDs, and after a restart the next ID is 31 |
+| D16, D18 | [`log4net-sample.log`](legacy/evidence/log4net-sample.log): `Now disposing` twice per request, and `(null)` in the activity column |
+
+- **Not reproduced.** D20 (static exposure) and D22 (request validation on `Cup<T>` names) were not exercised. They remain findings from reading the code.
+
+### 10.2 What only the run showed
+
+- **`OPTIONS`.** `OPTIONS /api/brands` never reaches the app. IIS answers it: 200, `Allow: OPTIONS, TRACE, GET, HEAD, POST`.
+- **`HEAD`.** Web API does not map `HEAD` to `GET`: `HEAD /api/brands` gives 405. `HEAD /items/1/pic` gives 404.
+- **`/api/files`.** The BinaryFormatter stream (721 bytes) is labelled `Content-Type: text/html`, the ASP.NET default. `/api/files/1` returns the same payload.
+- **Query-string ID.** `GET /api/brands?id=2` returns brand 2: Web API binds `id` from the query string too.
+- **Dotted segment.** `/api/brands/1.5` is a 404 from the IIS static file handler. A non-integer ID without a dot gets the Web API 400.
+- **Pictures.** Responses set an `ASP.NET_SessionId` cookie on a client's first request. `Range` headers are ignored: 200 with the full body.
+- **Validation messages.** When a create attempt breaks two rules, which message the form shows varies between app starts. A post without the anti-forgery token gives 500 (`HttpAntiForgeryException`).
+- **Local error detail.** The capture ran from localhost, so the error bodies and pages carry the local-only detail described in 2.5.
