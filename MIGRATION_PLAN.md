@@ -106,7 +106,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - the comparison rules
 
   Fallback if the app cannot run: a contract derived from the code, clearly labeled as such.
-- [ ] 1.3 Create `DECISIONS.md` (ADR template) with these ADRs:
+- [x] 1.3 Create `DECISIONS.md` (ADR template) with these ADRs:
   - migration scope
   - wire-contract policy
   - explicit non-goals, each with the trigger that would bring it back
