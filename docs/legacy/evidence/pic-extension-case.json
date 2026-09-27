@@ -1,0 +1,90 @@
+{
+  "name": "pic-extension-case",
+  "summary": "An upper-case extension. The MIME switch is case-sensitive, while the Windows file lookup is not.",
+  "steps": [
+    {
+      "label": "Create an item with PictureFileName '1.PNG' (not a form field, but in the [Bind] include list)",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Picture pic-extension-case",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100",
+            "PictureFileName": "1.PNG"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 27,
+      "databaseRow": {
+        "Id": 27,
+        "Name": "Picture pic-extension-case",
+        "Description": "Characterization item",
+        "Price": 19.50,
+        "PictureFileName": "1.PNG",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Get the picture of the new item",
+      "request": {
+        "method": "GET",
+        "path": "/items/27/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "151640",
+          "Content-Type": "application/octet-stream",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 151640,
+          "sha256": "0487bc526da61586780355f4f50aa368f09c0a212809b1f08444382f4d789eb0",
+          "matchesFile": "src/eShopLegacyMVC/Pics/1.png"
+        }
+      }
+    }
+  ]
+}

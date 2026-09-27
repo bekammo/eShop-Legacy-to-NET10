@@ -1,0 +1,175 @@
+{
+  "group": "brands-other-verbs",
+  "description": "POST, PUT, PATCH, HEAD and OPTIONS on the brand routes.",
+  "exchanges": {
+    "brands-post": {
+      "description": "POST to the brands collection (no such action).",
+      "request": {
+        "method": "POST",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Brand": "Posted brand"
+          }
+        }
+      },
+      "response": {
+        "status": 405,
+        "reasonPhrase": "Method Not Allowed",
+        "headers": {
+          "Allow": "GET",
+          "Cache-Control": "no-cache",
+          "Content-Length": "73",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "The requested resource does not support http method 'POST'."
+          }
+        }
+      }
+    },
+    "brands-put": {
+      "description": "PUT a brand (no such action).",
+      "request": {
+        "method": "PUT",
+        "path": "/api/brands/1",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Id": 1,
+            "Brand": "Changed"
+          }
+        }
+      },
+      "response": {
+        "status": 405,
+        "reasonPhrase": "Method Not Allowed",
+        "headers": {
+          "Allow": "GET,DELETE",
+          "Cache-Control": "no-cache",
+          "Content-Length": "72",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "The requested resource does not support http method 'PUT'."
+          }
+        }
+      }
+    },
+    "brands-patch": {
+      "description": "PATCH a brand (no such action).",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/brands/1",
+        "headers": {
+          "Accept": "application/json",
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Brand": "Changed"
+          }
+        }
+      },
+      "response": {
+        "status": 405,
+        "reasonPhrase": "Method Not Allowed",
+        "headers": {
+          "Allow": "GET,DELETE",
+          "Cache-Control": "no-cache",
+          "Content-Length": "74",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "The requested resource does not support http method 'PATCH'."
+          }
+        }
+      }
+    },
+    "brands-head": {
+      "description": "HEAD on the brands collection.",
+      "request": {
+        "method": "HEAD",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 405,
+        "reasonPhrase": "Method Not Allowed",
+        "headers": {
+          "Allow": "GET",
+          "Cache-Control": "no-cache",
+          "Content-Length": "73",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    },
+    "brands-options": {
+      "description": "OPTIONS on the brands collection (no CORS configured).",
+      "request": {
+        "method": "OPTIONS",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Allow": "OPTIONS, TRACE, GET, HEAD, POST",
+          "Content-Length": "0",
+          "Public": "OPTIONS, TRACE, GET, HEAD, POST",
+          "Server": "Microsoft-IIS/10.0",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    }
+  }
+}

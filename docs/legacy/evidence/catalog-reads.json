@@ -1,0 +1,331 @@
+{
+  "name": "catalog-reads",
+  "summary": "Paged list and details pages of the MVC UI. Page contents are HTML and not stored; the status codes and error titles are.",
+  "steps": [
+    {
+      "label": "List with the defaults (pageSize=10, pageIndex=0)",
+      "request": {
+        "method": "GET",
+        "path": "/",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Index - Catalog manager (MVC)"
+        }
+      }
+    },
+    {
+      "label": "Second page of five",
+      "request": {
+        "method": "GET",
+        "path": "/?pageSize=5&pageIndex=1",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Index - Catalog manager (MVC)"
+        }
+      }
+    },
+    {
+      "label": "Page past the end",
+      "request": {
+        "method": "GET",
+        "path": "/?pageSize=5&pageIndex=100",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Index - Catalog manager (MVC)"
+        }
+      }
+    },
+    {
+      "label": "pageSize=0 (TotalPages divides by the page size)",
+      "request": {
+        "method": "GET",
+        "path": "/?pageSize=0",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Attempted to divide by zero.",
+          "exception": "System.DivideByZeroException: Attempted to divide by zero."
+        }
+      }
+    },
+    {
+      "label": "Negative pageSize",
+      "request": {
+        "method": "GET",
+        "path": "/?pageSize=-1",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Limit must have a non-negative value.Parameter name: count",
+          "exception": "System.ArgumentException: Limit must have a non-negative value."
+        }
+      }
+    },
+    {
+      "label": "Negative pageIndex",
+      "request": {
+        "method": "GET",
+        "path": "/?pageIndex=-1",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Count must have a non-negative value.Parameter name: count",
+          "exception": "System.ArgumentException: Count must have a non-negative value."
+        }
+      }
+    },
+    {
+      "label": "pageSize*pageIndex overflows Int32",
+      "request": {
+        "method": "GET",
+        "path": "/?pageSize=2147483647&pageIndex=2",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 500,
+        "reasonPhrase": "Internal Server Error",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Count must have a non-negative value.Parameter name: count",
+          "exception": "System.ArgumentException: Count must have a non-negative value."
+        }
+      }
+    },
+    {
+      "label": "Very large pageSize (no upper bound)",
+      "request": {
+        "method": "GET",
+        "path": "/?pageSize=100000",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Index - Catalog manager (MVC)"
+        }
+      }
+    },
+    {
+      "label": "Non-integer pageSize",
+      "request": {
+        "method": "GET",
+        "path": "/?pageSize=abc",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Index - Catalog manager (MVC)"
+        }
+      }
+    },
+    {
+      "label": "Details of item 1",
+      "request": {
+        "method": "GET",
+        "path": "/Catalog/Details/1",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Details - Catalog manager (MVC)"
+        }
+      }
+    },
+    {
+      "label": "Details without an id",
+      "request": {
+        "method": "GET",
+        "path": "/Catalog/Details",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 400.0 - Bad Request"
+        }
+      }
+    },
+    {
+      "label": "Details of an item that does not exist",
+      "request": {
+        "method": "GET",
+        "path": "/Catalog/Details/999",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 404.0 - Not Found"
+        }
+      }
+    },
+    {
+      "label": "Details with a non-integer id",
+      "request": {
+        "method": "GET",
+        "path": "/Catalog/Details/abc",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 400.0 - Bad Request"
+        }
+      }
+    }
+  ]
+}

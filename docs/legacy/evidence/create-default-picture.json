@@ -1,0 +1,89 @@
+{
+  "name": "create-default-picture",
+  "summary": "The CatalogItem constructor sets PictureFileName to dummy.png, so an item created through the form serves Pics/dummy.png.",
+  "steps": [
+    {
+      "label": "Create without PictureFileName (the Create form has no such field)",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Default picture",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 25,
+      "databaseRow": {
+        "Id": 25,
+        "Name": "Default picture",
+        "Description": "Characterization item",
+        "Price": 19.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Get the picture of the new item",
+      "request": {
+        "method": "GET",
+        "path": "/items/25/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Length": "6574",
+          "Content-Type": "image/png",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "binary",
+          "length": 6574,
+          "sha256": "8e5cb858eace2ea912630d4cfeb8d6290b85ebbf98e4e45b439e7fdc1bcc6de2",
+          "matchesFile": "src/eShopLegacyMVC/Pics/dummy.png"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,384 @@
+{
+  "source": "Captured by docs/legacy/capture/capture.cs from the database eShopLegacyMVC creates on its first start.",
+  "collation": "SQL_Latin1_General_CP1_CI_AS",
+  "objectCounts": {
+    "FOREIGN_KEY_CONSTRAINT": 2,
+    "PRIMARY_KEY_CONSTRAINT": 4,
+    "SEQUENCE_OBJECT": 3,
+    "USER_TABLE": 4
+  },
+  "sequences": [
+    {
+      "schema": "dbo",
+      "name": "catalog_brand_hilo",
+      "type": "bigint",
+      "startValue": 1,
+      "increment": 10,
+      "minValue": -9223372036854775808,
+      "maxValue": 9223372036854775807,
+      "cycle": false,
+      "cached": true,
+      "cacheSize": null
+    },
+    {
+      "schema": "dbo",
+      "name": "catalog_hilo",
+      "type": "bigint",
+      "startValue": 1,
+      "increment": 10,
+      "minValue": -9223372036854775808,
+      "maxValue": 9223372036854775807,
+      "cycle": false,
+      "cached": true,
+      "cacheSize": null
+    },
+    {
+      "schema": "dbo",
+      "name": "catalog_type_hilo",
+      "type": "bigint",
+      "startValue": 1,
+      "increment": 10,
+      "minValue": -9223372036854775808,
+      "maxValue": 9223372036854775807,
+      "cycle": false,
+      "cached": true,
+      "cacheSize": null
+    }
+  ],
+  "tables": [
+    {
+      "schema": "dbo",
+      "name": "__MigrationHistory",
+      "systemObject": false,
+      "columns": [
+        {
+          "name": "MigrationId",
+          "ordinal": 1,
+          "storeType": "nvarchar(150)",
+          "nullable": false,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "ContextKey",
+          "ordinal": 2,
+          "storeType": "nvarchar(300)",
+          "nullable": false,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "Model",
+          "ordinal": 3,
+          "storeType": "varbinary(max)",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "ProductVersion",
+          "ordinal": 4,
+          "storeType": "nvarchar(32)",
+          "nullable": false,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_dbo.__MigrationHistory",
+        "clustered": true,
+        "columns": [
+          {
+            "name": "MigrationId",
+            "descending": false
+          },
+          {
+            "name": "ContextKey",
+            "descending": false
+          }
+        ]
+      },
+      "indexes": [],
+      "foreignKeys": []
+    },
+    {
+      "schema": "dbo",
+      "name": "Catalog",
+      "systemObject": false,
+      "columns": [
+        {
+          "name": "Id",
+          "ordinal": 1,
+          "storeType": "int",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "Name",
+          "ordinal": 2,
+          "storeType": "nvarchar(50)",
+          "nullable": false,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "Description",
+          "ordinal": 3,
+          "storeType": "nvarchar(max)",
+          "nullable": true,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "Price",
+          "ordinal": 4,
+          "storeType": "decimal(18,2)",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "PictureFileName",
+          "ordinal": 5,
+          "storeType": "nvarchar(max)",
+          "nullable": false,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "CatalogTypeId",
+          "ordinal": 6,
+          "storeType": "int",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "CatalogBrandId",
+          "ordinal": 7,
+          "storeType": "int",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "AvailableStock",
+          "ordinal": 8,
+          "storeType": "int",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "RestockThreshold",
+          "ordinal": 9,
+          "storeType": "int",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "MaxStockThreshold",
+          "ordinal": 10,
+          "storeType": "int",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "OnReorder",
+          "ordinal": 11,
+          "storeType": "bit",
+          "nullable": false,
+          "identity": null,
+          "collation": null,
+          "default": null,
+          "computed": false
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_dbo.Catalog",
+        "clustered": true,
+        "columns": [
+          {
+            "name": "Id",
+            "descending": false
+          }
+        ]
+      },
+      "indexes": [
+        {
+          "name": "IX_CatalogBrandId",
+          "clustered": false,
+          "unique": false,
+          "uniqueConstraint": false,
+          "columns": [
+            {
+              "name": "CatalogBrandId",
+              "descending": false
+            }
+          ],
+          "included": [],
+          "filter": null
+        },
+        {
+          "name": "IX_CatalogTypeId",
+          "clustered": false,
+          "unique": false,
+          "uniqueConstraint": false,
+          "columns": [
+            {
+              "name": "CatalogTypeId",
+              "descending": false
+            }
+          ],
+          "included": [],
+          "filter": null
+        }
+      ],
+      "foreignKeys": [
+        {
+          "name": "FK_dbo.Catalog_dbo.CatalogBrand_CatalogBrandId",
+          "columns": [
+            "CatalogBrandId"
+          ],
+          "principalTable": "dbo.CatalogBrand",
+          "principalColumns": [
+            "Id"
+          ],
+          "onDelete": "CASCADE",
+          "onUpdate": "NO ACTION",
+          "enabled": true,
+          "trusted": true
+        },
+        {
+          "name": "FK_dbo.Catalog_dbo.CatalogType_CatalogTypeId",
+          "columns": [
+            "CatalogTypeId"
+          ],
+          "principalTable": "dbo.CatalogType",
+          "principalColumns": [
+            "Id"
+          ],
+          "onDelete": "CASCADE",
+          "onUpdate": "NO ACTION",
+          "enabled": true,
+          "trusted": true
+        }
+      ]
+    },
+    {
+      "schema": "dbo",
+      "name": "CatalogBrand",
+      "systemObject": false,
+      "columns": [
+        {
+          "name": "Id",
+          "ordinal": 1,
+          "storeType": "int",
+          "nullable": false,
+          "identity": {
+            "seed": 1,
+            "increment": 1
+          },
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "Brand",
+          "ordinal": 2,
+          "storeType": "nvarchar(100)",
+          "nullable": false,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_dbo.CatalogBrand",
+        "clustered": true,
+        "columns": [
+          {
+            "name": "Id",
+            "descending": false
+          }
+        ]
+      },
+      "indexes": [],
+      "foreignKeys": []
+    },
+    {
+      "schema": "dbo",
+      "name": "CatalogType",
+      "systemObject": false,
+      "columns": [
+        {
+          "name": "Id",
+          "ordinal": 1,
+          "storeType": "int",
+          "nullable": false,
+          "identity": {
+            "seed": 1,
+            "increment": 1
+          },
+          "collation": null,
+          "default": null,
+          "computed": false
+        },
+        {
+          "name": "Type",
+          "ordinal": 2,
+          "storeType": "nvarchar(100)",
+          "nullable": false,
+          "identity": null,
+          "collation": "SQL_Latin1_General_CP1_CI_AS",
+          "default": null,
+          "computed": false
+        }
+      ],
+      "primaryKey": {
+        "name": "PK_dbo.CatalogType",
+        "clustered": true,
+        "columns": [
+          {
+            "name": "Id",
+            "descending": false
+          }
+        ]
+      },
+      "indexes": [],
+      "foreignKeys": []
+    }
+  ]
+}

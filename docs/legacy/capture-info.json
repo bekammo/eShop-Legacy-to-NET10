@@ -1,0 +1,19 @@
+{
+  "capturedAtUtc": "2026-09-27T07:50:02Z",
+  "tool": "docs/legacy/capture/capture.cs",
+  "legacySourceCommit": "7a61fcc07e9332f285dfe1a98bf97512704926fe",
+  "legacySourceModified": false,
+  "baseUrl": "http://localhost:52429",
+  "host": {
+    "server": "IIS Express 10.0.26013.1000",
+    "pipeline": "integrated, CLR v4.0",
+    "os": "Microsoft Windows 10.0.26200"
+  },
+  "database": {
+    "dataSource": "(localdb)\\MSSQLLocalDB",
+    "name": "Microsoft.eShopOnContainers.Services.CatalogDb",
+    "sqlServerVersion": "17.0.4025.3",
+    "sqlServerEdition": "Express Edition (64-bit)",
+    "compatibilityLevel": 170
+  }
+}

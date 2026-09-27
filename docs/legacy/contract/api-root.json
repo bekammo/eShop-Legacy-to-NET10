@@ -1,0 +1,90 @@
+{
+  "group": "api-root",
+  "description": "GET /api (the unreachable CatalogController2 route) and an unknown api/{controller}.",
+  "exchanges": {
+    "api-root": {
+      "description": "GET /api, the route of the unreachable CatalogController2.",
+      "request": {
+        "method": "GET",
+        "path": "/api",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The resource cannot be found."
+        }
+      }
+    },
+    "api-root--trailing-slash": {
+      "description": "GET /api/.",
+      "request": {
+        "method": "GET",
+        "path": "/api/",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "The resource cannot be found."
+        }
+      }
+    },
+    "api-unknown-controller": {
+      "description": "An api/{controller} route for a controller that does not exist.",
+      "request": {
+        "method": "GET",
+        "path": "/api/catalog",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "188",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "No HTTP resource was found that matches the request URI 'http://localhost:52429/api/catalog'.",
+            "MessageDetail": "No type was found that matches the controller named 'catalog'."
+          }
+        }
+      }
+    }
+  }
+}

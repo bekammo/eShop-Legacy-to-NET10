@@ -1,0 +1,218 @@
+{
+  "source": "Rows and sequence values right after the legacy app created and seeded a fresh database (UseCustomizationData=false).",
+  "CatalogBrand": [
+    {
+      "Id": 1,
+      "Brand": "Azure"
+    },
+    {
+      "Id": 2,
+      "Brand": ".NET"
+    },
+    {
+      "Id": 3,
+      "Brand": "Visual Studio"
+    },
+    {
+      "Id": 4,
+      "Brand": "SQL Server"
+    },
+    {
+      "Id": 5,
+      "Brand": "Other"
+    }
+  ],
+  "CatalogType": [
+    {
+      "Id": 1,
+      "Type": "Mug"
+    },
+    {
+      "Id": 2,
+      "Type": "T-Shirt"
+    },
+    {
+      "Id": 3,
+      "Type": "Sheet"
+    },
+    {
+      "Id": 4,
+      "Type": "USB Memory Stick"
+    }
+  ],
+  "Catalog": [
+    {
+      "Id": 1,
+      "Name": ".NET Bot Black Hoodie",
+      "Description": ".NET Bot Black Hoodie",
+      "Price": 19.50,
+      "PictureFileName": "1.png",
+      "CatalogTypeId": 2,
+      "CatalogBrandId": 2,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 2,
+      "Name": ".NET Black & White Mug",
+      "Description": ".NET Black & White Mug",
+      "Price": 8.50,
+      "PictureFileName": "2.png",
+      "CatalogTypeId": 1,
+      "CatalogBrandId": 2,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 3,
+      "Name": "Prism White T-Shirt",
+      "Description": "Prism White T-Shirt",
+      "Price": 12.00,
+      "PictureFileName": "3.png",
+      "CatalogTypeId": 2,
+      "CatalogBrandId": 5,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 4,
+      "Name": ".NET Foundation T-shirt",
+      "Description": ".NET Foundation T-shirt",
+      "Price": 12.00,
+      "PictureFileName": "4.png",
+      "CatalogTypeId": 2,
+      "CatalogBrandId": 2,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 5,
+      "Name": "Roslyn Red Sheet",
+      "Description": "Roslyn Red Sheet",
+      "Price": 8.50,
+      "PictureFileName": "5.png",
+      "CatalogTypeId": 3,
+      "CatalogBrandId": 5,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 6,
+      "Name": ".NET Blue Hoodie",
+      "Description": ".NET Blue Hoodie",
+      "Price": 12.00,
+      "PictureFileName": "6.png",
+      "CatalogTypeId": 2,
+      "CatalogBrandId": 2,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 7,
+      "Name": "Roslyn Red T-Shirt",
+      "Description": "Roslyn Red T-Shirt",
+      "Price": 12.00,
+      "PictureFileName": "7.png",
+      "CatalogTypeId": 2,
+      "CatalogBrandId": 5,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 8,
+      "Name": "Kudu Purple Hoodie",
+      "Description": "Kudu Purple Hoodie",
+      "Price": 8.50,
+      "PictureFileName": "8.png",
+      "CatalogTypeId": 2,
+      "CatalogBrandId": 5,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 9,
+      "Name": "Cup<T> White Mug",
+      "Description": "Cup<T> White Mug",
+      "Price": 12.00,
+      "PictureFileName": "9.png",
+      "CatalogTypeId": 1,
+      "CatalogBrandId": 5,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 10,
+      "Name": ".NET Foundation Sheet",
+      "Description": ".NET Foundation Sheet",
+      "Price": 12.00,
+      "PictureFileName": "10.png",
+      "CatalogTypeId": 3,
+      "CatalogBrandId": 2,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 11,
+      "Name": "Cup<T> Sheet",
+      "Description": "Cup<T> Sheet",
+      "Price": 8.50,
+      "PictureFileName": "11.png",
+      "CatalogTypeId": 3,
+      "CatalogBrandId": 2,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    },
+    {
+      "Id": 12,
+      "Name": "Prism White TShirt",
+      "Description": "Prism White TShirt",
+      "Price": 12.00,
+      "PictureFileName": "12.png",
+      "CatalogTypeId": 2,
+      "CatalogBrandId": 5,
+      "AvailableStock": 100,
+      "RestockThreshold": 0,
+      "MaxStockThreshold": 0,
+      "OnReorder": false
+    }
+  ],
+  "__MigrationHistory": [
+    {
+      "MigrationId": "202609270749519_InitialCreate",
+      "ContextKey": "eShopLegacyMVC.Models.CatalogDBContext",
+      "ProductVersion": "6.2.0-61023",
+      "Model": {
+        "length": 1808,
+        "format": "gzip-compressed EDMX",
+        "decompressedTo": "docs/legacy/ef6-model.edmx"
+      }
+    }
+  ],
+  "sequenceCurrentValues": {
+    "catalog_brand_hilo": 1,
+    "catalog_hilo": 11,
+    "catalog_type_hilo": 1
+  }
+}

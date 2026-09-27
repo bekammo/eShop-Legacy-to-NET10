@@ -1,0 +1,70 @@
+{
+  "name": "hilo-restart-gap",
+  "summary": "CatalogItemHiLoGenerator keeps its block in memory. After an app restart it takes a new block from catalog_hilo, so the unused IDs of the previous block are skipped.",
+  "steps": [
+    {
+      "label": "Create an item after an IIS Express restart",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "HiLo after restart",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 31
+    }
+  ],
+  "database": {
+    "itemIdsCreatedBeforeRestart": [
+      13,
+      14,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30
+    ],
+    "catalogHiloBeforeRestart": 21,
+    "itemIdCreatedAfterRestart": 31,
+    "catalogHiloAfterRestart": 31
+  }
+}

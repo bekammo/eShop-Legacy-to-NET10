@@ -1,0 +1,362 @@
+{
+  "group": "brands-get-by-id",
+  "description": "GET /api/brands/{id}: valid, unknown, zero, negative, non-integer, overflowing and dotted IDs, and the id in the query string.",
+  "exchanges": {
+    "brands-get-by-id--json": {
+      "description": "Get one brand, JSON requested.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/1",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "24",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Id": 1,
+            "Brand": "Azure"
+          }
+        }
+      }
+    },
+    "brands-get-by-id--xml": {
+      "description": "Get one brand, XML requested.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/1",
+        "headers": {
+          "Accept": "application/xml"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "181",
+          "Content-Type": "application/xml; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "xml",
+          "text": "<CatalogBrand xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"http://schemas.datacontract.org/2004/07/eShopLegacyMVC.Models\"><Brand>Azure</Brand><Id>1</Id></CatalogBrand>"
+        }
+      }
+    },
+    "brands-get-by-id--last": {
+      "description": "Get the last seeded brand.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/5",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "24",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Id": 5,
+            "Brand": "Other"
+          }
+        }
+      }
+    },
+    "brands-get-by-id--not-found": {
+      "description": "Get a brand that does not exist.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/6",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "0",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    },
+    "brands-get-by-id--zero": {
+      "description": "Get brand 0.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/0",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "0",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    },
+    "brands-get-by-id--negative": {
+      "description": "Get brand -1.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/-1",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "0",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    },
+    "brands-get-by-id--non-integer": {
+      "description": "Non-integer id, JSON requested.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/abc",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "379",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "The request is invalid.",
+            "MessageDetail": "The parameters dictionary contains a null entry for parameter 'id' of non-nullable type 'System.Int32' for method 'System.Web.Http.IHttpActionResult Get(Int32)' in 'eShopLegacyMVC.Controllers.WebApi.BrandsController'. An optional parameter must be a reference type, a nullable type, or be declared as an optional parameter."
+          }
+        }
+      }
+    },
+    "brands-get-by-id--non-integer-xml": {
+      "description": "Non-integer id, XML requested.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/abc",
+        "headers": {
+          "Accept": "application/xml"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "411",
+          "Content-Type": "application/xml; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "xml",
+          "text": "<Error><Message>The request is invalid.</Message><MessageDetail>The parameters dictionary contains a null entry for parameter 'id' of non-nullable type 'System.Int32' for method 'System.Web.Http.IHttpActionResult Get(Int32)' in 'eShopLegacyMVC.Controllers.WebApi.BrandsController'. An optional parameter must be a reference type, a nullable type, or be declared as an optional parameter.</MessageDetail></Error>"
+        }
+      }
+    },
+    "brands-get-by-id--overflow": {
+      "description": "Id larger than Int32.MaxValue.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/2147483648",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "379",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "The request is invalid.",
+            "MessageDetail": "The parameters dictionary contains a null entry for parameter 'id' of non-nullable type 'System.Int32' for method 'System.Web.Http.IHttpActionResult Get(Int32)' in 'eShopLegacyMVC.Controllers.WebApi.BrandsController'. An optional parameter must be a reference type, a nullable type, or be declared as an optional parameter."
+          }
+        }
+      }
+    },
+    "brands-get-by-id--leading-zero": {
+      "description": "Id with a leading zero.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/01",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "24",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Id": 1,
+            "Brand": "Azure"
+          }
+        }
+      }
+    },
+    "brands-get-by-id--dot-in-segment": {
+      "description": "Id that contains a dot. The last segment looks like a file extension to IIS.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/1.5",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 404.0 - Not Found"
+        }
+      }
+    },
+    "brands-get-by-id--query-string": {
+      "description": "Id passed in the query string instead of the path.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands?id=2",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "23",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Id": 2,
+            "Brand": ".NET"
+          }
+        }
+      }
+    }
+  }
+}

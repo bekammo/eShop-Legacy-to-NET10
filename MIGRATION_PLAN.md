@@ -90,7 +90,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] Add `MIGRATION_PLAN.md`.
 
 ### Stage 1 — Baseline audit (documentation only; legacy code untouched)
-- [ ] 1.1 Write `docs/legacy-audit.md`. It covers:
+- [x] 1.1 Write `docs/legacy-audit.md`. It covers:
   - architecture and request pipeline
   - package inventory, taken from the csproj `PackageReference` items and classified as runtime, UI-only or build-only
   - endpoint inventory
@@ -100,13 +100,13 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - test status (none)
 
   Also verify that the legacy solution builds with MSBuild, and record the result.
-- [ ] 1.2 Characterize the running legacy app against a fresh LocalDB database. Capture:
+- [x] 1.2 Characterize the running legacy app against a fresh LocalDB database. Capture:
   - `docs/legacy/schema.sql`, plus a machine-readable `schema.json` (columns, FKs with delete actions, indexes, sequences)
   - golden HTTP exchanges in `docs/legacy/contract/`, each as request (including `Accept`), status, content type and body. Cover JSON vs XML, missing and non-integer IDs, DELETE, `/api/files` headers, `/api`, and pictures.
   - the comparison rules
 
   Fallback if the app cannot run: a contract derived from the code, clearly labeled as such.
-- [ ] 1.3 Create `DECISIONS.md` (ADR template) with these ADRs:
+- [x] 1.3 Create `DECISIONS.md` (ADR template) with these ADRs:
   - migration scope
   - wire-contract policy
   - explicit non-goals, each with the trigger that would bring it back

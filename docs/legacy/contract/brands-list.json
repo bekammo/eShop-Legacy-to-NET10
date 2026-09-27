@@ -1,0 +1,441 @@
+{
+  "group": "brands-list",
+  "description": "GET /api/brands: every Accept header variant, path case and trailing slash.",
+  "exchanges": {
+    "brands-get-all--accept-json": {
+      "description": "List all brands, JSON requested. The first request creates and seeds the database.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "138",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": [
+            {
+              "Id": 1,
+              "Brand": "Azure"
+            },
+            {
+              "Id": 2,
+              "Brand": ".NET"
+            },
+            {
+              "Id": 3,
+              "Brand": "Visual Studio"
+            },
+            {
+              "Id": 4,
+              "Brand": "SQL Server"
+            },
+            {
+              "Id": 5,
+              "Brand": "Other"
+            }
+          ]
+        }
+      }
+    },
+    "brands-get-all--no-accept": {
+      "description": "List all brands without an Accept header.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "138",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": [
+            {
+              "Id": 1,
+              "Brand": "Azure"
+            },
+            {
+              "Id": 2,
+              "Brand": ".NET"
+            },
+            {
+              "Id": 3,
+              "Brand": "Visual Studio"
+            },
+            {
+              "Id": 4,
+              "Brand": "SQL Server"
+            },
+            {
+              "Id": 5,
+              "Brand": "Other"
+            }
+          ]
+        }
+      }
+    },
+    "brands-get-all--accept-xml": {
+      "description": "List all brands, XML requested.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "application/xml"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "472",
+          "Content-Type": "application/xml; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "xml",
+          "text": "<ArrayOfCatalogBrand xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"http://schemas.datacontract.org/2004/07/eShopLegacyMVC.Models\"><CatalogBrand><Brand>Azure</Brand><Id>1</Id></CatalogBrand><CatalogBrand><Brand>.NET</Brand><Id>2</Id></CatalogBrand><CatalogBrand><Brand>Visual Studio</Brand><Id>3</Id></CatalogBrand><CatalogBrand><Brand>SQL Server</Brand><Id>4</Id></CatalogBrand><CatalogBrand><Brand>Other</Brand><Id>5</Id></CatalogBrand></ArrayOfCatalogBrand>"
+        }
+      }
+    },
+    "brands-get-all--accept-text-xml": {
+      "description": "List all brands, text/xml requested.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "text/xml"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "472",
+          "Content-Type": "text/xml; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "xml",
+          "text": "<ArrayOfCatalogBrand xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"http://schemas.datacontract.org/2004/07/eShopLegacyMVC.Models\"><CatalogBrand><Brand>Azure</Brand><Id>1</Id></CatalogBrand><CatalogBrand><Brand>.NET</Brand><Id>2</Id></CatalogBrand><CatalogBrand><Brand>Visual Studio</Brand><Id>3</Id></CatalogBrand><CatalogBrand><Brand>SQL Server</Brand><Id>4</Id></CatalogBrand><CatalogBrand><Brand>Other</Brand><Id>5</Id></CatalogBrand></ArrayOfCatalogBrand>"
+        }
+      }
+    },
+    "brands-get-all--accept-html": {
+      "description": "List all brands, only text/html acceptable (no formatter matches).",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "text/html"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "138",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": [
+            {
+              "Id": 1,
+              "Brand": "Azure"
+            },
+            {
+              "Id": 2,
+              "Brand": ".NET"
+            },
+            {
+              "Id": 3,
+              "Brand": "Visual Studio"
+            },
+            {
+              "Id": 4,
+              "Brand": "SQL Server"
+            },
+            {
+              "Id": 5,
+              "Brand": "Other"
+            }
+          ]
+        }
+      }
+    },
+    "brands-get-all--accept-browser": {
+      "description": "List all brands with a typical browser Accept header (XML is acceptable at q=0.9).",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "472",
+          "Content-Type": "application/xml; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "xml",
+          "text": "<ArrayOfCatalogBrand xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns=\"http://schemas.datacontract.org/2004/07/eShopLegacyMVC.Models\"><CatalogBrand><Brand>Azure</Brand><Id>1</Id></CatalogBrand><CatalogBrand><Brand>.NET</Brand><Id>2</Id></CatalogBrand><CatalogBrand><Brand>Visual Studio</Brand><Id>3</Id></CatalogBrand><CatalogBrand><Brand>SQL Server</Brand><Id>4</Id></CatalogBrand><CatalogBrand><Brand>Other</Brand><Id>5</Id></CatalogBrand></ArrayOfCatalogBrand>"
+        }
+      }
+    },
+    "brands-get-all--accept-any": {
+      "description": "List all brands, */* requested.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "*/*"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "138",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": [
+            {
+              "Id": 1,
+              "Brand": "Azure"
+            },
+            {
+              "Id": 2,
+              "Brand": ".NET"
+            },
+            {
+              "Id": 3,
+              "Brand": "Visual Studio"
+            },
+            {
+              "Id": 4,
+              "Brand": "SQL Server"
+            },
+            {
+              "Id": 5,
+              "Brand": "Other"
+            }
+          ]
+        }
+      }
+    },
+    "brands-get-all--accept-unsupported": {
+      "description": "List all brands, only image/png acceptable (no formatter matches).",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "image/png"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "138",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": [
+            {
+              "Id": 1,
+              "Brand": "Azure"
+            },
+            {
+              "Id": 2,
+              "Brand": ".NET"
+            },
+            {
+              "Id": 3,
+              "Brand": "Visual Studio"
+            },
+            {
+              "Id": 4,
+              "Brand": "SQL Server"
+            },
+            {
+              "Id": 5,
+              "Brand": "Other"
+            }
+          ]
+        }
+      }
+    },
+    "brands-get-all--path-upper-case": {
+      "description": "Route matching is case-insensitive.",
+      "request": {
+        "method": "GET",
+        "path": "/API/BRANDS",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "138",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": [
+            {
+              "Id": 1,
+              "Brand": "Azure"
+            },
+            {
+              "Id": 2,
+              "Brand": ".NET"
+            },
+            {
+              "Id": 3,
+              "Brand": "Visual Studio"
+            },
+            {
+              "Id": 4,
+              "Brand": "SQL Server"
+            },
+            {
+              "Id": 5,
+              "Brand": "Other"
+            }
+          ]
+        }
+      }
+    },
+    "brands-get-all--trailing-slash": {
+      "description": "Trailing slash on the collection route.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "138",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": [
+            {
+              "Id": 1,
+              "Brand": "Azure"
+            },
+            {
+              "Id": 2,
+              "Brand": ".NET"
+            },
+            {
+              "Id": 3,
+              "Brand": "Visual Studio"
+            },
+            {
+              "Id": 4,
+              "Brand": "SQL Server"
+            },
+            {
+              "Id": 5,
+              "Brand": "Other"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

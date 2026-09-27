@@ -1,0 +1,120 @@
+{
+  "name": "delete-item",
+  "summary": "DeleteConfirmed removes the item (hard delete) and redirects to the list. Its picture route returns 404 afterwards.",
+  "steps": [
+    {
+      "label": "Create an item to delete",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Create",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>",
+            "Name": "Delete me",
+            "Description": "Characterization item",
+            "CatalogBrandId": "2",
+            "CatalogTypeId": "1",
+            "Price": "19.50",
+            "AvailableStock": "10",
+            "RestockThreshold": "5",
+            "MaxStockThreshold": "100"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "createdId": 30,
+      "databaseRow": {
+        "Id": 30,
+        "Name": "Delete me",
+        "Description": "Characterization item",
+        "Price": 19.50,
+        "PictureFileName": "dummy.png",
+        "CatalogTypeId": 1,
+        "CatalogBrandId": 2,
+        "AvailableStock": 10,
+        "RestockThreshold": 5,
+        "MaxStockThreshold": 100,
+        "OnReorder": false
+      }
+    },
+    {
+      "label": "Delete item 30",
+      "request": {
+        "method": "POST",
+        "path": "/Catalog/Delete/30",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "body": {
+          "kind": "form",
+          "fields": {
+            "__RequestVerificationToken": "<redacted>"
+          }
+        }
+      },
+      "response": {
+        "status": 302,
+        "reasonPhrase": "Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Location": "/",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "Object moved"
+        }
+      },
+      "databaseRow": null
+    },
+    {
+      "label": "Get its picture",
+      "request": {
+        "method": "GET",
+        "path": "/items/30/pic",
+        "headers": {},
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "private",
+          "Content-Type": "text/html; charset=utf-8",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-AspNetMvc-Version": "5.2",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "html",
+          "title": "IIS 10.0 Detailed Error - 404.0 - Not Found"
+        }
+      }
+    }
+  ]
+}

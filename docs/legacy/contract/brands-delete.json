@@ -1,0 +1,156 @@
+{
+  "group": "brands-delete",
+  "description": "DELETE /api/brands/{id}: the no-op delete, the brand still there afterwards, unknown and non-integer IDs, and no ID.",
+  "exchanges": {
+    "brands-delete": {
+      "description": "Delete an existing brand. The legacy action is a no-op that returns 200.",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/brands/1",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "0",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    },
+    "brands-delete--then-get": {
+      "description": "The brand deleted in brands-delete still exists.",
+      "request": {
+        "method": "GET",
+        "path": "/api/brands/1",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "reasonPhrase": "OK",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "24",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Id": 1,
+            "Brand": "Azure"
+          }
+        }
+      }
+    },
+    "brands-delete--not-found": {
+      "description": "Delete a brand that does not exist.",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/brands/6",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "reasonPhrase": "Not Found",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "0",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "empty"
+        }
+      }
+    },
+    "brands-delete--non-integer": {
+      "description": "Delete with a non-integer id.",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/brands/abc",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 400,
+        "reasonPhrase": "Bad Request",
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Length": "382",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "The request is invalid.",
+            "MessageDetail": "The parameters dictionary contains a null entry for parameter 'id' of non-nullable type 'System.Int32' for method 'System.Web.Http.IHttpActionResult Delete(Int32)' in 'eShopLegacyMVC.Controllers.WebApi.BrandsController'. An optional parameter must be a reference type, a nullable type, or be declared as an optional parameter."
+          }
+        }
+      }
+    },
+    "brands-delete--no-id": {
+      "description": "DELETE on the collection route.",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/brands",
+        "headers": {
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 405,
+        "reasonPhrase": "Method Not Allowed",
+        "headers": {
+          "Allow": "GET",
+          "Cache-Control": "no-cache",
+          "Content-Length": "75",
+          "Content-Type": "application/json; charset=utf-8",
+          "Expires": "-1",
+          "Pragma": "no-cache",
+          "Server": "Microsoft-IIS/10.0",
+          "X-AspNet-Version": "4.0.30319",
+          "X-Powered-By": "ASP.NET"
+        },
+        "body": {
+          "kind": "json",
+          "json": {
+            "Message": "The requested resource does not support http method 'DELETE'."
+          }
+        }
+      }
+    }
+  }
+}
