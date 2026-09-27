@@ -90,7 +90,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] Add `MIGRATION_PLAN.md`.
 
 ### Stage 1 — Baseline audit (documentation only; legacy code untouched)
-- [ ] 1.1 Write `docs/legacy-audit.md`. It covers:
+- [x] 1.1 Write `docs/legacy-audit.md`. It covers:
   - architecture and request pipeline
   - package inventory, taken from the csproj `PackageReference` items and classified as runtime, UI-only or build-only
   - endpoint inventory
