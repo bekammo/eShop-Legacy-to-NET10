@@ -2,6 +2,14 @@
 
   <!-- TargetFramework, nullable, implicit usings and analyzers come from Directory.Build.props. -->
 
+  <!--
+    User secrets keep per-developer settings outside the repository (ADR-0009).
+    The host reads them only in the Development environment.
+  -->
+  <PropertyGroup>
+    <UserSecretsId>bd775565-2ab8-422b-829f-92585b457810</UserSecretsId>
+  </PropertyGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="eShop.Catalog.Api.UnitTests" />
     <InternalsVisibleTo Include="eShop.Catalog.Api.IntegrationTests" />

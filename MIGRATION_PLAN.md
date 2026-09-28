@@ -129,7 +129,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 2.3 Add a GitHub Actions workflow that restores, builds and tests (with TRX output) and runs a vulnerable-package check.
 
 ### Stage 3 — Configuration
-- [ ] 3.1 Set up configuration:
+- [x] 3.1 Set up configuration:
   - `appsettings.json` and `appsettings.Development.json`, plus user secrets.
   - `ConnectionStrings:CatalogDb` pointing at a LocalDB database of its own (`eShopCatalog`, without MARS).
   - Convention: typed options are bound with `BindConfiguration` + `ValidateDataAnnotations` + `ValidateOnStart`, and each lands with its first consumer.
@@ -141,7 +141,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - Entities (`string? Description`, no UI attributes, `PictureUri` moved out of the entity).
   - `CatalogDbContext` with `IEntityTypeConfiguration<T>` classes that reproduce the EF6 schema: the EF6 PK/FK/index names, `decimal(18,2)`, cascades, and the `catalog_hilo` sequence with `UseHiLo`.
   - `HasData` for brands and types, with the legacy IDs.
-  - `AddDbContext`, failing fast when the connection string is missing.
+  - `AddDbContext`, failing fast when the connection string is missing. The `Testing` environment has no connection string of its own (ADR-0009), so `CatalogApiFactory` sets a placeholder that no test connects to until 4.2.
 
   Unit tests assert the model metadata.
 - [ ] 4.2 Add the `dotnet-ef` local tool and the `InitialCreate` migration, plus the Testcontainers fixture (pinned image, one database per test class). Tests:
@@ -216,7 +216,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - `GET /api/items` (validated `pageSize` 1–100 and `pageIndex` ≥ 0)
   - `GET /api/items/{id}`
   - `GET /api/types`
-- [ ] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable.
+- [ ] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
 - [ ] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
 
 ### Stage 8 — Async verification
