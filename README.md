@@ -13,7 +13,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 0 — Plan | Done |
 | 1 — Baseline audit | Done |
 | 2 — Scaffolding | Done |
-| 3 — Configuration | Not started |
+| 3 — Configuration | Done |
 | 4 — Domain & EF Core | Not started |
 | 5 — Application services & DI | Not started |
 | 6 — Logging | Not started |
@@ -96,6 +96,28 @@ dotnet run --project src/eShop.Catalog.Api --launch-profile http
 ```
 
 The app listens on `http://localhost:5043`. `GET /health/live` returns `200 Healthy` while the process is up. It does not check the database or any other dependency.
+
+## Configuration
+
+Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-configuration)). Each source overrides the ones before it:
+
+1. `appsettings.json`
+2. `appsettings.{Environment}.json`
+3. user secrets, in Development only
+4. environment variables
+5. the command line
+
+.NET 10 also reads `eShop.Catalog.Api.settings.json` files between the second and third sources, but this project does not use them. No committed file holds a credential or a value for a deployed environment.
+
+| Setting | Development | Other environments |
+|---|---|---|
+| `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`) | Required from Stage 4.1, for example as the environment variable `ConnectionStrings__CatalogDb` |
+
+Nothing reads the connection string yet: the database arrives in Stage 4. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
+
+```bash
+dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api
+```
 
 ## Running the tests
 

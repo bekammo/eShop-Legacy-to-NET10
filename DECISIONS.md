@@ -18,6 +18,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0006](#adr-0006-solution-structure-and-build-conventions) | Solution structure and build conventions | Accepted | 2.1 |
 | [ADR-0007](#adr-0007-test-strategy) | Test strategy | Accepted | 2.2 |
 | [ADR-0008](#adr-0008-continuous-integration) | Continuous integration | Accepted | 2.3 |
+| [ADR-0009](#adr-0009-configuration) | Configuration | Accepted | 3.1 |
 
 ## Template
 
@@ -480,3 +481,147 @@ The weekly run catches an advisory published for a package that no commit has to
 - GitHub disables the schedule of a public repository after 60 days without activity. After a quiet period, the weekly run has to be re-enabled from the Actions tab.
 - Action and runner upgrades are deliberate commits that change a SHA or an image name.
 - The legacy build stays a local check until Stage 11 removes it.
+
+---
+
+## ADR-0009: Configuration
+
+- **Status:** Accepted
+- **Date:** 2026-09-28
+- **Plan stage:** 3.1
+
+### Context
+
+- The legacy app reads its settings from `Web.config` through `ConfigurationManager` ([audit: `Web.config`](docs/legacy-audit.md#61-webconfig)). Its code reads two of the app settings, each parsed with `bool.Parse` where it is used ([audit: appSettings consumers](docs/legacy-audit.md#62-appsettings-consumers)):
+  - A missing or malformed `UseMockData` throws at the start of `Application_Start`, before any route is registered.
+  - A missing or malformed `UseCustomizationData` throws at its end, when the database initializer is resolved, and only in database mode.
+- Its one connection string points at the LocalDB database `Microsoft.eShopOnContainers.Services.CatalogDb`, with MARS on. MARS is unused: no query reads while another reader is open ([audit: queries](docs/legacy-audit.md#55-queries)).
+- The legacy database belongs to the reference app until cutover. The new API gets a database of its own ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover), decision 2). From Stage 4.4 the new API applies migrations and seeds data at startup in Development, so pointing it at the legacy database by mistake would change the reference app's data.
+- `Web.config` pins `en-US` as the culture of every request, and the legacy price binding and validation silently depend on it ([audit: culture](docs/legacy-audit.md#63-culture-dependence-en-us-pinned-webconfig38)).
+- `WebApplication.CreateBuilder` layers configuration from these sources, each overriding the ones before it:
+  1. `appsettings.json`
+  2. `appsettings.{Environment}.json`
+  3. `{ApplicationName}.settings.json` and `{ApplicationName}.settings.{Environment}.json`, which .NET 10 adds (here `eShop.Catalog.Api.settings.json`). This project does not use them.
+  4. user secrets, in Development only
+  5. environment variables
+  6. the command line
+- The integration tests run the host in the `Testing` environment ([ADR-0007](#adr-0007-test-strategy)). From Stage 4.2 each test class gets its own database in a container.
+
+### Decision
+
+**1. What goes where**
+
+| Source | Holds | In the repository |
+|---|---|---|
+| `appsettings.json` | Settings that every environment shares, with their defaults. It starts empty: each setting is added in the commit that adds the code that reads it. | Yes |
+| `appsettings.Development.json` | Local development values that are not secret. Today that is the LocalDB connection string. | Yes |
+| User secrets | A developer's own overrides and development credentials, for example a connection string to SQL Server in a container (Stage 4.5) or the `dotnet user-jwts` signing keys (Stage 12). They live in the user profile, in plain text. The host reads them only in Development. | No |
+| Environment variables, command line | Everything a deployed environment needs, above all its connection string (`ConnectionStrings__CatalogDb`). A secret store is chosen when a deployment target exists. | No |
+| `CatalogApiFactory` | Test settings, set in code. The `Testing` environment has no settings file. From Stage 4.1 the factory sets the connection string. Until Stage 4.2 it is a placeholder that no test connects to. After that, it points at each test class's own database. | Yes, as code |
+
+No committed file holds a credential or a value for a deployed environment. The project's `UserSecretsId` is in `eShop.Catalog.Api.csproj`.
+
+**2. The connection string**
+
+`ConnectionStrings:CatalogDb` is set in `appsettings.Development.json` only:
+
+```text
+Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=eShopCatalog;Integrated Security=True
+```
+
+- **A database of its own.** `eShopCatalog` is created by the new API's migrations (Stage 4.2). No default setting reaches the legacy database.
+- **No password.** LocalDB uses Windows authentication.
+- **No MARS** (the SqlClient default). Nothing needs it. Without it, code that starts a second query while a reader is still open fails at once, instead of multiplexing silently.
+- **Encryption stays at the SqlClient default.** A probe with Microsoft.Data.SqlClient 6.1.1 connected to LocalDB with the default settings, so no `Encrypt` or `TrustServerCertificate` override is needed. The local named-pipe connection is not encrypted.
+- **Nowhere else.** The `Testing` and `Production` environments get no connection string from the repository. From Stage 4.1 the host refuses to start without one.
+
+A connection string is not an options class. It is read with `GetConnectionString("CatalogDb")`, the EF Core convention.
+
+**3. Typed options**
+
+Every other setting is read through a typed options class:
+
+- One class per configuration section, `sealed` and `internal`, in the feature folder of the code that reads it, with a `SectionName` constant.
+- Its rules are data annotations on its properties (`[Required]`, `[Range]` and so on).
+- A setting with a safe default is a property initialized to that default. A setting without one is nullable or a reference type, and marked `[Required]`. `[Required]` on a non-nullable value type never fails: a missing key leaves the property at its default value, which counts as present.
+- It is registered with `AddOptions<TOptions>().BindConfiguration(TOptions.SectionName).ValidateDataAnnotations().ValidateOnStart()`.
+- The code that uses it takes `IOptions<TOptions>`.
+- The class arrives in the commit that adds its first consumer, with a test that an invalid value stops the host at startup. The first ones are expected in Stage 4.4 (migrate on startup), Stage 5.3 (`Catalog:UseMockData`) and Stage 7.4 (`Catalog:PicturesPath`).
+
+With `ValidateOnStart`, both kinds of bad value stop the host before it accepts requests. A malformed value fails binding, with an error that names the key. A missing required value fails validation, with an error that names the property. The legacy app instead failed part-way through startup, from a `bool.Parse` exception.
+
+**4. Culture**
+
+No culture is pinned. The wire contract is culture-invariant: System.Text.Json and Minimal API route and query binding do not use the current culture. Code that parses, formats or compares text names its culture: the analyzers CA1305 and CA1310 already fail the build otherwise. A probe project under the repository's build settings confirmed both. CA1305 does not look at string interpolation, so interpolated strings are not used for machine-readable values. The price rules that relied on `en-US` are ported as explicit culture-invariant checks in Stage 7.6.
+
+**5. The fate of every `Web.config` element**
+
+This extends the audit's [table](docs/legacy-audit.md#61-webconfig) with where each element goes.
+
+| Element | What it does in the legacy app | In the new API |
+|---|---|---|
+| `configSections` (`entityFramework`) | Declares the EF6 configuration section. | Dropped with EF6. |
+| `connectionStrings/CatalogDBContext` | LocalDB, database `Microsoft.eShopOnContainers.Services.CatalogDb`, MARS on. | `ConnectionStrings:CatalogDb` (decision 2): database `eShopCatalog`, MARS off, in `appsettings.Development.json` only. Read from Stage 4.1. |
+| `appSettings/UseMockData` | Chooses the in-memory or the EF service, and skips the database initializer. | `Catalog:UseMockData`, a typed option (Stage 5.3). |
+| `appSettings/UseCustomizationData` | Seeds from CSV files and a zip. | Dropped ([ADR-0003](#adr-0003-non-goals)). |
+| `appSettings/webpages:Version`, `webpages:Enabled` | ASP.NET Web Pages settings for Razor. | Dropped with the UI. |
+| `appSettings/ClientValidationEnabled`, `UnobtrusiveJavaScriptEnabled` | MVC client-side validation. | Dropped with the UI. |
+| `system.web/compilation` (`debug="true"`, `targetFramework="4.7.2"`) | Compiles views and `Global.asax` at runtime in debug mode. Debug mode also turns off the execution timeout. | Dropped. The build configuration and `ASPNETCORE_ENVIRONMENT` take over its roles. |
+| `system.web/httpRuntime` (`targetFramework="4.6.1"`) | Selects the 4.6.1 runtime behaviour, with the default limits: a 4 MB request body, and a 110-second execution timeout that `debug="true"` turns off. | Dropped. Kestrel's limits apply, and Kestrel has no execution timeout. The request-body limit is set with the first endpoint that reads a body (Stage 7.6). |
+| `system.web/sessionState` (`InProc`) | Session state for the layout footer. | Dropped ([ADR-0003](#adr-0003-non-goals)). |
+| `system.web/httpModules` | Registers the telemetry modules for the classic pipeline. The integrated pipeline ignores this section. | Dropped. |
+| `system.web/globalization` (`culture`, `uiCulture` = `en-US`) | Sets the culture of every request. | Not carried over (decision 4). |
+| `runtime/assemblyBinding` (10 redirects) | Unifies assembly versions. | Dropped. .NET 10 has no binding redirects, and Central Package Management fixes the versions ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). |
+| `system.webServer/validation` | Stops IIS from rejecting the classic-mode `httpModules` section. | Dropped with IIS. |
+| `system.webServer/modules` | Registers telemetry correlation, Application Insights and the async session-state module. | Dropped ([ADR-0003](#adr-0003-non-goals)). |
+| `system.webServer/handlers` | Sends extensionless URLs to ASP.NET for GET, HEAD, POST, DEBUG, PUT, DELETE, PATCH and OPTIONS. Two of the three entries are for the classic pipeline only. | Dropped. Kestrel sends every request to the app. |
+| `entityFramework/defaultConnectionFactory` | A LocalDB connection factory. It is never used, because the context names its connection string. | Dropped. |
+| `entityFramework/providers` | Registers the EF6 SQL Server provider. | `UseSqlServer` in `AddDbContext` (Stage 4.1). |
+| `system.codedom` | Roslyn compilers for the runtime compilation. | Dropped. |
+
+The other configuration files of the legacy project:
+
+| File | In the new API |
+|---|---|
+| `Web.Debug.config` (no active transform), `Web.Release.config` (removes `debug` when publishing) | Dropped. |
+| `Views/Web.config` | Dropped with the UI. |
+| `ApplicationInsights.config` | Dropped ([ADR-0003](#adr-0003-non-goals)). |
+| `log4Net.xml` | Serilog settings in `appsettings.json` (Stage 6.1). |
+| The IIS Express settings in `eShopLegacyMVC.csproj` | `Properties/launchSettings.json` (Stage 2.1). |
+
+**Tests** (`tests/eShop.Catalog.Api.IntegrationTests/Configuration/ConfigurationTests.cs`)
+
+| Test | What it pins |
+|---|---|
+| `Testing_host_gets_no_connection_string_from_settings_files` | No settings file that the test host reads sets the connection string: `appsettings.json` has none, and the test host does not read `appsettings.Development.json`. Values from environment variables or from the factory's code are not settings files, so the test still holds once the factory sets a connection string (Stage 4.1). |
+| `Testing_host_reads_no_user_secrets` | The test host never reads a developer's secrets. |
+| `Development_host_reads_user_secrets` | The project has a `UserSecretsId`, so a Development host reads user secrets. |
+| `Development_settings_point_at_a_LocalDB_database_of_their_own_without_MARS` | The Development connection string: LocalDB, `eShopCatalog`, no MARS. It reads only the committed files, so a developer's own override cannot fail it. |
+
+Each test was checked against a deliberate break, and each break failed the intended test:
+
+- moving the connection string into `appsettings.json`
+- removing the `UserSecretsId`
+- running the factory in Development
+- turning MARS on
+- using the legacy database name
+
+### Alternatives considered
+
+- **The connection string in `appsettings.json`**, as the ASP.NET Core templates do. Every environment would inherit LocalDB. A deployment that forgot its own connection string would start and then fail on the first query. The integration tests would reach the developer's database whenever a test class forgot to attach its own.
+- **The legacy database.** [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) rules it out, and the migrations and seeding of Stage 4 would change the reference app's data.
+- **MARS on, for parity.** Nothing uses it, and it would hide code that interleaves two readers on one connection.
+- **A committed `appsettings.Production.json`.** Values for a deployed environment belong to that deployment, and there is no deployment target yet.
+- **An `appsettings.Testing.json`.** Tests set their settings in code, next to the tests that depend on them.
+- **Reading `IConfiguration` where a value is needed**, as the legacy code read `ConfigurationManager.AppSettings`. The values would be untyped and parsed at every use, and a bad value would fail the first request that reads it.
+- **Source-generated options validation (`[OptionsValidator]`).** It serves trimming and Native AOT, which the API does not use. `ValidateDataAnnotations` needs no extra type per options class.
+- **A pinned culture** (request localization with `en-US` only, or `CultureInfo.DefaultThreadCurrentCulture`). This would carry the legacy dependency over instead of removing it, and a pinned culture hides the code that depends on it.
+
+### Consequences
+
+- A deployed API must receive `ConnectionStrings__CatalogDb` or an equivalent. From Stage 4.1 it does not start without it.
+- Once the API uses the database (Stage 4), `dotnet run` in Development needs LocalDB, which runs only on Windows. On Linux and macOS, a developer points the connection string at SQL Server in a container through user secrets (Stage 4.5).
+- `appsettings.Development.json` and user secrets never reach the `CatalogApiFactory` host. Each test sets the settings it depends on. Environment variables still reach it, as they reach any host. Two of the configuration tests read the Development sources on purpose, outside that host.
+- From Stage 4.1 the factory has to set a connection string, because the host does not start without one.
+- Configuration errors stop the host at startup and name the setting, instead of failing the first request that reads it.
+- The request-body limit is an open item for Stage 7.6, and the plan records it there.
