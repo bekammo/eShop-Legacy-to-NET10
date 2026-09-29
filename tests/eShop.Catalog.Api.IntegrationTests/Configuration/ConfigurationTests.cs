@@ -66,6 +66,25 @@ public sealed class ConfigurationTests(CatalogApiFactory factory) : IClassFixtur
         Assert.False(connectionString.MultipleActiveResultSets);
     }
 
+    // Only the committed files, as above. Migrating on startup is a Development convenience (ADR-0013).
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void Committed_settings_turn_migrate_on_startup_on_in_Development_only(bool development, bool expected)
+    {
+        var files = new ConfigurationBuilder()
+            .SetBasePath(ContentRoot)
+            .AddJsonFile("appsettings.json", optional: false);
+        if (development)
+        {
+            files.AddJsonFile("appsettings.Development.json", optional: false);
+        }
+
+        var configuration = files.Build();
+
+        Assert.Equal(expected, configuration.GetValue<bool?>("Database:MigrateOnStartup"));
+    }
+
     // User secrets are a JSON source for secrets.json, added whether or not the file exists yet.
     private static bool IsUserSecrets(IConfigurationProvider provider) =>
         provider is JsonConfigurationProvider { Source.Path: "secrets.json" };

@@ -43,7 +43,7 @@ Steps:
    ```
 
 2. Exit code 0 prints `Baselined: InitialCreate is recorded as applied.`, or, on a second run, `nothing to do`. Exit code 1 prints the error number and what differs. The numbers are listed at the top of the script. Fix the cause, or decide how to adopt that database, and run it again. The script runs in one transaction, so a refusal leaves the database as it was.
-3. Point `ConnectionStrings:CatalogDb` at the database and apply the migrations as usual ([ADR-0011](../../DECISIONS.md#adr-0011-ef-core-migration-strategy)).
+3. Point `ConnectionStrings:CatalogDb` at the database and apply the migrations as usual ([ADR-0011](../../DECISIONS.md#adr-0011-ef-core-migration-strategy)). Migrating does not add the new API's sample items to an adopted database, even one whose catalog is empty ([ADR-0013](../../DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)).
 
 Afterwards:
 

@@ -22,6 +22,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0010](#adr-0010-data-model) | Data model | Accepted | 4.1 |
 | [ADR-0011](#adr-0011-ef-core-migration-strategy) | EF Core migration strategy | Accepted | 4.2 |
 | [ADR-0012](#adr-0012-adopting-a-legacy-database) | Adopting a legacy database | Accepted | 4.3 |
+| [ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness) | Seeding, migrate-on-startup and readiness | Accepted | 4.4 |
 
 ## Template
 
@@ -1012,3 +1013,145 @@ Not tested:
 - Adopted databases keep EF6's history table and the two unused sequences. After Stage 11 a migration may drop them, guarded with `IF EXISTS`, because databases that the migrations created do not have them.
 - `baseline.sql` is tied to `InitialCreate`. The unit tests fail if the migration's ID or EF Core's history DDL change.
 - Stage 4.4 must keep the sample items out of adopted databases (decision 9).
+
+---
+
+## ADR-0013: Seeding, migrate-on-startup and readiness
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.4
+
+### Context
+
+- The legacy app seeds a database once, when EF6's `CreateDatabaseIfNotExists` creates it on the first request that uses the context ([audit: seeding](docs/legacy-audit.md#54-seeding-modelsinfrastructurecatalogdbinitializercs32-43)). It adds the brands and types, then 12 sample items, whose IDs its HiLo generator takes from `catalog_hilo` in two blocks (1–10 and 11–20). The sequence is left at 11 ([`seed-data.json`](docs/legacy/seed-data.json)). The seeding is not atomic and never runs again, so a failure leaves a partly seeded database for good ([audit D13](docs/legacy-audit.md#7-defects-and-risks)).
+- [ADR-0010](#adr-0010-data-model) made the brands and types reference data in the migrations. The sample items were left to this stage, because their IDs come from HiLo.
+- EF Core calls a seeder registered with `UseSeeding` and `UseAsyncSeeding` at the end of every `Migrate`, `EnsureCreated` and `dotnet ef database update`, whether or not anything was applied. It calls it after a revert too (`Migrate("0")`), when the tables are gone. The tool migrates synchronously, and a synchronous `Migrate` with only an async seeder throws, so both are needed.
+- In EF Core 10, `Migrate` takes EF Core's migrations lock, commits each migration as it applies it, and then calls the seeder, still under the lock ([`Migrator.cs`](https://github.com/dotnet/efcore/blob/release/10.0/src/EFCore.Relational/Migrations/Internal/Migrator.cs) and [`MigrationCommandExecutor.cs`](https://github.com/dotnet/efcore/blob/release/10.0/src/EFCore.Relational/Migrations/Internal/MigrationCommandExecutor.cs), release/10.0). A failing seeder therefore leaves the migrations applied. A value drawn from a sequence stays drawn when a transaction rolls back.
+- An adopted legacy database must never receive the sample items ([ADR-0012](#adr-0012-adopting-a-legacy-database), decision 9). The baseline keeps EF6's `__MigrationHistory` and the unused `catalog_brand_hilo` and `catalog_type_hilo` in it, and the legacy seeding has drawn its `catalog_hilo`.
+- [ADR-0011](#adr-0011-ef-core-migration-strategy) left Development migrations to `dotnet ef database update` until this stage. Deployed environments apply the reviewed idempotent script, so the app's login needs no rights to change the schema.
+- The liveness endpoint runs no check ([ADR-0007](#adr-0007-test-strategy)). Readiness, which does check the database, was left to this stage.
+
+### Decision
+
+**1. The sample-item seeder**
+
+`SampleItemSeeder` (`Data/`) adds the legacy app's 12 sample items, without IDs. HiLo numbers them in list order, so a new database gets IDs 1–12, and `catalog_hilo` is left at 11, as after the legacy seeding. The items are written with one `SaveChanges`, so the seeding is all or nothing. The seeder then stops tracking them, because the context belongs to the caller.
+
+EF Core keeps its HiLo blocks in memory for the life of the process, keyed by server, database and sequence, even when the sequence is dropped and created again. After a revert and a new `Migrate` in the same process, the items would get IDs from a block of the old sequence (13–20, then 1–4), which the new sequence hands out again later. The review of this stage found that by experiment. The seeder therefore checks each ID as it adds the item, and throws at the first one out of order. That refuses the old block before anything is drawn from the new sequence, so the database stays unused, and a new process seeds it. The running app and the tool never meet this, because each migrates once per process; tests that revert and migrate again do.
+
+It is registered in `UseCatalogSqlServer`, so the app, the tests and the `dotnet-ef` tool seed the same way. The synchronous and the asynchronous seeder share the item list and the conditions.
+
+**2. When it seeds**
+
+Only a database that nobody has used yet. Each of these conditions stops it on its own:
+
+| The seeder does nothing when | Because |
+|---|---|
+| a migration is not applied | It writes through the current model. This also stops it after a revert. |
+| the catalog has an item | |
+| `catalog_hilo` has handed out a value (`sys.sequences.last_used_value`) | A database is seeded once, as `CreateDatabaseIfNotExists` did. An emptied catalog is not refilled. The legacy seeding has drawn the sequence of every legacy database. |
+| `dbo.__MigrationHistory`, `dbo.catalog_brand_hilo` or `dbo.catalog_type_hilo` exists | Only a legacy database has them, and the baseline keeps them. |
+
+So seeding again changes nothing, and an adopted database keeps its data even when its catalog is empty.
+
+If the seeding fails after it has drawn IDs, for example because `SaveChanges` loses its connection, no item is written, but the IDs stay drawn, and EF Core has committed the migrations already. The sequence has then been used, so no later `Migrate` seeds that database. For a Development database the remedy is to drop it.
+
+**3. Where the sample items appear**
+
+Only where EF Core migrates:
+
+- in Development, at startup (decision 4)
+- with `dotnet ef database update`, in any database that `--connection` names. The tool has no environment ([ADR-0011](#adr-0011-ef-core-migration-strategy), decision 2).
+- in the tests: every database that `CatalogApiFactory` or `CatalogDatabase.CreateMigratedAsync` migrates holds them, as the database of the Stage 1.2 capture did. The Stage 7 comparisons with the golden exchanges rely on this.
+
+The idempotent script, with which deployments apply the migrations, holds only the reference data. A new deployed database therefore starts without the sample items, where the legacy app seeded them into every new database. This is not a contract delta ([ADR-0002](#adr-0002-wire-contract-policy)): the contract covers routes, verbs, status codes and response shapes, not the rows of a new database, and a database adopted at cutover keeps its data. Nor is it a business-rule change: it concerns how a database is provisioned, not a rule of an endpoint, so [docs/behavior-changes.md](docs/behavior-changes.md) gets no entry.
+
+**4. Migrate on startup**
+
+- `Database:MigrateOnStartup`, bound to `DatabaseOptions` ([ADR-0009](#adr-0009-configuration)). It is `false` in `appsettings.json` and `true` in `appsettings.Development.json`.
+- `MigrateOnStartupService`, an `IHostedLifecycleService`, migrates in `StartingAsync`. The host calls that before it starts any hosted service, the server included, so no request meets an old schema. Stopping the host during startup cancels the migration: EF Core rolls back the migration it is applying, and keeps the ones it has committed.
+- Outside Development, the host refuses to start with the setting on: options validation fails at startup and names the setting. A stray `Database__MigrateOnStartup` cannot migrate a deployed database, or seed sample items into it. A malformed value stops the host too.
+- The environment rule is a `Validate` delegate on the options builder, not a data annotation as ADR-0009 decision 3 has it, because it needs `IHostEnvironment`. `ValidateOnStart` applies it with the rest.
+- The integration tests run in the `Testing` environment and keep migrating their databases in `CatalogApiFactory`. `MigrateOnStartupTests` start Development hosts on purpose, from factories that xUnit never initializes. Those hosts read `appsettings.Development.json` and the developer's user secrets, so the tests pass their settings as host settings, which override both. This amends a consequence of ADR-0009: a developer's user secrets reach these test hosts, but cannot change the settings that the tests depend on.
+
+This amends ADR-0011 decision 3: a Development database is migrated at startup. `dotnet ef database update` still works, and seeds the same way.
+
+**5. Readiness**
+
+`GET /health/ready` runs the checks tagged `ready`. The only one, `catalog-database`, passes when the API can connect to the database and the database has every migration that this build knows. It answers `200 Healthy` or `503 Unhealthy`, as `text/plain`, with the status only. The reason, such as the missing migrations, goes to the log. Liveness does not change: a database outage takes an instance out of rotation, but does not get it restarted.
+
+The check has no timeout of its own. A server that does not answer holds the check for SqlClient's connect timeout, 15 seconds by default, so the probe's own timeout usually ends it first. A deployment target may call for a shorter one.
+
+**Tests**
+
+Integration tests:
+
+| Test | What it pins |
+|---|---|
+| `SampleItemSeedingTests.Migrations_seed_the_legacy_sample_items_with_their_legacy_ids` | A migrated database holds exactly the item rows of `seed-data.json`, IDs 1–12 included. |
+| `SampleItemSeedingTests.Seeded_items_point_at_their_legacy_brands_and_types` | Through the navigations, each item has the brand and type names that `seed-data.json` gives it. |
+| `SampleItemSeedingTests.Item_id_sequence_stands_where_the_legacy_seeding_left_it` | `catalog_hilo` is at 11. |
+| `SampleItemSeedingTests.Migrating_again_seeds_nothing` | Two more `MigrateAsync` calls change neither the rows nor the sequence. |
+| `SampleItemSeedingTests.Synchronous_migration_seeds_the_same_items_once` | The synchronous seeder, the tool's, seeds the same 12 items once, over two `Migrate` calls, leaves the sequence at 11, and leaves nothing tracked on the context. |
+| `SampleItemSeedingTests.Items_added_after_seeding_take_ids_above_the_seeded_ones` | No HiLo collision: the next item in the same process gets 13, the rest of the seeding's block, as in the legacy app. Another process's next block starts at 21. |
+| `SampleItemSeedingTests.Seeding_refuses_hilo_ids_from_before_the_sequence_and_leaves_the_database_unused` | The asynchronous seeder leaves nothing tracked. After a revert, a `Migrate` in the same process fails in the seeder, again with nothing tracked. The migrations stay applied, the catalog empty and `catalog_hilo` unused. A new process then seeds IDs 1–12. |
+| `SampleItemSeedingTests.Migrations_seed_nothing_into_an_adopted_legacy_database` (6 cases) | An adopted database, as the baseline leaves it and stripped of all but one sign of use (items, a used `catalog_hilo`, EF6's history table, either unused sequence), keeps its rows and its sequence through `Migrate`. |
+| `MigrationRollbackTests.Migrations_revert_to_an_empty_database_and_apply_again` (amended) | The migrations, applied again as by a new process, seed the items with IDs 1–12 again. |
+| `MigrateOnStartupTests.Development_host_migrates_and_seeds_its_database_before_the_server_starts` | A Development host with the setting on creates, migrates and seeds its database, and is ready. A hosted service registered after the app's own finds every migration applied in its `StartingAsync`, which the host calls before it starts the server. |
+| `MigrateOnStartupTests.Host_leaves_the_database_alone_with_migrate_on_startup_off` (3 environments) | With the setting off (`false` in Development, the `appsettings.json` default in Testing and Production), the host starts and never creates its database. |
+| `MigrateOnStartupTests.Host_outside_Development_refuses_to_start_with_migrate_on_startup` (Testing, Staging, Production) | The host fails at startup with a message that names the setting, and the database is not created. |
+| `MigrateOnStartupTests.Host_does_not_start_with_a_malformed_migrate_on_startup` | `yes` stops the host, with a message that names the setting. |
+| `ReadinessEndpointTests` | 200 `Healthy` on a migrated database; 503 `Unhealthy`, with nothing but the status, on a database that does not exist and on one without the migrations. Liveness stays 200 in both. |
+| `ConfigurationTests.Committed_settings_turn_migrate_on_startup_on_in_Development_only` | The setting is off in `appsettings.json` and on in `appsettings.Development.json`. It reads only the committed files, so a developer's user secrets cannot fail it. |
+
+Unit tests:
+
+| Test | What it pins |
+|---|---|
+| `SampleItemSeederTests.Sample_items_are_the_legacy_ones_in_id_order` | Numbered in list order, the seeder's items equal `seed-data.json`. |
+| `ReadinessPolicyTests.Readiness_runs_only_the_checks_tagged_ready` | Readiness ignores untagged checks. |
+
+Apart from the rollback test, no existing assertion changed, but every database that the migrations create now holds the sample items.
+
+Each of these deliberate breaks failed the intended test:
+
+- the seeder without each of its conditions in turn: migrations applied, no item, an unused sequence, and each of the three legacy objects
+- the items saved with explicit IDs instead of HiLo
+- the seeder without its check of the IDs
+- the items left tracked after seeding
+- the synchronous seeder saving nothing
+- a sample item's price changed
+- migrate-on-startup allowed in every environment, or run whatever the setting
+- the migration moved from `StartingAsync` to `StartAsync`
+- readiness ignoring missing migrations, or running every check
+- the setting turned off in `appsettings.Development.json`
+
+Not tested:
+
+- that stopping the host during startup cancels the migration
+- two instances migrating at once, which EF Core's migrations lock serializes
+
+A Development host was also run by hand against LocalDB: it applied `InitialCreate` and seeded items 1–12 before it logged `Now listening`, and `/health/ready` answered 200. `dotnet ef database update`, run twice on a new LocalDB database, seeded the 12 items once.
+
+### Alternatives considered
+
+- **Sample items in `HasData`.** The items would need fixed IDs, which HiLo never draws, so the first item created afterwards would get ID 1 and collide (the explicit-ID break shows it). They would also be in the idempotent script, and so in every deployed database.
+- **A migration that inserts the items with `NEXT VALUE FOR`.** An adopted database would run it after the baseline, unless the SQL guarded against that, and every deployed database would get demo data.
+- **Seeding in `Program.cs` or in a hosted service of its own.** EF Core's hook runs under the migrations lock, and in `dotnet ef database update` as well.
+- **Seeding whenever the catalog is empty**, as the EF Core documentation shows. It would retry a seeding that failed after drawing IDs. But an emptied Development catalog would fill again at the next start, and only the three legacy objects would keep the items out of an adopted database.
+- **Recognizing an adopted database by a mark that the baseline writes**, such as a distinct `ProductVersion` in its history row. The baseline writes EF Core's own row on purpose (ADR-0012), and the mark would rely on EF Core ignoring that column.
+- **Migrating at startup in every environment.** [ADR-0011](#adr-0011-ef-core-migration-strategy) rules it out.
+- **Ignoring the setting outside Development** instead of refusing to start. A misconfigured deployment would look fine.
+- **`AddDbContextCheck`** from `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`. It needs one more package, and by default it only checks that the database can be reached, so a database without the migrations would look ready.
+
+### Consequences
+
+- `dotnet run` in Development creates, migrates and seeds the database, and needs the database server to be up. A new database is seeded once; to start over with the sample items, drop it.
+- Every test database that the migrations create starts with the 12 sample items. A test that needs an empty catalog deletes them.
+- Deployed databases start with the brands and types only.
+- A deployment's readiness fails until its migrations are applied, so the script runs before the new build is expected to be ready.
+- The seeder recognizes a legacy database by objects that a migration after Stage 11 may drop ([ADR-0012](#adr-0012-adopting-a-legacy-database)). A used `catalog_hilo` still keeps the items out, but that migration has to revisit this rule.
+- A test that reverts the migrations and applies them again in the same process has to apply them from a context with EF Core's internal services to itself (`CatalogDatabase.CreateContextAsInANewProcess`).
+- Stage 5.3's mock mode needs no database. It has to turn migrate-on-startup and the readiness database check off, or a Development host started without a database fails at startup.
+- The two new unit tests need only the SDK. The other new tests need SQL Server.

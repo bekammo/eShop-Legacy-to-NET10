@@ -151,7 +151,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 
   ADR: EF Core migration strategy.
 - [x] 4.3 Add a baseline procedure for an existing legacy database (`docs/legacy/baseline.sql`). Integration test: apply the legacy schema, run the baseline, then check that EF Core reads and writes work and that HiLo continues from the sequence.
-- [ ] 4.4 Seeding and startup:
+- [x] 4.4 Seeding and startup:
   - a sample-item seeder via `UseSeeding` and `UseAsyncSeeding` (shared logic, idempotent, item IDs from HiLo). It never adds sample items to an adopted legacy database (ADR-0012).
   - config-gated migration on startup (Development only)
   - `/health/ready` with a database check

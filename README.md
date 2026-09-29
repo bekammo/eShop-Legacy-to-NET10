@@ -97,7 +97,12 @@ dotnet build eShop.Catalog.slnx
 dotnet run --project src/eShop.Catalog.Api --launch-profile http
 ```
 
-The app listens on `http://localhost:5043`. `GET /health/live` returns `200 Healthy` while the process is up. It does not check the database or any other dependency.
+The app listens on `http://localhost:5043`. In Development it first creates or updates its LocalDB database and seeds a new one with the sample items (see [Database migrations](#database-migrations)), so LocalDB must be available. LocalDB runs only on Windows; elsewhere, point the connection string at another SQL Server with user secrets (see [Configuration](#configuration)).
+
+| Endpoint | Answers |
+|---|---|
+| `GET /health/live` | `200 Healthy` while the process is up. It does not check the database or any other dependency. |
+| `GET /health/ready` | `200 Healthy` when the API can reach its database and the database has every migration, otherwise `503 Unhealthy` ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)). |
 
 ## Configuration
 
@@ -114,8 +119,9 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 | Setting | Development | Other environments |
 |---|---|---|
 | `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
+| `Database:MigrateOnStartup` | `true`: the migrations are applied, and a new database seeded, before the app accepts requests | `false`. The host refuses to start with `true` outside Development. |
 
-The host does not start without a connection string. It does not connect to the database yet: Stage 4.4 applies the migrations at startup in Development. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
+The host does not start without a connection string, or with an invalid setting. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api
@@ -135,13 +141,15 @@ The `dotnet ef` commands need the solution restored, so build it once first (`do
 dotnet ef migrations add <Name> --project src/eShop.Catalog.Api --output-dir Data/Migrations
 ```
 
-Create or update the Development database, here the LocalDB one:
+In Development the app applies the migrations when it starts (`Database:MigrateOnStartup`). To create or update a database without starting the app, for example the LocalDB one:
 
 ```bash
 dotnet ef database update --project src/eShop.Catalog.Api --connection "Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=eShopCatalog;Integrated Security=True"
 ```
 
-Write the SQL that brings an empty database, or one these migrations created, up to date, for review before a deployment applies it. The `artifacts` folder is ignored by git.
+Both ways also seed the legacy app's 12 sample items, with IDs 1–12, into a database that nobody has used yet: one without items, whose item-ID sequence has never handed out a value, and which is not an adopted legacy database. They seed it once. To start again with the sample items, drop the database. The brands and types are reference data in the migrations themselves ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)).
+
+Write the SQL that brings an empty database, or one these migrations created, up to date, for review before a deployment applies it. It holds the brands and types but no sample items. The `artifacts` folder is ignored by git.
 
 ```bash
 dotnet ef migrations script --idempotent --project src/eShop.Catalog.Api --output artifacts/migrate.sql

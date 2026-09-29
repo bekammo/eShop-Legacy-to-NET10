@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
+using eShop.Catalog.Api.Catalog;
 
 namespace eShop.Catalog.Api.Tests.Legacy;
 
@@ -28,6 +29,11 @@ internal static class LegacySeedData
     public static IReadOnlyList<JsonObject> Table(string table) => [.. SeedData[table]!.AsArray().Select(row => row!.AsObject())];
 
     public static string Row(int id, string name) => $"{id.ToString(CultureInfo.InvariantCulture)} {name}";
+
+    // The same line for an item of the new API, to compare it with Items.
+    public static string Item(CatalogItem item) => Item(
+        item.Id, item.Name, item.Description, item.Price, item.PictureFileName, item.CatalogTypeId, item.CatalogBrandId,
+        item.AvailableStock, item.RestockThreshold, item.MaxStockThreshold, item.OnReorder);
 
     public static string Item(
         int id, string name, string? description, decimal price, string pictureFileName, int catalogTypeId, int catalogBrandId,

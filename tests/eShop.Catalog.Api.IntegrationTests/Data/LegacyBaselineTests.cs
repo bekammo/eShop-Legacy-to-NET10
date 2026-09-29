@@ -73,7 +73,7 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
             .Include(item => item.CatalogBrand).Include(item => item.CatalogType)
             .OrderBy(item => item.Id).ToListAsync(CancellationToken);
 
-        Assert.Equal(LegacySeedData.Items, items.Select(Fact));
+        Assert.Equal(LegacySeedData.Items, items.Select(LegacySeedData.Item));
         Assert.All(items, item => Assert.Equal((item.CatalogBrandId, item.CatalogTypeId), (item.CatalogBrand!.Id, item.CatalogType!.Id)));
 
         // The legacy seeding left catalog_hilo at 11, so EF Core's first block starts at 21.
@@ -391,8 +391,4 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
             connection, "SELECT CAST(last_used_value AS bigint) FROM sys.sequences WHERE name = N'catalog_hilo'", CancellationToken);
 
     private static string DatabaseName(string connectionString) => new SqlConnectionStringBuilder(connectionString).InitialCatalog;
-
-    private static string Fact(CatalogItem item) => LegacySeedData.Item(
-        item.Id, item.Name, item.Description, item.Price, item.PictureFileName, item.CatalogTypeId, item.CatalogBrandId,
-        item.AvailableStock, item.RestockThreshold, item.MaxStockThreshold, item.OnReorder);
 }

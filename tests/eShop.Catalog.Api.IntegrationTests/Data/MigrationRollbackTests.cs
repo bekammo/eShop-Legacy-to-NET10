@@ -1,3 +1,4 @@
+using eShop.Catalog.Api.Tests.Legacy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -26,9 +27,15 @@ public sealed class MigrationRollbackTests(SqlServerFixture sqlServer)
         Assert.Empty(await SqlServerSchema.SequenceFactsAsync(connection, cancellationToken));
         Assert.Empty(await context.Database.GetAppliedMigrationsAsync(cancellationToken));
 
-        await migrator.MigrateAsync(cancellationToken: cancellationToken);
+        // This process still holds HiLo IDs from the dropped sequence, so the seeder would refuse them
+        // (ADR-0013): the migrations are applied again as a new process would apply them.
+        await using (var again = CatalogDatabase.CreateContextAsInANewProcess(connectionString))
+        {
+            await again.Database.MigrateAsync(cancellationToken);
+        }
 
         await LegacySchemaAssert.HasTheLegacySchemaAsync(connection, cancellationToken);
         Assert.Equal(context.Database.GetMigrations(), await context.Database.GetAppliedMigrationsAsync(cancellationToken));
+        Assert.Equal(LegacySeedData.Items, await CatalogDatabase.ItemsAsync(connectionString, cancellationToken));
     }
 }

@@ -23,8 +23,28 @@ internal static class DataServiceCollectionExtensions
         return services.AddDbContext<CatalogDbContext>(options => options.UseCatalogSqlServer(connectionString));
     }
 
-    // The SQL Server options of every CatalogDbContext, so that the app and the tests build the same
-    // one. The migrations history table is not in the model, so HasDefaultSchema does not reach it.
+    // Database:MigrateOnStartup, allowed only in Development (ADR-0013). Any other environment stops at
+    // startup with it on, so that a stray environment variable cannot migrate a deployed database.
+    internal static IServiceCollection AddMigrateOnStartup(this IServiceCollection services)
+    {
+        services.AddOptions<DatabaseOptions>()
+            .BindConfiguration(DatabaseOptions.SectionName)
+            .ValidateDataAnnotations()
+            .Validate<IHostEnvironment>(
+                static (options, environment) => !options.MigrateOnStartup || environment.IsDevelopment(),
+                $"{DatabaseOptions.SectionName}:{nameof(DatabaseOptions.MigrateOnStartup)} is allowed only in the " +
+                "Development environment. Other environments apply the migrations with the idempotent script.")
+            .ValidateOnStart();
+
+        return services.AddHostedService<MigrateOnStartupService>();
+    }
+
+    // The options of every CatalogDbContext, so that the app, the tests and the dotnet-ef tool build the
+    // same one:
+    // - The migrations history table is not in the model, so HasDefaultSchema does not reach it.
+    // - Every Migrate and dotnet ef database update ends with the sample-item seeder (ADR-0013).
     internal static DbContextOptionsBuilder UseCatalogSqlServer(this DbContextOptionsBuilder options, string? connectionString = null) =>
-        options.UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable(HistoryRepository.DefaultTableName, CatalogDbContext.Schema));
+        options.UseSqlServer(connectionString, sql => sql.MigrationsHistoryTable(HistoryRepository.DefaultTableName, CatalogDbContext.Schema))
+            .UseSeeding(SampleItemSeeder.Seed)
+            .UseAsyncSeeding(SampleItemSeeder.SeedAsync);
 }
