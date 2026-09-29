@@ -22,6 +22,23 @@ internal static class SqlServerSchema
         return SchemaFacts.Sorted(rows.Select(r => (string)r[0]));
     }
 
+    // The whole schema in one list, the history tables included: each table's facts, prefixed with
+    // the table, then the sequences and the objects outside sys.objects. Object counts are separate.
+    public static async Task<IReadOnlyList<string>> SnapshotAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        var tables = await QueryAsync(
+            connection, "SELECT s.name + '.' + t.name FROM sys.tables t JOIN sys.schemas s ON s.schema_id = t.schema_id", [], cancellationToken);
+        var facts = new List<string>();
+        foreach (var table in tables.Select(r => (string)r[0]))
+        {
+            facts.AddRange((await TableFactsAsync(connection, table, cancellationToken)).Select(fact => $"{table}: {fact}"));
+        }
+
+        facts.AddRange(await SequenceFactsAsync(connection, cancellationToken));
+        facts.AddRange(await ObjectsOutsideSysObjectsAsync(connection, cancellationToken));
+        return SchemaFacts.Sorted(facts);
+    }
+
     public static async Task<IReadOnlyList<string>> TableFactsAsync(SqlConnection connection, string table, CancellationToken cancellationToken)
     {
         var databaseCollation = (string)(await QueryAsync(

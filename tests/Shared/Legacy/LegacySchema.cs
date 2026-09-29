@@ -93,6 +93,16 @@ internal static class LegacySchema
         return SchemaFacts.Sorted(counts.Where(c => c.Value > 0).Select(c => SchemaFacts.ObjectCount(c.Key, c.Value)));
     }
 
+    // The object counts of a legacy database after the Stage 4.3 baseline: every legacy object
+    // stays, and EF Core's history table and its primary key are added.
+    public static IReadOnlyList<string> AdoptedObjectCountFacts()
+    {
+        var counts = Schema["objectCounts"]!.AsObject().ToDictionary(p => p.Key, p => (int)p.Value!);
+        counts["USER_TABLE"] += 1;
+        counts["PRIMARY_KEY_CONSTRAINT"] += 1;
+        return SchemaFacts.Sorted(counts.Select(c => SchemaFacts.ObjectCount(c.Key, c.Value)));
+    }
+
     // schema.json lists check constraints only as a count. The legacy schema has none, so the tables
     // have no check-constraint facts; a capture that found some would need them listed per table.
     private static JsonNode ReadSchema()

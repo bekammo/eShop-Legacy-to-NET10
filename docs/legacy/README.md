@@ -3,6 +3,7 @@
 This folder records what the legacy app (`src/eShopLegacyMVC`) actually does when it runs. The data was captured from the running app, not derived from the code, and later stages test the new API against it:
 
 - Stage 4 checks the EF Core schema and seed data against `schema.json` and `seed-data.json`.
+- Stage 4.3 builds legacy databases from `schema.sql`, `seed-data.json` and `ef6-model.edmx` to test `baseline.sql`, which lets the new API adopt one.
 - Stage 7 replays the golden exchanges in `contract/` against the new endpoints.
 
 The code-level analysis is in [`../legacy-audit.md`](../legacy-audit.md).
@@ -21,6 +22,34 @@ The capture ran against the legacy code at the commit in [`capture-info.json`](c
 | [`ef6-model.edmx`](ef6-model.edmx) | The EF6 model that `CreateDatabaseIfNotExists` stored (gzip-compressed) in `__MigrationHistory`. |
 | [`contract/`](contract) | 61 golden HTTP exchanges for the endpoints the new API keeps or retires, in 7 files (one per endpoint group). |
 | [`evidence/`](evidence) | 12 scenarios run through the MVC UI, including the defects, plus a log4net output sample. |
+| [`baseline.sql`](baseline.sql) | Not captured: the Stage 4.3 script that lets the new API adopt an existing legacy database. See [below](#adopting-an-existing-legacy-database). |
+
+## Adopting an existing legacy database
+
+A database that the legacy app created already has the schema of the new API's first migration, `InitialCreate`, but no EF Core migrations history, so the migrations cannot run on it. [`baseline.sql`](baseline.sql) records `InitialCreate` as applied, after checking that the database is one it can adopt ([ADR-0012](../../DECISIONS.md#adr-0012-adopting-a-legacy-database)). It adds EF Core's history table and one row, and changes nothing else. The legacy app can keep running against the database.
+
+Before you start:
+
+- The server must be SQL Server 2019 or later, the oldest version EF Core 10 supports, or Azure SQL. The script itself needs SQL Server 2017.
+- The login needs `db_owner`, or `db_ddladmin`, `db_datareader`, `db_datawriter` and `VIEW DEFINITION`, on the database. Without `VIEW DEFINITION` the catalog views hide objects from the login, so the script refuses to run (50012).
+- Take a copy-only backup (`BACKUP DATABASE ... WITH COPY_ONLY, CHECKSUM`, or the platform's equivalent). Ideally, run the whole procedure on a restored copy first.
+
+Steps:
+
+1. Run the baseline before anything else touches the database with the new migrations: no `dotnet ef database update`, no migrations script, no app started with migrate-on-startup. Always use `-b`, so that a refusal ends sqlcmd with exit code 1, and check the exit code. sqlcmd 18 encrypts the connection and validates the server's certificate by default; add `-C` when the client does not trust that certificate, for example a self-signed one. Run it outside a transaction and with implicit transactions off, as a plain sqlcmd session is; otherwise the script refuses (50001) and leaves your transaction as it was.
+
+   ```bash
+   sqlcmd -S <server> -d <database> <authentication> -b -i docs/legacy/baseline.sql
+   ```
+
+2. Exit code 0 prints `Baselined: InitialCreate is recorded as applied.`, or, on a second run, `nothing to do`. Exit code 1 prints the error number and what differs. The numbers are listed at the top of the script. Fix the cause, or decide how to adopt that database, and run it again. The script runs in one transaction, so a refusal leaves the database as it was.
+3. Point `ConnectionStrings:CatalogDb` at the database and apply the migrations as usual ([ADR-0011](../../DECISIONS.md#adr-0011-ef-core-migration-strategy)).
+
+Afterwards:
+
+- **Undo**, before any later migration was applied: `DROP TABLE dbo.__EFMigrationsHistory`, while it holds only the `InitialCreate` row. No restore is needed.
+- **Never revert past `InitialCreate`** on an adopted database, with `dotnet ef database update 0` or a script: its `Down` drops the legacy tables and the item-ID sequence.
+- **Rollback to the legacy app** means pointing it at the same database. That works while every migration applied since then is expand-only, until the legacy app is retired in Stage 11: no renamed or dropped columns that the legacy app maps, and new columns nullable or with a default. Restore the backup only in a disaster: it loses everything written since. After a restore, restart both apps, because each holds a block of item IDs in memory.
 
 ## Re-running the capture
 

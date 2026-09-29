@@ -24,13 +24,13 @@
   </ItemGroup>
 
   <!--
-    The Stage 1.2 characterization data (docs/legacy) and the code that reads it, shared by both test
-    projects: the unit tests compare the EF Core model with it, and from Stage 4.2 the integration
-    tests compare a live database.
+    The Stage 1.2 characterization data (docs/legacy), the Stage 4.3 baseline script and the code that
+    reads them, shared by both test projects: the unit tests compare the EF Core model with the data
+    and check the script, and the integration tests compare live databases and run the script.
   -->
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Shared\**\*.cs" LinkBase="Shared" />
-    <None Include="$(MSBuildThisFileDirectory)..\docs\legacy\schema.json;$(MSBuildThisFileDirectory)..\docs\legacy\seed-data.json"
+    <None Include="$(MSBuildThisFileDirectory)..\docs\legacy\schema.json;$(MSBuildThisFileDirectory)..\docs\legacy\seed-data.json;$(MSBuildThisFileDirectory)..\docs\legacy\schema.sql;$(MSBuildThisFileDirectory)..\docs\legacy\ef6-model.edmx;$(MSBuildThisFileDirectory)..\docs\legacy\baseline.sql"
           LinkBase="Legacy" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

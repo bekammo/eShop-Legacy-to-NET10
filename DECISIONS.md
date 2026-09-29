@@ -21,6 +21,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0009](#adr-0009-configuration) | Configuration | Accepted | 3.1 |
 | [ADR-0010](#adr-0010-data-model) | Data model | Accepted | 4.1 |
 | [ADR-0011](#adr-0011-ef-core-migration-strategy) | EF Core migration strategy | Accepted | 4.2 |
+| [ADR-0012](#adr-0012-adopting-a-legacy-database) | Adopting a legacy database | Accepted | 4.3 |
 
 ## Template
 
@@ -851,3 +852,163 @@ Each of these deliberate breaks failed the intended tests:
 - The first run on a machine, and every CI run, pulls the SQL Server image.
 - A model change without a migration fails the unit tests.
 - Adopting an existing legacy database is a separate, tested procedure (Stage 4.3).
+
+---
+
+## ADR-0012: Adopting a legacy database
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.3
+
+### Context
+
+- The new API gets a database of its own. Adopting an existing legacy database is a separate, tested procedure ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover), [ADR-0011](#adr-0011-ef-core-migration-strategy)).
+- A legacy database has the schema that `InitialCreate` creates ([ADR-0010](#adr-0010-data-model)). It also has EF6's `__MigrationHistory`, the unused `catalog_brand_hilo` and `catalog_type_hilo` sequences, and data. It has no `__EFMigrationsHistory`.
+- EF Core decides what to apply only from `[dbo].[__EFMigrationsHistory]`. On a legacy database, `Migrate`, `dotnet ef database update` and the idempotent script all run `InitialCreate`, and fail on the existing legacy objects, the `catalog_hilo` sequence first. By then EF Core has already created an empty history table, outside the migration's transaction.
+- Both apps take item IDs from `catalog_hilo` in blocks of 10. The legacy generator hard-codes the block size, and EF Core takes it from the model, so neither reads the sequence's increment ([audit](docs/legacy-audit.md#53-sequences-and-hilo)).
+- A real legacy database may have drifted from the captured one:
+  - indexes, statistics or triggers added by a DBA
+  - sequences created by hand. The legacy sequence scripts hard-code the database name ([audit D12](docs/legacy-audit.md#7-defects-and-risks)), so a database with another name got its sequences some other way.
+  - reference data from the CSV customization seed, which [ADR-0003](#adr-0003-non-goals) dropped
+  - rows imported with explicit IDs
+- EF Core 7 and later write with `OUTPUT` clauses without `INTO`, which SQL Server rejects on a table that has an enabled trigger.
+- A design critique, run before the implementation, checked these facts by experiment, against the real `eShopLegacyMVC.dll` and EF Core 10.0.12:
+  - EF6 6.2 starts without `__MigrationHistory`. When the table is there, EF6 compares the stored model with the code model, never with the live schema.
+  - EF Core ignores the history row's `ProductVersion`, and matches the whole `MigrationId`, timestamp included.
+  - A trigger, an increment other than 10, a restarted sequence, and an imported ID above the sequence all passed a simpler draft of the baseline, then broke EF Core writes or produced duplicate IDs.
+- A review of the implementation found more by experiment:
+  - A login without `VIEW DEFINITION` sees no rows in `sys.sql_expression_dependencies`, so a schema-bound view or a row-level-security policy on the catalog tables passed the checks.
+  - With `IMPLICIT_TRANSACTIONS` on, the script reported success while its work stayed uncommitted.
+  - Comparing indexes and foreign keys by name alone missed an index redefined under its legacy name and a disabled foreign key.
+
+### Decision
+
+**1. A baseline script that only adds**
+
+[`docs/legacy/baseline.sql`](docs/legacy/baseline.sql) creates `[dbo].[__EFMigrationsHistory]` exactly as EF Core does and records `InitialCreate` as applied, with the `ProductVersion` of that migration. Nothing else changes: EF6's history table, the unused sequences and all data stay. Keeping them costs nothing and leaves nothing to undo. EF6 does not need its history table to start.
+
+**2. Checks before any write**
+
+The script refuses, with its own error number and a list of what differs, a database that:
+
+| Error | Refused because |
+|---|---|
+| 50001 | the script runs inside a transaction, or with `IMPLICIT_TRANSACTIONS` on, either of which could still roll it back. The caller's transaction is left as it was. |
+| 50002 | the server has no `sys.sequences.last_used_value` (older than SQL Server 2017) |
+| 50012 | the login lacks `VIEW DEFINITION` on the database, so the checks could not see every object |
+| 50003 | EF Core's migrations lock is held for more than 30 seconds |
+| 50004 | `__EFMigrationsHistory` exists but is not EF Core's table |
+| 50005 | `__EFMigrationsHistory` holds other migrations but not `InitialCreate` |
+| 50006 | the catalog tables or `catalog_hilo` are missing |
+| 50007 | the columns of the catalog tables differ from the legacy schema, in either direction: name, type, nullability, identity, a default or a computed expression, and a collation other than the database's |
+| 50008 | the rest of the catalog tables differs from the legacy schema, in either direction. That covers keys and indexes by kind, clustering, columns, filter and state; user-created statistics; check and default constraints; triggers; foreign keys, the ones into the tables included, by columns, actions and state; and schema-bound objects on the tables. |
+| 50009 | `catalog_hilo` is not a `bigint` sequence with `INCREMENT BY 10` and `NO CYCLE` |
+| 50010 | an item ID is at or above the sequence's next value, or the sequence cannot hand out a whole next block of `int` item IDs |
+| 50011 | the brands or types differ from the reference data, compared byte for byte in both directions |
+
+The expected lists describe the legacy schema, which is the schema of `InitialCreate`. They never follow later migrations, because the baseline only ever stands in for `InitialCreate`.
+
+**3. Refuse rather than warn**
+
+After the baseline, the migrations own the schema, and they know only the legacy objects:
+
+- An unknown index or statistic can stop a later column change.
+- An enabled trigger breaks EF Core's writes.
+- Extra reference rows would meet later `HasData` changes.
+
+So the operator decides explicitly. An index can be dropped first and added back through a migration after the adoption. A customization database is out of scope ([ADR-0003](#adr-0003-non-goals)).
+
+**4. Partial states and repeats**
+
+- `InitialCreate` already recorded: nothing to do. This covers a second run and a database that the migrations created.
+- An empty history table, left by a migration that failed on the legacy objects: adopted as usual.
+- Other migrations without `InitialCreate`: refused (50005).
+
+**5. Safe to run**
+
+- One transaction with `XACT_ABORT`, so any failure leaves the database as it was.
+- The script refuses to run inside a transaction or with implicit transactions (50001). That check runs before `XACT_ABORT` is set, so the refusal leaves the caller's own transaction open, for the caller to end.
+- The script takes EF Core's migrations lock (`__EFMigrationsLock`), so `Migrate` and `dotnet ef database update` wait for it, and it waits for them. The idempotent migrations script takes no lock. What protects that path is the procedure's rule to run the baseline first.
+- `LOCK_TIMEOUT` is 30 seconds.
+- It holds exclusive locks only on the new history table and on system-catalog rows. On the catalog tables it takes brief shared locks while it reads, so it can run while the legacy app serves requests.
+
+**6. One script for sqlcmd and SqlClient**
+
+- One batch: no `GO`, no sqlcmd commands or variables, no double-quoted identifiers.
+- Statements that read columns of the catalog tables run through `sp_executesql`. In the batch itself, a renamed column would stop the whole batch at compile time, before the column check could report it.
+- The operator runs the script with `sqlcmd -b`, whose exit code tells adoption from refusal. The tests run the same file through SqlClient with `QUOTED_IDENTIFIER` off, as sqlcmd does, and through the container's own sqlcmd.
+
+**7. Coexistence and rollback**
+
+- The legacy app can keep running against an adopted database. Given checks 50009 and 50010, item IDs cannot collide: each app takes `NEXT VALUE` and uses that value and the next nine, and every existing ID lies below the next value.
+- This amends [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) decision 2 in one point: an adopted database is shared by the legacy app and the new API until Stage 11 retires the legacy app. A database that the migrations created is still the new API's own.
+- Rolling back to the legacy app means pointing it at the same database. That holds while every later migration is expand-only, until Stage 11: no renamed or dropped columns that the legacy app maps, and new columns nullable or with a default. EF6's model check would not notice a contracting change; the legacy app would fail at runtime.
+- `InitialCreate` must never be reverted on an adopted database: its `Down` drops the legacy tables and the sequence.
+- Undoing the baseline before any later migration is `DROP TABLE dbo.__EFMigrationsHistory`.
+
+**8. Procedure**
+
+[docs/legacy/README.md](docs/legacy/README.md#adopting-an-existing-legacy-database) documents:
+
+- the requirements. The server is SQL Server 2019 or later, the oldest version EF Core 10 supports, or Azure SQL; the script itself needs SQL Server 2017. The login has `db_owner`, or `db_ddladmin`, `db_datareader`, `db_datawriter` and `VIEW DEFINITION` on the database.
+- a copy-only backup, and ideally a dry run on a restored copy
+- running the baseline with `sqlcmd -b` before anything applies migrations, and checking the exit code
+- the undo and rollback rules above
+
+**9. Stage 4.4 constraint**
+
+An adopted database must never receive the sample items. The Stage 4.4 seeder has to guarantee that, because `dotnet ef database update` and migrate-on-startup run EF Core's seeding on every call.
+
+**Tests**
+
+Integration tests (`LegacyBaselineTests`) build each legacy database the way the legacy app leaves it:
+
+- the schema from `schema.sql`
+- the rows from `seed-data.json`
+- EF6's history row, with the gzip-compressed model from `ef6-model.edmx`
+- every sequence drawn as far as the legacy seeding drew it
+- `READ_COMMITTED_SNAPSHOT` on, as EF6 and EF Core create databases
+
+| Test | What it pins |
+|---|---|
+| `Adopted_database_matches_a_migrated_one_apart_from_the_legacy_objects` | After the baseline and `Migrate`, every migration is recorded. The schema equals a migrated database's, apart from EF6's history table and the two unused sequences, which equal `schema.json`. The object counts equal the legacy counts plus EF Core's history table, and EF6's history row is unchanged. |
+| `Adopted_database_takes_the_idempotent_migrations_script` | The deployment script records every migration and changes no schema. |
+| `EF_Core_reads_and_writes_an_adopted_database_with_ids_after_the_legacy_ones` | EF Core reads the 12 legacy items, with their brands and types, equal to `seed-data.json`. A new item gets ID 21, the first ID of the block after the legacy seeding's. The legacy app's next block starts at 31. Updates and deletes work. |
+| `Baseline_changes_nothing_when_it_runs_again`, `Baseline_changes_nothing_in_a_database_that_the_migrations_created` | The repeat cases. |
+| `Baseline_adopts_a_database_that_a_failed_migration_left_behind` | The empty history table is accepted. |
+| `Baseline_refuses_a_legacy_database_that_has_changed` (29 cases), `Baseline_refuses_a_database_that_is_not_a_legacy_one`, `Baseline_refuses_to_run_with_implicit_transactions`, `Baseline_refuses_a_login_without_VIEW_DEFINITION` | Each refusal reports its error number, leaves no transaction open, and changes nothing. The comparison covers the schema, the object counts, both history tables, the rows of the catalog tables, the sequences' positions and the identity values. The cases cover both directions of each list comparison, and the boundaries of 50010: a sequence restarted at the highest ID, an item imported at the sequence's next value, and a sequence at the end of the `int` range. |
+| `Baseline_refuses_to_run_inside_a_transaction` | 50001 leaves the caller's transaction open and the database unchanged. |
+| `Baseline_adopts_with_the_documented_rights_and_still_sees_schema_bound_objects` | A database user with exactly the documented roles and `VIEW DEFINITION` adopts a legacy database, and is refused one with a schema-bound view. |
+| `Sqlcmd_exits_with_0_when_the_baseline_adopts_a_database_and_with_1_when_it_refuses` | The documented `sqlcmd -b` run, with the image's own sqlcmd. |
+
+Unit tests (`LegacyBaselineScriptTests`) need no database:
+
+- the script records the first migration's exact ID
+- it creates the history table with EF Core's own DDL
+- it has no `GO` separators, sqlcmd commands or variables, or double-quoted identifiers
+
+Before the review, each check in the script was switched off in turn, and each time exactly the tests for that check failed. With the "already recorded" branch removed, the repeat tests failed. The conditions and cases added after the review have not all been proven against such breaks.
+
+Not tested:
+
+- 50002, because the test server is SQL Server 2025
+- 50003, the lock wait
+- running the legacy app itself against an adopted database. The design critique did that once, by hand.
+
+### Alternatives considered
+
+- **Copying the legacy data into a new database that the migrations create.** The schema would carry no legacy objects. But the data would have to move, with downtime, and the item-ID sequence would have to move with it. The legacy app could no longer be rolled back to by pointing it at the same database.
+- **A conditional `InitialCreate`** that skips objects that already exist. Every database would run that condition forever, for a situation that only adoption has.
+- **Letting the app adopt the database at startup.** Schema decisions would move into the app's startup, and the app's login would need rights to change the schema ([ADR-0011](#adr-0011-ef-core-migration-strategy)).
+- **Dropping EF6's history table and the unused sequences in the baseline.** EF Core does not need them gone, and dropping them would make the baseline destructive, and harder to undo.
+- **Warnings instead of refusals** for extra indexes and extra reference rows. The adoption would succeed, and a later migration or `HasData` change would then fail in production (decision 3).
+- **Checking only that the legacy objects exist**, as the first draft did. The critique showed that this adopts databases on which EF Core then fails or produces duplicate IDs.
+
+### Consequences
+
+- Adopting a legacy database is one reviewed script, run with `sqlcmd -b`. A refusal names what differs.
+- Until Stage 11, every migration must be expand-only, so that the legacy app can still be rolled back to on an adopted database. Migration reviews check this.
+- Adopted databases keep EF6's history table and the two unused sequences. After Stage 11 a migration may drop them, guarded with `IF EXISTS`, because databases that the migrations created do not have them.
+- `baseline.sql` is tied to `InitialCreate`. The unit tests fail if the migration's ID or EF Core's history DDL change.
+- Stage 4.4 must keep the sample items out of adopted databases (decision 9).

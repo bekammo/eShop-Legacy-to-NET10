@@ -150,9 +150,9 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - brands and types get their legacy IDs
 
   ADR: EF Core migration strategy.
-- [ ] 4.3 Add a baseline procedure for an existing legacy database (`docs/legacy/baseline.sql`). Integration test: apply the legacy schema, run the baseline, then check that EF Core reads and writes work and that HiLo continues from the sequence.
+- [x] 4.3 Add a baseline procedure for an existing legacy database (`docs/legacy/baseline.sql`). Integration test: apply the legacy schema, run the baseline, then check that EF Core reads and writes work and that HiLo continues from the sequence.
 - [ ] 4.4 Seeding and startup:
-  - a sample-item seeder via `UseSeeding` and `UseAsyncSeeding` (shared logic, idempotent, item IDs from HiLo)
+  - a sample-item seeder via `UseSeeding` and `UseAsyncSeeding` (shared logic, idempotent, item IDs from HiLo). It never adds sample items to an adopted legacy database (ADR-0012).
   - config-gated migration on startup (Development only)
   - `/health/ready` with a database check
 
@@ -231,7 +231,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [ ] 10.2 Add a Docker trait and a documented Docker-free subset of the tests. CI publishes test results and coverage. Complete the README testing section.
 
 ### Stage 11 — Cutover & cleanup
-- [ ] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback.
+- [ ] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback, including databases adopted with the Stage 4.3 baseline (ADR-0012: rollback by pointing the legacy app at the same database, which holds while migrations stay expand-only).
 - [ ] 11.2 Move the pictures into the API project and switch the default `PicturesPath`.
 - [ ] 11.3 Delete the legacy projects, `eShopLegacyMVC.sln`, the stop-files in the legacy project folders and all legacy-only assets. `docs/legacy` stays as a reference, with its capture tool and that tool's stop-files. ADR summarizing the removals.
 - [ ] 11.4 Package hygiene, dead-code removal, and a final pass on the README, this plan and `DECISIONS.md`.

@@ -141,7 +141,7 @@ Create or update the Development database, here the LocalDB one:
 dotnet ef database update --project src/eShop.Catalog.Api --connection "Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=eShopCatalog;Integrated Security=True"
 ```
 
-Write the SQL that brings an empty database, or one these migrations created, up to date, for review before a deployment applies it. A legacy database needs the Stage 4.3 baseline first. The `artifacts` folder is ignored by git.
+Write the SQL that brings an empty database, or one these migrations created, up to date, for review before a deployment applies it. The `artifacts` folder is ignored by git.
 
 ```bash
 dotnet ef migrations script --idempotent --project src/eShop.Catalog.Api --output artifacts/migrate.sql
@@ -149,9 +149,11 @@ dotnet ef migrations script --idempotent --project src/eShop.Catalog.Api --outpu
 
 The tool does not start the app: it builds the `DbContext` through a design-time factory, so these commands need no configuration. Only `database update` connects. `dotnet ef migrations remove` tries to check the database first, so remove an unapplied migration with `--force`.
 
+A database that the legacy app created cannot take the migrations until [`docs/legacy/baseline.sql`](docs/legacy/baseline.sql) has adopted it. The procedure is in [docs/legacy/README.md](docs/legacy/README.md#adopting-an-existing-legacy-database) ([ADR-0012](DECISIONS.md#adr-0012-adopting-a-legacy-database)).
+
 ## Running the tests
 
-The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). The unit tests need only the SDK. The integration tests start SQL Server in a container, so Docker must be running. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`. Each test class gets a database of its own in that container, created by the migrations.
+The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). The unit tests need only the SDK. The integration tests start SQL Server in a container, so Docker must be running. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`. Each test class, or each test that needs one, gets a database of its own in that container.
 
 Run every test:
 

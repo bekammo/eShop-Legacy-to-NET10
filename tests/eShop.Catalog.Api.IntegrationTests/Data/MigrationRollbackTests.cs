@@ -1,4 +1,3 @@
-using eShop.Catalog.Api.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -15,9 +14,7 @@ public sealed class MigrationRollbackTests(SqlServerFixture sqlServer)
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var connectionString = sqlServer.NewDatabase("rollback");
-        var options = new DbContextOptionsBuilder<CatalogDbContext>();
-        options.UseCatalogSqlServer(connectionString);
-        await using var context = new CatalogDbContext(options.Options);
+        await using var context = CatalogDatabase.CreateContext(connectionString);
         var migrator = context.GetService<IMigrator>();
         await using var connection = new SqlConnection(connectionString);
 
