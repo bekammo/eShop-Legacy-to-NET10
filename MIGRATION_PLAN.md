@@ -137,22 +137,22 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   ADR: configuration, including a table that records the fate of every `Web.config` element.
 
 ### Stage 4 — Domain & EF Core
-- [ ] 4.1 Domain and model:
+- [x] 4.1 Domain and model:
   - Entities (`string? Description`, no UI attributes, `PictureUri` moved out of the entity).
   - `CatalogDbContext` with `IEntityTypeConfiguration<T>` classes that reproduce the EF6 schema: the EF6 PK/FK/index names, `decimal(18,2)`, cascades, and the `catalog_hilo` sequence with `UseHiLo`.
   - `HasData` for brands and types, with the legacy IDs.
   - `AddDbContext`, failing fast when the connection string is missing. The `Testing` environment has no connection string of its own (ADR-0009), so `CatalogApiFactory` sets a placeholder that no test connects to until 4.2.
 
   Unit tests assert the model metadata.
-- [ ] 4.2 Add the `dotnet-ef` local tool and the `InitialCreate` migration, plus the Testcontainers fixture (pinned image, one database per test class). Tests:
+- [x] 4.2 Add the `dotnet-ef` local tool and the `InitialCreate` migration, plus the Testcontainers fixture (pinned image, one database per test class). Tests:
   - migrations apply cleanly
   - the schema matches `docs/legacy/schema.json`
   - brands and types get their legacy IDs
 
   ADR: EF Core migration strategy.
-- [ ] 4.3 Add a baseline procedure for an existing legacy database (`docs/legacy/baseline.sql`). Integration test: apply the legacy schema, run the baseline, then check that EF Core reads and writes work and that HiLo continues from the sequence.
-- [ ] 4.4 Seeding and startup:
-  - a sample-item seeder via `UseSeeding` and `UseAsyncSeeding` (shared logic, idempotent, item IDs from HiLo)
+- [x] 4.3 Add a baseline procedure for an existing legacy database (`docs/legacy/baseline.sql`). Integration test: apply the legacy schema, run the baseline, then check that EF Core reads and writes work and that HiLo continues from the sequence.
+- [x] 4.4 Seeding and startup:
+  - a sample-item seeder via `UseSeeding` and `UseAsyncSeeding` (shared logic, idempotent, item IDs from HiLo). It never adds sample items to an adopted legacy database (ADR-0012).
   - config-gated migration on startup (Development only)
   - `/health/ready` with a database check
 
@@ -162,7 +162,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - no HiLo collision after seeding
 
   ADR: seeding and migrate-on-startup policy.
-- [ ] 4.5 Document the local database options: LocalDB by default, and `compose.yaml` SQL Server using the same pinned image as the tests.
+- [x] 4.5 Document the local database options: LocalDB by default, and `compose.yaml` SQL Server using the same pinned image as the tests. Unit tests keep the compose image equal to the tests' image, the `sa` password out of the file and the port on loopback. ADR: local development databases.
 
 ### Stage 5 — Application services & DI
 - [ ] 5.1 Async service layer:
@@ -216,7 +216,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - `GET /api/items` (validated `pageSize` 1–100 and `pageIndex` ≥ 0)
   - `GET /api/items/{id}`
   - `GET /api/types`
-- [ ] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
+- [ ] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable: a new item gets the legacy default picture `dummy.png`. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
 - [ ] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
 
 ### Stage 8 — Async verification
@@ -231,7 +231,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [ ] 10.2 Add a Docker trait and a documented Docker-free subset of the tests. CI publishes test results and coverage. Complete the README testing section.
 
 ### Stage 11 — Cutover & cleanup
-- [ ] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback.
+- [ ] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback, including databases adopted with the Stage 4.3 baseline (ADR-0012: rollback by pointing the legacy app at the same database, which holds while migrations stay expand-only).
 - [ ] 11.2 Move the pictures into the API project and switch the default `PicturesPath`.
 - [ ] 11.3 Delete the legacy projects, `eShopLegacyMVC.sln`, the stop-files in the legacy project folders and all legacy-only assets. `docs/legacy` stays as a reference, with its capture tool and that tool's stop-files. ADR summarizing the removals.
 - [ ] 11.4 Package hygiene, dead-code removal, and a final pass on the README, this plan and `DECISIONS.md`.

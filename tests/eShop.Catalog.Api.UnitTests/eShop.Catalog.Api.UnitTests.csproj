@@ -4,4 +4,9 @@
     <ProjectReference Include="..\..\src\eShop.Catalog.Api\eShop.Catalog.Api.csproj" />
   </ItemGroup>
 
+  <!-- The local SQL Server (ADR-0014), which ComposeFileTests checks. -->
+  <ItemGroup>
+    <None Include="..\..\compose.yaml" Link="compose.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

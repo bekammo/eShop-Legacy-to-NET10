@@ -1,0 +1,42 @@
+# SQL Server for developing eShop.Catalog.Api on any OS with Docker (ADR-0014). The default on
+# Windows is LocalDB, which needs no container. The API is not in this file: run it with
+# `dotnet run` and point its connection string at this server with user secrets, as README.md
+# describes under "Local database".
+#
+#   docker compose up --detach --wait   start the server and wait until it accepts logins
+#   docker compose down                 remove the container; the databases stay in the volume
+#   docker compose down --volumes       remove the databases as well, to start over
+
+name: eshop-catalog
+
+services:
+  sqlserver:
+    # The image the integration tests run. A unit test keeps the two equal, so an upgrade
+    # changes both (ADR-0011).
+    image: mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04
+    # SQL Server has no Arm64 image. Docker Desktop on a Mac with Apple silicon can run this one
+    # under Rosetta emulation (untested here).
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      # Never committed. Compose reads it from the environment or from a .env file next to this
+      # one, which git ignores. SQL Server sets it only when it creates the volume's databases.
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD, for example in .env (see README.md, Local database)}"
+    ports:
+      # Loopback only, so the sa login cannot be reached from another machine.
+      - "127.0.0.1:${CATALOG_DB_PORT:-1433}:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # $$ leaves the variable to the container's shell, which has the password. sqlcmd takes it
+      # from SQLCMDPASSWORD, so it never appears on a command line that other users could list.
+      test: ["CMD-SHELL", "SQLCMDPASSWORD=\"$$MSSQL_SA_PASSWORD\" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -Q \"SELECT 1\""]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+      start_interval: 2s
+
+volumes:
+  sqlserver-data:

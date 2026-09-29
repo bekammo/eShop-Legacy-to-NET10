@@ -19,6 +19,11 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0007](#adr-0007-test-strategy) | Test strategy | Accepted | 2.2 |
 | [ADR-0008](#adr-0008-continuous-integration) | Continuous integration | Accepted | 2.3 |
 | [ADR-0009](#adr-0009-configuration) | Configuration | Accepted | 3.1 |
+| [ADR-0010](#adr-0010-data-model) | Data model | Accepted | 4.1 |
+| [ADR-0011](#adr-0011-ef-core-migration-strategy) | EF Core migration strategy | Accepted | 4.2 |
+| [ADR-0012](#adr-0012-adopting-a-legacy-database) | Adopting a legacy database | Accepted | 4.3 |
+| [ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness) | Seeding, migrate-on-startup and readiness | Accepted | 4.4 |
+| [ADR-0014](#adr-0014-local-development-databases) | Local development databases | Accepted | 4.5 |
 
 ## Template
 
@@ -625,3 +630,625 @@ Each test was checked against a deliberate break, and each break failed the inte
 - From Stage 4.1 the factory has to set a connection string, because the host does not start without one.
 - Configuration errors stop the host at startup and name the setting, instead of failing the first request that reads it.
 - The request-body limit is an open item for Stage 7.6, and the plan records it there.
+
+---
+
+## ADR-0010: Data model
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.1
+
+### Context
+
+- The legacy app has three EF6 entities: `CatalogItem`, `CatalogBrand` and `CatalogType` ([audit: EF6 data model](docs/legacy-audit.md#5-ef6-data-model-and-expected-schema)). `CatalogItem` mixes storage with the UI:
+  - MVC validation and display attributes (`[Required]`, `[Range]`, `[RegularExpression]`, `[Display]`, `[DataType]`)
+  - a `PictureUri` that the mapping ignores and a controller fills for each request
+  - a constructor that defaults `PictureFileName` to `dummy.png`
+- The Stage 1.2 capture recorded the schema that EF6 creates ([`schema.json`](docs/legacy/schema.json)):
+  - EF6 constraint names: `PK_dbo.Catalog`, `FK_dbo.Catalog_dbo.CatalogBrand_CatalogBrandId`, `IX_CatalogBrandId`
+  - `decimal(18,2)` prices and cascading foreign keys
+  - `IDENTITY` brand and type IDs
+  - item IDs from the `catalog_hilo` sequence (`bigint`, start 1, increment 10), through a hand-rolled HiLo generator
+- EF Core's conventions name the same objects differently: `PK_Catalog`, `FK_Catalog_CatalogBrand_CatalogBrandId`, `IX_Catalog_CatalogBrandId`.
+- The legacy schema has two more sequences, `catalog_brand_hilo` and `catalog_type_hilo`. The seeding reads each once and discards the value, because brand and type IDs are `IDENTITY` ([audit: sequences](docs/legacy-audit.md#53-sequences-and-hilo)).
+- Brand and type IDs are visible outside the database. `GET /api/brands` returns them, and the sample items refer to brand IDs 2 and 5 and type IDs 1–3 ([`seed-data.json`](docs/legacy/seed-data.json)).
+- The [comparison rules](docs/legacy/README.md#schema-schemajson-used-from-stage-41) say which parts of the schema the new one must reproduce.
+- Stage 4.3 lets the new API adopt an existing legacy database. That works without renaming anything only if the new schema uses the legacy names.
+
+### Decision
+
+**1. Entities** (`Catalog/`)
+
+`CatalogItem`, `CatalogBrand` and `CatalogType` are `internal sealed` classes that hold only the stored data. They live in `Catalog/`, and the EF Core mapping in `Data/`, because the brands, items and types endpoints of Stage 7 all share them ([ADR-0006](#adr-0006-solution-structure-and-build-conventions) keeps a folder per feature).
+
+- **No attributes.** Input validation belongs to the request contracts of the write endpoints (Stages 7.6 and 7.7). The display attributes went with the UI.
+- **No `PictureUri`.** It is a URL computed for each response (Stage 7.5), not data.
+- **No `dummy.png` default.** It is a rule of item creation, and it arrives with item creation (Stage 7.6).
+- **Nullability follows the schema.** `Description` is the only nullable column (`string?`), and the other strings are `required`. The navigations `CatalogBrand?` and `CatalogType?` are nullable, because they are loaded only when a query includes them.
+
+**2. Mapping** (`Data/`)
+
+`CatalogDbContext` applies one `IEntityTypeConfiguration<T>` per entity. The mapping reproduces the legacy schema under the comparison rules:
+
+- the table names, and the EF6 names of every primary key, foreign key and index
+- `nvarchar(50)` for item names, `nvarchar(100)` for brand and type names, `decimal(18,2)` for prices, `nvarchar(max)` for the other strings
+- cascading deletes on both foreign keys, as in the legacy schema (nothing deletes a brand or a type)
+- the tables, the sequence and EF Core's `__EFMigrationsHistory` table all in `dbo`, named explicitly, so the default schema of the login that applies the migrations does not matter. `HasDefaultSchema` places the tables and the sequence. The history table is not part of the model, so the SQL Server options place it (decision 5).
+
+**3. IDs**
+
+- **Item IDs** use `UseHiLo("catalog_hilo")` on a `bigint` sequence that starts at 1 and increments by 10. EF Core's HiLo allocates blocks the same way as the legacy generator ([audit](docs/legacy-audit.md#53-sequences-and-hilo)), so a fresh database gives the sample items IDs 1–12 again.
+- **Brand and type IDs** stay `IDENTITY(1,1)`.
+- **`catalog_brand_hilo` and `catalog_type_hilo` are not modeled.** Nothing uses their values. A legacy database that still has them is handled by the Stage 4.3 baseline.
+
+**4. Reference data**
+
+Brands and types are seeded with `HasData`, with the legacy IDs and names. The seed becomes part of the migrations, so every database gets the same IDs, which clients and the sample items rely on. The sample items are not reference data. They are seeded at runtime (Stage 4.4), because their IDs come from HiLo.
+
+**5. Registration**
+
+`AddCatalogDbContext` registers the context with `AddDbContext` on `ConnectionStrings:CatalogDb`.
+
+- **Shared options.** `UseCatalogSqlServer` holds the SQL Server options, so that the app, the tests and the design-time tooling of Stage 4.2 build the same context. Today it sets the provider and puts the migrations history table in `dbo`.
+- **Fail fast.** A missing or blank connection string throws at startup. The message names the setting and where to set it ([ADR-0009](#adr-0009-configuration)).
+- **No pooling, no retries.** There is no context pooling and no retry-on-failure. The legacy app had neither. A cloud database would reopen the retry question.
+- **Application Name.** When the connection string sets no `Application Name`, EF Core 10 adds `EFCore/<version> (<OS>)`. The value is left as is.
+
+**Tests**
+
+Unit tests compare the EF Core design-time model with `schema.json` and `seed-data.json`. They need no database, only the two files that the build copies next to them.
+
+| Test | What it pins |
+|---|---|
+| `CatalogModelTests.Model_maps_exactly_the_legacy_catalog_tables` | The model maps `dbo.Catalog`, `dbo.CatalogBrand` and `dbo.CatalogType`, and nothing else. |
+| `CatalogModelTests.Table_matches_the_legacy_schema` (one case per table) | Columns, primary key, indexes, unique constraints, foreign keys and check constraints equal `schema.json` under the comparison rules. |
+| `CatalogModelTests.Item_ids_come_from_the_legacy_hilo_sequence` | The only sequence is `catalog_hilo`, with the legacy type, start, increment, range and cycle setting, and the item ID uses it through HiLo. |
+| `CatalogModelTests.Brands_are_seeded_with_their_legacy_ids`, `Types_are_seeded_with_their_legacy_ids` | The `HasData` rows equal `seed-data.json`. |
+| `CatalogDbContextRegistrationTests.Registration_fails_when_the_connection_string_is_missing` | Registration throws, naming `ConnectionStrings:CatalogDb`, when no source sets it. |
+
+Integration tests check the registration in the host:
+
+| Test | What it pins |
+|---|---|
+| `CatalogDbContextRegistrationTests.DbContext_uses_the_configured_connection_string` | The context is configured with the factory's server and database. |
+| `CatalogDbContextRegistrationTests.Migrations_history_table_is_in_dbo` | The registered context creates `[dbo].[__EFMigrationsHistory]`. |
+| `CatalogDbContextRegistrationTests.Host_does_not_start_without_a_connection_string` (empty, blank) | The host fails at startup with a message that names `ConnectionStrings:CatalogDb`. |
+
+The comparison uses schema facts: one line per column, key, index, foreign key, check constraint or sequence. The same format is produced from `schema.json` (`tests/Shared/Legacy`) and from the model (`tests/eShop.Catalog.Api.UnitTests/Data/EfModelSchema.cs`), and Stage 4.2 produces it from a live database as well. The [comparison rules](docs/legacy/README.md#schema-schemajson-used-from-stage-41) list what a fact contains.
+
+Each test was checked against a deliberate break, and each break failed the intended test:
+
+- a primary key renamed, or made nonclustered
+- an index left with its EF Core convention name, or given a filter, an included column or a descending key
+- `Restrict` instead of `Cascade`
+- an identity column instead of HiLo for item IDs
+- the item name length changed, or a collation set on it
+- a default value on the price, or a computed column
+- a check constraint added
+- a brand renamed
+- the default schema removed
+- the sequence increment changed
+- the history table left in the login's default schema
+
+### Alternatives considered
+
+- **EF Core's naming conventions.** Every primary key, foreign key and index name would differ from the legacy database. The schema comparison would need exceptions, and adopting a legacy database (Stage 4.3) would first have to rename its constraints.
+- **Reverse engineering (`dotnet ef dbcontext scaffold`) from a legacy database.** It would reproduce the names and column types. It would also scaffold `__MigrationHistory` and the unused sequences, and it would take none of the decisions: HiLo, the `HasData` seed, the explicit `dbo` schema, nullable navigations. The model is small enough to write by hand, and the schema test checks it either way.
+- **An `IDENTITY` column for item IDs.** It is simpler, but the legacy `Catalog.Id` is not an identity column, and SQL Server cannot add `IDENTITY` to an existing column. Adopting a legacy database (Stage 4.3) would mean rebuilding its `Catalog` table. With HiLo, an adopted database continues from its own sequence.
+- **Keeping the brand and type sequences.** They would be dead objects in every new database.
+- **Seeding brands and types at runtime, with the items.** Their IDs would depend on the insertion order in each database, as they did in the legacy app, where `IDENTITY` assigned them in list order.
+- **Mapping with data annotations.** Attributes cannot name the constraints or declare the sequence, so the fluent configuration would be needed anyway, and the mapping would be split between two places.
+
+### Consequences
+
+- Every test run checks the EF Core model against the legacy schema, without a database. Stage 4.2 checks the database that the migrations create against the same file.
+- A change to any compared part of the schema fails the tests until the comparison rules allow it.
+- Validation, the picture URL and the default picture are not on the entity. Stages 7.5 to 7.7 implement them.
+- The host needs a connection string in every environment, including `Testing`. `CatalogApiFactory` sets a placeholder until Stage 4.2 gives each test class a database ([ADR-0009](#adr-0009-configuration)). Stage 5.3 decides how mock mode, which needs no database, fits with this.
+
+---
+
+## ADR-0011: EF Core migration strategy
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.2
+
+### Context
+
+- The legacy app creates its database with EF6's `CreateDatabaseIfNotExists` and three raw sequence scripts that hard-code the database name ([audit: sequences](docs/legacy-audit.md#53-sequences-and-hilo)). Nothing can change the schema of a database that already exists.
+- The new API gets a database of its own ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover)). Its model reproduces the legacy schema ([ADR-0010](#adr-0010-data-model)), and plan decision 5 makes EF Core code-first migrations the way to create and change it.
+- The `dotnet-ef` tool has to build the `DbContext` at design time. By default it runs `Program.cs` up to `builder.Build()`, in the Development environment, and takes the context from the app's services. Every design-time command then depends on the app's service registrations and on the Development configuration, including its connection string ([ADR-0010](#adr-0010-data-model)).
+- Migrations are generated code. The generated `InitialCreate.cs` breaks two of the repository's enforced rules: IDE0161 (file-scoped namespaces) and CA1861 (constant arrays as arguments). The designer and snapshot files already carry an `<auto-generated />` header.
+- [ADR-0007](#adr-0007-test-strategy) set the direction for persistence tests: SQL Server in Testcontainers, one container per test assembly and one database per test class. The EF Core in-memory provider and SQLite cannot run the `catalog_hilo` sequence.
+
+### Decision
+
+**1. Migrations**
+
+- The migrations live in `src/eShop.Catalog.Api/Data/Migrations`. The first one, `InitialCreate`, creates the schema of ADR-0010: the `catalog_hilo` sequence, the three tables with their EF6 names, and the brand and type reference data.
+- They are generated by `dotnet-ef`, a local tool pinned in `dotnet-tools.json` to the version of the EF Core packages. The two are upgraded together; the tool warns when it is older than the runtime.
+- The API references `Microsoft.EntityFrameworkCore.Design`, which the tool needs, with `PrivateAssets="all"` and without compile assets. The app's code cannot use it, and it stays out of the test projects and the published app.
+- The generated files are committed as the tool writes them and reviewed like any other change. `.editorconfig` marks them as generated code, so the style and analyzer rules skip them; compiler warnings still apply. SQL that EF Core cannot generate goes into a migration's `Up` and `Down` by hand, with a comment that says why.
+- `Down` is kept and tested: the migrations can be reverted until no catalog table or sequence is left, and applied again. EF Core's history table stays, empty.
+- A unit test fails while the model has changes that no migration captures (`HasPendingModelChanges`).
+
+**2. Design time**
+
+`CatalogDbContextDesignTimeFactory` builds the context for the tool, with the app's SQL Server options (`UseCatalogSqlServer`) and no connection string. The tool never runs `Program.cs`, so design-time commands do not depend on the app's registrations or on any environment's configuration.
+
+- Adding a migration and generating a script need no configuration and no database.
+- `database update` takes the connection with `--connection`.
+- `migrations remove` tries to check whether the migration is applied, cannot connect, and needs `--force`.
+
+**3. Applying migrations**
+
+| Where | How |
+|---|---|
+| Integration tests | `CatalogApiFactory` migrates each test class's database before its first test. |
+| Development | By hand with `dotnet ef database update`, until Stage 4.4 adds config-gated migration at startup (Development only). |
+| Deployed environments | An idempotent script (`dotnet ef migrations script --idempotent`), reviewed and applied by the deployment. A test applies the script twice to an empty database. Applying migrations is a deployment step, so the app's login needs no rights to change the schema. |
+
+The script brings an empty database, or one that these migrations created, up to date. It cannot update a legacy database, which has the tables but no EF Core history: that needs the Stage 4.3 baseline first. A deployment creates the empty database itself, with `READ_COMMITTED_SNAPSHOT` on, as EF Core's database creator does for the test and Development databases.
+
+**4. Test databases**
+
+- `SqlServerFixture`, an xUnit assembly fixture, starts one SQL Server container for the integration test assembly.
+- The image is pinned: `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`. SQL Server 2025 is the version the legacy capture ran on ([`capture-info.json`](docs/legacy/capture-info.json)). An upgrade is a deliberate change of this tag.
+- Each `CatalogApiFactory`, and so each test class, gets a database of its own in that container, with a unique name, and migrates it in `InitializeAsync`. The factory takes the fixture as a constructor argument. xUnit v3 resolves it, although its documentation still says that fixtures cannot depend on other fixtures; the test runs are the evidence.
+- A test that needs a database outside a host asks the fixture for one.
+- Nothing drops the databases. Testcontainers removes the container at the end of the run.
+
+This amends ADR-0007 in one point. ADR-0007 has persistence tests reach the database through the factory's services. Tests that inspect the schema connect to the class's database with SqlClient instead, and tests that need a database outside a host take one from the fixture.
+
+**5. Schema verification**
+
+The integration tests read the migrated database's schema from the `sys.*` catalog views, with queries modelled on the ones that captured `schema.json`, and compare it with that file through the schema facts of ADR-0010. For a live database, the facts also cover what EF Core cannot express but a hand-written migration could change:
+
+- the update action of each foreign key, and whether it is enabled and trusted
+- whether each sequence is cached
+- the number of objects of each type in `sys.objects`, which catches table triggers, views, procedures, functions, synonyms and constraints, none of which have facts of their own
+- schemas of their own, user-defined types and database-level DDL triggers, which `sys.objects` does not list and which must not exist
+
+Users, permissions and statistics are not compared. The tests also check the brand and type rows, and that the history table is in `dbo` with the shape EF Core creates.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `MigrationSnapshotTests.Model_has_no_changes_missing_from_the_migrations` (unit) | Every model change comes with a migration. |
+| `MigrationTests.Every_migration_is_applied` | The factory's database has all the migrations. |
+| `MigrationTests.Database_has_exactly_the_legacy_catalog_tables` | The migrations create `dbo.Catalog`, `dbo.CatalogBrand` and `dbo.CatalogType`, besides the history table, and nothing else. |
+| `MigrationTests.Table_matches_the_legacy_schema` (one case per table) | The live tables equal `schema.json` under the comparison rules. |
+| `MigrationTests.Only_sequence_is_the_legacy_item_id_sequence` | The live `catalog_hilo` equals `schema.json`, and there is no other sequence. |
+| `MigrationTests.Database_has_no_objects_beyond_the_legacy_schema` | The object counts equal `schema.json`'s, less what the comparison leaves out, plus EF Core's history table. There are no schemas, user-defined types or database-level DDL triggers. |
+| `MigrationTests.Migrations_history_table_is_in_dbo_as_ef_core_creates_it` | `__EFMigrationsHistory` is in `dbo`, with EF Core's columns and primary key. The test login's default schema is `dbo`, so this test cannot see the table being left in a login's default schema; `CatalogDbContextRegistrationTests.Migrations_history_table_is_in_dbo` (ADR-0010) covers that. |
+| `MigrationTests.Brands_have_their_legacy_ids`, `Types_have_their_legacy_ids` | The seeded rows equal `seed-data.json`. |
+| `MigrationRollbackTests.Migrations_revert_to_an_empty_database_and_apply_again` | `Down` removes the catalog tables and the sequence, and the migrations then apply again to the full legacy schema. |
+| `MigrationScriptTests.Idempotent_script_creates_the_legacy_schema_and_can_run_again` | The deployment script, run twice on an empty database, creates the full legacy schema and records every migration. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- a model change without a migration
+- an index renamed in the migration
+- a seeded brand or type changed in the migration
+- a `Down` that leaves the sequence behind
+- the history table put in another schema
+- hand-written SQL in the migration that creates a table, a view, a table trigger, a schema, a user-defined type or a database-level DDL trigger, turns the sequence cache off, stops trusting a foreign key, or adds a column to the history table
+
+### Alternatives considered
+
+- **`EnsureCreated`.** It creates the schema without a migrations history, so the schema could never be changed with migrations afterwards.
+- **Letting `dotnet-ef` run the app's host.** Every design-time command would run `Program.cs` up to `builder.Build()` in Development, and would depend on the app's service registrations and on the Development connection string. The factory depends on neither and builds the same context every time.
+- **Migration bundles (`efbundle`) for deployment.** A bundle and a script both run at deploy time, with a connection that may change the schema. A script is plain SQL that can be reviewed before it runs; a bundle is an executable. Bundles can be revisited when a deployment pipeline exists.
+- **Migrating at startup in every environment.** Every instance would migrate as it starts. EF Core serializes them with a lock, but startup would then wait on schema changes, and the app's login would need rights to change the schema.
+- **SQL-first migrations (DbUp and similar).** They would lose the model diff and the check that the model and the migrations agree.
+- **A database per test.** Creating and migrating a database takes longer than all the tests of a typical class. One database per class, as ADR-0007 planned, isolates classes. Tests in one class must not depend on each other's writes.
+- **The `latest` image tag.** It moves without notice, so a run could pass or fail depending on when the image was pulled.
+
+### Consequences
+
+- The integration tests need Docker, including the ones that never query the database, because every factory migrates a database. The unit tests need only the SDK.
+- The assembly fixture starts the container before the first test runs. Stage 10.2's Docker-free subset therefore needs a fixture that starts the container only when a test asks for a database, and a factory without one.
+- The first run on a machine, and every CI run, pulls the SQL Server image.
+- A model change without a migration fails the unit tests.
+- Adopting an existing legacy database is a separate, tested procedure (Stage 4.3).
+
+---
+
+## ADR-0012: Adopting a legacy database
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.3
+
+### Context
+
+- The new API gets a database of its own. Adopting an existing legacy database is a separate, tested procedure ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover), [ADR-0011](#adr-0011-ef-core-migration-strategy)).
+- A legacy database has the schema that `InitialCreate` creates ([ADR-0010](#adr-0010-data-model)). It also has EF6's `__MigrationHistory`, the unused `catalog_brand_hilo` and `catalog_type_hilo` sequences, and data. It has no `__EFMigrationsHistory`.
+- EF Core decides what to apply only from `[dbo].[__EFMigrationsHistory]`. On a legacy database, `Migrate`, `dotnet ef database update` and the idempotent script all run `InitialCreate`, and fail on the existing legacy objects, the `catalog_hilo` sequence first. By then EF Core has already created an empty history table, outside the migration's transaction.
+- Both apps take item IDs from `catalog_hilo` in blocks of 10. The legacy generator hard-codes the block size, and EF Core takes it from the model, so neither reads the sequence's increment ([audit](docs/legacy-audit.md#53-sequences-and-hilo)).
+- A real legacy database may have drifted from the captured one:
+  - indexes, statistics or triggers added by a DBA
+  - sequences created by hand. The legacy sequence scripts hard-code the database name ([audit D12](docs/legacy-audit.md#7-defects-and-risks)), so a database with another name got its sequences some other way.
+  - reference data from the CSV customization seed, which [ADR-0003](#adr-0003-non-goals) dropped
+  - rows imported with explicit IDs
+- EF Core 7 and later write with `OUTPUT` clauses without `INTO`, which SQL Server rejects on a table that has an enabled trigger.
+- A design critique, run before the implementation, checked these facts by experiment, against the real `eShopLegacyMVC.dll` and EF Core 10.0.12:
+  - EF6 6.2 starts without `__MigrationHistory`. When the table is there, EF6 compares the stored model with the code model, never with the live schema.
+  - EF Core ignores the history row's `ProductVersion`, and matches the whole `MigrationId`, timestamp included.
+  - A trigger, an increment other than 10, a restarted sequence, and an imported ID above the sequence all passed a simpler draft of the baseline, then broke EF Core writes or produced duplicate IDs.
+- A review of the implementation found more by experiment:
+  - A login without `VIEW DEFINITION` sees no rows in `sys.sql_expression_dependencies`, so a schema-bound view or a row-level-security policy on the catalog tables passed the checks.
+  - With `IMPLICIT_TRANSACTIONS` on, the script reported success while its work stayed uncommitted.
+  - Comparing indexes and foreign keys by name alone missed an index redefined under its legacy name and a disabled foreign key.
+
+### Decision
+
+**1. A baseline script that only adds**
+
+[`docs/legacy/baseline.sql`](docs/legacy/baseline.sql) creates `[dbo].[__EFMigrationsHistory]` exactly as EF Core does and records `InitialCreate` as applied, with the `ProductVersion` of that migration. Nothing else changes: EF6's history table, the unused sequences and all data stay. Keeping them costs nothing and leaves nothing to undo. EF6 does not need its history table to start.
+
+**2. Checks before any write**
+
+The script refuses, with its own error number and a list of what differs, a database that:
+
+| Error | Refused because |
+|---|---|
+| 50001 | the script runs inside a transaction, or with `IMPLICIT_TRANSACTIONS` on, either of which could still roll it back. The caller's transaction is left as it was. |
+| 50002 | the server has no `sys.sequences.last_used_value` (older than SQL Server 2017) |
+| 50012 | the login lacks `VIEW DEFINITION` on the database, so the checks could not see every object |
+| 50003 | EF Core's migrations lock is held for more than 30 seconds |
+| 50004 | `__EFMigrationsHistory` exists but is not EF Core's table |
+| 50005 | `__EFMigrationsHistory` holds other migrations but not `InitialCreate` |
+| 50006 | the catalog tables or `catalog_hilo` are missing |
+| 50007 | the columns of the catalog tables differ from the legacy schema, in either direction: name, type, nullability, identity, a default or a computed expression, and a collation other than the database's |
+| 50008 | the rest of the catalog tables differs from the legacy schema, in either direction. That covers keys and indexes by kind, clustering, columns, filter and state; user-created statistics; check and default constraints; triggers; foreign keys, the ones into the tables included, by columns, actions and state; and schema-bound objects on the tables. |
+| 50009 | `catalog_hilo` is not a `bigint` sequence with `INCREMENT BY 10` and `NO CYCLE` |
+| 50010 | an item ID is at or above the sequence's next value, or the sequence cannot hand out a whole next block of `int` item IDs |
+| 50011 | the brands or types differ from the reference data, compared byte for byte in both directions |
+
+The expected lists describe the legacy schema, which is the schema of `InitialCreate`. They never follow later migrations, because the baseline only ever stands in for `InitialCreate`.
+
+**3. Refuse rather than warn**
+
+After the baseline, the migrations own the schema, and they know only the legacy objects:
+
+- An unknown index or statistic can stop a later column change.
+- An enabled trigger breaks EF Core's writes.
+- Extra reference rows would meet later `HasData` changes.
+
+So the operator decides explicitly. An index can be dropped first and added back through a migration after the adoption. A customization database is out of scope ([ADR-0003](#adr-0003-non-goals)).
+
+**4. Partial states and repeats**
+
+- `InitialCreate` already recorded: nothing to do. This covers a second run and a database that the migrations created.
+- An empty history table, left by a migration that failed on the legacy objects: adopted as usual.
+- Other migrations without `InitialCreate`: refused (50005).
+
+**5. Safe to run**
+
+- One transaction with `XACT_ABORT`, so any failure leaves the database as it was.
+- The script refuses to run inside a transaction or with implicit transactions (50001). That check runs before `XACT_ABORT` is set, so the refusal leaves the caller's own transaction open, for the caller to end.
+- The script takes EF Core's migrations lock (`__EFMigrationsLock`), so `Migrate` and `dotnet ef database update` wait for it, and it waits for them. The idempotent migrations script takes no lock. What protects that path is the procedure's rule to run the baseline first.
+- `LOCK_TIMEOUT` is 30 seconds.
+- It holds exclusive locks only on the new history table and on system-catalog rows. On the catalog tables it takes brief shared locks while it reads, so it can run while the legacy app serves requests.
+
+**6. One script for sqlcmd and SqlClient**
+
+- One batch: no `GO`, no sqlcmd commands or variables, no double-quoted identifiers.
+- Statements that read columns of the catalog tables run through `sp_executesql`. In the batch itself, a renamed column would stop the whole batch at compile time, before the column check could report it.
+- The operator runs the script with `sqlcmd -b`, whose exit code tells adoption from refusal. The tests run the same file through SqlClient with `QUOTED_IDENTIFIER` off, as sqlcmd does, and through the container's own sqlcmd.
+
+**7. Coexistence and rollback**
+
+- The legacy app can keep running against an adopted database. Given checks 50009 and 50010, item IDs cannot collide: each app takes `NEXT VALUE` and uses that value and the next nine, and every existing ID lies below the next value.
+- This amends [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) decision 2 in one point: an adopted database is shared by the legacy app and the new API until Stage 11 retires the legacy app. A database that the migrations created is still the new API's own.
+- Rolling back to the legacy app means pointing it at the same database. That holds while every later migration is expand-only, until Stage 11: no renamed or dropped columns that the legacy app maps, and new columns nullable or with a default. EF6's model check would not notice a contracting change; the legacy app would fail at runtime.
+- `InitialCreate` must never be reverted on an adopted database: its `Down` drops the legacy tables and the sequence.
+- Undoing the baseline before any later migration is `DROP TABLE dbo.__EFMigrationsHistory`.
+
+**8. Procedure**
+
+[docs/legacy/README.md](docs/legacy/README.md#adopting-an-existing-legacy-database) documents:
+
+- the requirements. The server is SQL Server 2019 or later, the oldest version EF Core 10 supports, or Azure SQL; the script itself needs SQL Server 2017. The login has `db_owner`, or `db_ddladmin`, `db_datareader`, `db_datawriter` and `VIEW DEFINITION` on the database.
+- a copy-only backup, and ideally a dry run on a restored copy
+- running the baseline with `sqlcmd -b` before anything applies migrations, and checking the exit code
+- the undo and rollback rules above
+
+**9. Stage 4.4 constraint**
+
+An adopted database must never receive the sample items. The Stage 4.4 seeder has to guarantee that, because `dotnet ef database update` and migrate-on-startup run EF Core's seeding on every call.
+
+**Tests**
+
+Integration tests (`LegacyBaselineTests`) build each legacy database the way the legacy app leaves it:
+
+- the schema from `schema.sql`
+- the rows from `seed-data.json`
+- EF6's history row, with the gzip-compressed model from `ef6-model.edmx`
+- every sequence drawn as far as the legacy seeding drew it
+- `READ_COMMITTED_SNAPSHOT` on, as EF6 and EF Core create databases
+
+| Test | What it pins |
+|---|---|
+| `Adopted_database_matches_a_migrated_one_apart_from_the_legacy_objects` | After the baseline and `Migrate`, every migration is recorded. The schema equals a migrated database's, apart from EF6's history table and the two unused sequences, which equal `schema.json`. The object counts equal the legacy counts plus EF Core's history table, and EF6's history row is unchanged. |
+| `Adopted_database_takes_the_idempotent_migrations_script` | The deployment script records every migration and changes no schema. |
+| `EF_Core_reads_and_writes_an_adopted_database_with_ids_after_the_legacy_ones` | EF Core reads the 12 legacy items, with their brands and types, equal to `seed-data.json`. A new item gets ID 21, the first ID of the block after the legacy seeding's. The legacy app's next block starts at 31. Updates and deletes work. |
+| `Baseline_changes_nothing_when_it_runs_again`, `Baseline_changes_nothing_in_a_database_that_the_migrations_created` | The repeat cases. |
+| `Baseline_adopts_a_database_that_a_failed_migration_left_behind` | The empty history table is accepted. |
+| `Baseline_refuses_a_legacy_database_that_has_changed` (29 cases), `Baseline_refuses_a_database_that_is_not_a_legacy_one`, `Baseline_refuses_to_run_with_implicit_transactions`, `Baseline_refuses_a_login_without_VIEW_DEFINITION` | Each refusal reports its error number, leaves no transaction open, and changes nothing. The comparison covers the schema, the object counts, both history tables, the rows of the catalog tables, the sequences' positions and the identity values. The cases cover both directions of each list comparison, and the boundaries of 50010: a sequence restarted at the highest ID, an item imported at the sequence's next value, and a sequence at the end of the `int` range. |
+| `Baseline_refuses_to_run_inside_a_transaction` | 50001 leaves the caller's transaction open and the database unchanged. |
+| `Baseline_adopts_with_the_documented_rights_and_still_sees_schema_bound_objects` | A database user with exactly the documented roles and `VIEW DEFINITION` adopts a legacy database, and is refused one with a schema-bound view. |
+| `Sqlcmd_exits_with_0_when_the_baseline_adopts_a_database_and_with_1_when_it_refuses` | The documented `sqlcmd -b` run, with the image's own sqlcmd. |
+
+Unit tests (`LegacyBaselineScriptTests`) need no database:
+
+- the script records the first migration's exact ID
+- it creates the history table with EF Core's own DDL
+- it has no `GO` separators, sqlcmd commands or variables, or double-quoted identifiers
+
+Before the review, each check in the script was switched off in turn, and each time exactly the tests for that check failed. With the "already recorded" branch removed, the repeat tests failed. The conditions and cases added after the review have not all been proven against such breaks.
+
+Not tested:
+
+- 50002, because the test server is SQL Server 2025
+- 50003, the lock wait
+- running the legacy app itself against an adopted database. The design critique did that once, by hand.
+
+### Alternatives considered
+
+- **Copying the legacy data into a new database that the migrations create.** The schema would carry no legacy objects. But the data would have to move, with downtime, and the item-ID sequence would have to move with it. The legacy app could no longer be rolled back to by pointing it at the same database.
+- **A conditional `InitialCreate`** that skips objects that already exist. Every database would run that condition forever, for a situation that only adoption has.
+- **Letting the app adopt the database at startup.** Schema decisions would move into the app's startup, and the app's login would need rights to change the schema ([ADR-0011](#adr-0011-ef-core-migration-strategy)).
+- **Dropping EF6's history table and the unused sequences in the baseline.** EF Core does not need them gone, and dropping them would make the baseline destructive, and harder to undo.
+- **Warnings instead of refusals** for extra indexes and extra reference rows. The adoption would succeed, and a later migration or `HasData` change would then fail in production (decision 3).
+- **Checking only that the legacy objects exist**, as the first draft did. The critique showed that this adopts databases on which EF Core then fails or produces duplicate IDs.
+
+### Consequences
+
+- Adopting a legacy database is one reviewed script, run with `sqlcmd -b`. A refusal names what differs.
+- Until Stage 11, every migration must be expand-only, so that the legacy app can still be rolled back to on an adopted database. Migration reviews check this.
+- Adopted databases keep EF6's history table and the two unused sequences. After Stage 11 a migration may drop them, guarded with `IF EXISTS`, because databases that the migrations created do not have them.
+- `baseline.sql` is tied to `InitialCreate`. The unit tests fail if the migration's ID or EF Core's history DDL change.
+- Stage 4.4 must keep the sample items out of adopted databases (decision 9).
+
+---
+
+## ADR-0013: Seeding, migrate-on-startup and readiness
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.4
+
+### Context
+
+- The legacy app seeds a database once, when EF6's `CreateDatabaseIfNotExists` creates it on the first request that uses the context ([audit: seeding](docs/legacy-audit.md#54-seeding-modelsinfrastructurecatalogdbinitializercs32-43)). It adds the brands and types, then 12 sample items, whose IDs its HiLo generator takes from `catalog_hilo` in two blocks (1–10 and 11–20). The sequence is left at 11 ([`seed-data.json`](docs/legacy/seed-data.json)). The seeding is not atomic and never runs again, so a failure leaves a partly seeded database for good ([audit D13](docs/legacy-audit.md#7-defects-and-risks)).
+- [ADR-0010](#adr-0010-data-model) made the brands and types reference data in the migrations. The sample items were left to this stage, because their IDs come from HiLo.
+- EF Core calls a seeder registered with `UseSeeding` and `UseAsyncSeeding` at the end of every `Migrate`, `EnsureCreated` and `dotnet ef database update`, whether or not anything was applied. It calls it after a revert too (`Migrate("0")`), when the tables are gone. The tool migrates synchronously, and a synchronous `Migrate` with only an async seeder throws, so both are needed.
+- In EF Core 10, `Migrate` takes EF Core's migrations lock, commits each migration as it applies it, and then calls the seeder, still under the lock ([`Migrator.cs`](https://github.com/dotnet/efcore/blob/release/10.0/src/EFCore.Relational/Migrations/Internal/Migrator.cs) and [`MigrationCommandExecutor.cs`](https://github.com/dotnet/efcore/blob/release/10.0/src/EFCore.Relational/Migrations/Internal/MigrationCommandExecutor.cs), release/10.0). A failing seeder therefore leaves the migrations applied. A value drawn from a sequence stays drawn when a transaction rolls back.
+- An adopted legacy database must never receive the sample items ([ADR-0012](#adr-0012-adopting-a-legacy-database), decision 9). The baseline keeps EF6's `__MigrationHistory` and the unused `catalog_brand_hilo` and `catalog_type_hilo` in it, and the legacy seeding has drawn its `catalog_hilo`.
+- [ADR-0011](#adr-0011-ef-core-migration-strategy) left Development migrations to `dotnet ef database update` until this stage. Deployed environments apply the reviewed idempotent script, so the app's login needs no rights to change the schema.
+- The liveness endpoint runs no check ([ADR-0007](#adr-0007-test-strategy)). Readiness, which does check the database, was left to this stage.
+
+### Decision
+
+**1. The sample-item seeder**
+
+`SampleItemSeeder` (`Data/`) adds the legacy app's 12 sample items, without IDs. HiLo numbers them in list order, so a new database gets IDs 1–12, and `catalog_hilo` is left at 11, as after the legacy seeding. The items are written with one `SaveChanges`, so the seeding is all or nothing. The seeder then stops tracking them, because the context belongs to the caller.
+
+EF Core keeps its HiLo blocks in memory for the life of the process, keyed by server, database and sequence, even when the sequence is dropped and created again. After a revert and a new `Migrate` in the same process, the items would get IDs from a block of the old sequence (13–20, then 1–4), which the new sequence hands out again later. The review of this stage found that by experiment. The seeder therefore checks each ID as it adds the item, and throws at the first one out of order. That refuses the old block before anything is drawn from the new sequence, so the database stays unused, and a new process seeds it. The running app and the tool never meet this, because each migrates once per process; tests that revert and migrate again do.
+
+It is registered in `UseCatalogSqlServer`, so the app, the tests and the `dotnet-ef` tool seed the same way. The synchronous and the asynchronous seeder share the item list and the conditions.
+
+**2. When it seeds**
+
+Only a database that nobody has used yet. Each of these conditions stops it on its own:
+
+| The seeder does nothing when | Because |
+|---|---|
+| a migration is not applied | It writes through the current model. This also stops it after a revert. |
+| the catalog has an item | |
+| `catalog_hilo` has handed out a value (`sys.sequences.last_used_value`) | A database is seeded once, as `CreateDatabaseIfNotExists` did. An emptied catalog is not refilled. The legacy seeding has drawn the sequence of every legacy database. |
+| `dbo.__MigrationHistory`, `dbo.catalog_brand_hilo` or `dbo.catalog_type_hilo` exists | Only a legacy database has them, and the baseline keeps them. |
+
+So seeding again changes nothing, and an adopted database keeps its data even when its catalog is empty.
+
+If the seeding fails after it has drawn IDs, for example because `SaveChanges` loses its connection, no item is written, but the IDs stay drawn, and EF Core has committed the migrations already. The sequence has then been used, so no later `Migrate` seeds that database. For a Development database the remedy is to drop it.
+
+**3. Where the sample items appear**
+
+Only where EF Core migrates:
+
+- in Development, at startup (decision 4)
+- with `dotnet ef database update`, in any database that `--connection` names. The tool has no environment ([ADR-0011](#adr-0011-ef-core-migration-strategy), decision 2).
+- in the tests: every database that `CatalogApiFactory` or `CatalogDatabase.CreateMigratedAsync` migrates holds them, as the database of the Stage 1.2 capture did. The Stage 7 comparisons with the golden exchanges rely on this.
+
+The idempotent script, with which deployments apply the migrations, holds only the reference data. A new deployed database therefore starts without the sample items, where the legacy app seeded them into every new database. This is not a contract delta ([ADR-0002](#adr-0002-wire-contract-policy)): the contract covers routes, verbs, status codes and response shapes, not the rows of a new database, and a database adopted at cutover keeps its data. Nor is it a business-rule change: it concerns how a database is provisioned, not a rule of an endpoint, so [docs/behavior-changes.md](docs/behavior-changes.md) gets no entry.
+
+**4. Migrate on startup**
+
+- `Database:MigrateOnStartup`, bound to `DatabaseOptions` ([ADR-0009](#adr-0009-configuration)). It is `false` in `appsettings.json` and `true` in `appsettings.Development.json`.
+- `MigrateOnStartupService`, an `IHostedLifecycleService`, migrates in `StartingAsync`. The host calls that before it starts any hosted service, the server included, so no request meets an old schema. Stopping the host during startup cancels the migration: EF Core rolls back the migration it is applying, and keeps the ones it has committed.
+- Outside Development, the host refuses to start with the setting on: options validation fails at startup and names the setting. A stray `Database__MigrateOnStartup` cannot migrate a deployed database, or seed sample items into it. A malformed value stops the host too.
+- The environment rule is a `Validate` delegate on the options builder, not a data annotation as ADR-0009 decision 3 has it, because it needs `IHostEnvironment`. `ValidateOnStart` applies it with the rest.
+- The integration tests run in the `Testing` environment and keep migrating their databases in `CatalogApiFactory`. `MigrateOnStartupTests` start Development hosts on purpose, from factories that xUnit never initializes. Those hosts read `appsettings.Development.json` and the developer's user secrets, so the tests pass their settings as host settings, which override both. This amends a consequence of ADR-0009: a developer's user secrets reach these test hosts, but cannot change the settings that the tests depend on.
+
+This amends ADR-0011 decision 3: a Development database is migrated at startup. `dotnet ef database update` still works, and seeds the same way.
+
+**5. Readiness**
+
+`GET /health/ready` runs the checks tagged `ready`. The only one, `catalog-database`, passes when the API can connect to the database and the database has every migration that this build knows. It answers `200 Healthy` or `503 Unhealthy`, as `text/plain`, with the status only. The reason, such as the missing migrations, goes to the log. Liveness does not change: a database outage takes an instance out of rotation, but does not get it restarted.
+
+The check has no timeout of its own. A server that does not answer holds the check for SqlClient's connect timeout, 15 seconds by default, so the probe's own timeout usually ends it first. A deployment target may call for a shorter one.
+
+**Tests**
+
+Integration tests:
+
+| Test | What it pins |
+|---|---|
+| `SampleItemSeedingTests.Migrations_seed_the_legacy_sample_items_with_their_legacy_ids` | A migrated database holds exactly the item rows of `seed-data.json`, IDs 1–12 included. |
+| `SampleItemSeedingTests.Seeded_items_point_at_their_legacy_brands_and_types` | Through the navigations, each item has the brand and type names that `seed-data.json` gives it. |
+| `SampleItemSeedingTests.Item_id_sequence_stands_where_the_legacy_seeding_left_it` | `catalog_hilo` is at 11. |
+| `SampleItemSeedingTests.Migrating_again_seeds_nothing` | Two more `MigrateAsync` calls change neither the rows nor the sequence. |
+| `SampleItemSeedingTests.Synchronous_migration_seeds_the_same_items_once` | The synchronous seeder, the tool's, seeds the same 12 items once, over two `Migrate` calls, leaves the sequence at 11, and leaves nothing tracked on the context. |
+| `SampleItemSeedingTests.Items_added_after_seeding_take_ids_above_the_seeded_ones` | No HiLo collision: the next item in the same process gets 13, the rest of the seeding's block, as in the legacy app. Another process's next block starts at 21. |
+| `SampleItemSeedingTests.Seeding_refuses_hilo_ids_from_before_the_sequence_and_leaves_the_database_unused` | The asynchronous seeder leaves nothing tracked. After a revert, a `Migrate` in the same process fails in the seeder, again with nothing tracked. The migrations stay applied, the catalog empty and `catalog_hilo` unused. A new process then seeds IDs 1–12. |
+| `SampleItemSeedingTests.Migrations_seed_nothing_into_an_adopted_legacy_database` (6 cases) | An adopted database, as the baseline leaves it and stripped of all but one sign of use (items, a used `catalog_hilo`, EF6's history table, either unused sequence), keeps its rows and its sequence through `Migrate`. |
+| `MigrationRollbackTests.Migrations_revert_to_an_empty_database_and_apply_again` (amended) | The migrations, applied again as by a new process, seed the items with IDs 1–12 again. |
+| `MigrateOnStartupTests.Development_host_migrates_and_seeds_its_database_before_the_server_starts` | A Development host with the setting on creates, migrates and seeds its database, and is ready. A hosted service registered after the app's own finds every migration applied in its `StartingAsync`, which the host calls before it starts the server. |
+| `MigrateOnStartupTests.Host_leaves_the_database_alone_with_migrate_on_startup_off` (3 environments) | With the setting off (`false` in Development, the `appsettings.json` default in Testing and Production), the host starts and never creates its database. |
+| `MigrateOnStartupTests.Host_outside_Development_refuses_to_start_with_migrate_on_startup` (Testing, Staging, Production) | The host fails at startup with a message that names the setting, and the database is not created. |
+| `MigrateOnStartupTests.Host_does_not_start_with_a_malformed_migrate_on_startup` | `yes` stops the host, with a message that names the setting. |
+| `ReadinessEndpointTests` | 200 `Healthy` on a migrated database; 503 `Unhealthy`, with nothing but the status, on a database that does not exist and on one without the migrations. Liveness stays 200 in both. |
+| `ConfigurationTests.Committed_settings_turn_migrate_on_startup_on_in_Development_only` | The setting is off in `appsettings.json` and on in `appsettings.Development.json`. It reads only the committed files, so a developer's user secrets cannot fail it. |
+
+Unit tests:
+
+| Test | What it pins |
+|---|---|
+| `SampleItemSeederTests.Sample_items_are_the_legacy_ones_in_id_order` | Numbered in list order, the seeder's items equal `seed-data.json`. |
+| `ReadinessPolicyTests.Readiness_runs_only_the_checks_tagged_ready` | Readiness ignores untagged checks. |
+
+Apart from the rollback test, no existing assertion changed, but every database that the migrations create now holds the sample items.
+
+Each of these deliberate breaks failed the intended test:
+
+- the seeder without each of its conditions in turn: migrations applied, no item, an unused sequence, and each of the three legacy objects
+- the items saved with explicit IDs instead of HiLo
+- the seeder without its check of the IDs
+- the items left tracked after seeding
+- the synchronous seeder saving nothing
+- a sample item's price changed
+- migrate-on-startup allowed in every environment, or run whatever the setting
+- the migration moved from `StartingAsync` to `StartAsync`
+- readiness ignoring missing migrations, or running every check
+- the setting turned off in `appsettings.Development.json`
+
+Not tested:
+
+- that stopping the host during startup cancels the migration
+- two instances migrating at once, which EF Core's migrations lock serializes
+
+A Development host was also run by hand against LocalDB: it applied `InitialCreate` and seeded items 1–12 before it logged `Now listening`, and `/health/ready` answered 200. `dotnet ef database update`, run twice on a new LocalDB database, seeded the 12 items once.
+
+### Alternatives considered
+
+- **Sample items in `HasData`.** The items would need fixed IDs, which HiLo never draws, so the first item created afterwards would get ID 1 and collide (the explicit-ID break shows it). They would also be in the idempotent script, and so in every deployed database.
+- **A migration that inserts the items with `NEXT VALUE FOR`.** An adopted database would run it after the baseline, unless the SQL guarded against that, and every deployed database would get demo data.
+- **Seeding in `Program.cs` or in a hosted service of its own.** EF Core's hook runs under the migrations lock, and in `dotnet ef database update` as well.
+- **Seeding whenever the catalog is empty**, as the EF Core documentation shows. It would retry a seeding that failed after drawing IDs. But an emptied Development catalog would fill again at the next start, and only the three legacy objects would keep the items out of an adopted database.
+- **Recognizing an adopted database by a mark that the baseline writes**, such as a distinct `ProductVersion` in its history row. The baseline writes EF Core's own row on purpose (ADR-0012), and the mark would rely on EF Core ignoring that column.
+- **Migrating at startup in every environment.** [ADR-0011](#adr-0011-ef-core-migration-strategy) rules it out.
+- **Ignoring the setting outside Development** instead of refusing to start. A misconfigured deployment would look fine.
+- **`AddDbContextCheck`** from `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`. It needs one more package, and by default it only checks that the database can be reached, so a database without the migrations would look ready.
+
+### Consequences
+
+- `dotnet run` in Development creates, migrates and seeds the database, and needs the database server to be up. A new database is seeded once; to start over with the sample items, drop it.
+- Every test database that the migrations create starts with the 12 sample items. A test that needs an empty catalog deletes them.
+- Deployed databases start with the brands and types only.
+- A deployment's readiness fails until its migrations are applied, so the script runs before the new build is expected to be ready.
+- The seeder recognizes a legacy database by objects that a migration after Stage 11 may drop ([ADR-0012](#adr-0012-adopting-a-legacy-database)). A used `catalog_hilo` still keeps the items out, but that migration has to revisit this rule.
+- A test that reverts the migrations and applies them again in the same process has to apply them from a context with EF Core's internal services to itself (`CatalogDatabase.CreateContextAsInANewProcess`).
+- Stage 5.3's mock mode needs no database. It has to turn migrate-on-startup and the readiness database check off, or a Development host started without a database fails at startup.
+- The two new unit tests need only the SDK. The other new tests need SQL Server.
+
+---
+
+## ADR-0014: Local development databases
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.5
+
+### Context
+
+- The Development connection string points at LocalDB, database `eShopCatalog` ([ADR-0009](#adr-0009-configuration), decision 2). LocalDB runs only on Windows. ADR-0009 left the other operating systems to this stage: SQL Server in a container, reached through a connection string in user secrets.
+- Since Stage 4.4 a Development host creates, migrates and seeds its database before it accepts requests, and does not start while the server is down ([ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness), decision 4). Its login therefore has to be able to create a database and change its schema.
+- The integration tests run the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04` ([ADR-0011](#adr-0011-ef-core-migration-strategy), decision 4). The LocalDB of the legacy capture is SQL Server 2025 as well (17.0.4025.3, [`capture-info.json`](docs/legacy/capture-info.json)).
+- The image needs a password for the `sa` login: at least 8 characters, from three of four character groups. It uses the password only when it creates its system databases. Its certificate is self-signed, and SqlClient encrypts by default and validates the server's certificate.
+- No committed file holds a credential ([ADR-0009](#adr-0009-configuration), decision 1). `.gitignore` already ignores `.env`.
+
+### Decision
+
+**1. Two options, LocalDB by default**
+
+| | LocalDB | SQL Server in a container |
+|---|---|---|
+| Where | Windows | Any OS with Docker |
+| Chosen by | `appsettings.Development.json`, unchanged | A connection string in user secrets, which overrides it |
+| Server | The installed SQL Server Express LocalDB | `compose.yaml`, with the tests' image |
+| Login | The developer's Windows account | `sa` |
+
+Either way the app creates, migrates and seeds `eShopCatalog` as ADR-0013 describes. The README's [Local database](README.md#local-database) section has the steps.
+
+**2. `compose.yaml` runs SQL Server only**
+
+The file at the repository root has one service, `sqlserver`. The API is not in it: it runs with `dotnet run` on every OS, so debugging and hot reload work the same everywhere. The compose project is named `eshop-catalog`, so its volume has the same name in every clone, whatever the folder is called.
+
+**3. The tests' image**
+
+- The service runs the image of the integration tests. The image name moves from the constant `SqlServerFixture.Image` to `SqlServerImage.Name` in `tests/Shared/SqlServerImage.cs`, which both test projects compile, and a unit test keeps `compose.yaml` equal to it. So an upgrade changes both, and a developer's server is the server the tests ran on.
+- There is no Arm64 image. `platform: linux/amd64` lets Docker Desktop on a Mac with Apple silicon pull the amd64 image and run it under Rosetta emulation. Other Arm64 hosts may not run it at all.
+- The edition is Developer, the image's default, stated in the file: free, and not licensed for production.
+
+**4. Credentials**
+
+- The `sa` password comes from the variable `MSSQL_SA_PASSWORD`, which compose reads from the environment or from `.env` next to `compose.yaml`. With `${MSSQL_SA_PASSWORD:?…}`, every compose command stops with a message while it is unset or empty, instead of starting a server without a password. Nothing in the repository holds it.
+- The connection string, with the password, goes into user secrets, as ADR-0009 planned. The password is therefore kept in two places on the developer's machine, both outside the repository.
+- The app connects as `sa`. It has to create the database and change its schema at startup, and the image has no hook that could create a narrower login when it first starts.
+
+**5. Network and encryption**
+
+- The port is published on `127.0.0.1` only, so the `sa` login cannot be reached from another machine. The host port is 1433, and `CATALOG_DB_PORT` changes it.
+- The documented connection string names `127.0.0.1` and keeps SqlClient's default encryption, with `TrustServerCertificate=True` for the self-signed certificate, as the Testcontainers connection strings of the tests do. The traffic is encrypted, but the server is not authenticated, which is acceptable only on the loopback interface.
+
+**6. Data and health**
+
+- The databases live in the named volume `eshop-catalog_sqlserver-data`, so they survive `docker compose down`. `docker compose down --volumes` starts over, which is also the simplest way to change the `sa` password. A named volume, not a folder in the working tree, keeps database files out of the repository and needs no host-folder permissions for the container's non-root `mssql` user.
+- A health check logs in with the image's `sqlcmd`, so `docker compose up --wait` returns once the server accepts logins, and an app started after it finds the server ready. `sqlcmd` takes the password from `SQLCMDPASSWORD`, not from its command line, which other users of a Linux host could list. The check uses the password that compose gives the container now, so a password changed after the volume was created shows as an unhealthy container, not only as a login failure in the app.
+
+**Tests** (`tests/eShop.Catalog.Api.UnitTests/Data/ComposeFileTests.cs`)
+
+They read `compose.yaml` as text, one setting per line, because `docker compose config` would need Docker and the unit tests need only the SDK.
+
+| Test | What it pins |
+|---|---|
+| `Compose_runs_the_sql_server_image_of_the_integration_tests` | `compose.yaml` names one image, `SqlServerImage.Name`. |
+| `Compose_takes_the_sa_password_from_the_environment` | The password is a required variable without a default, and the file does not set `SA_PASSWORD`, the older name that the image still reads. |
+| `Compose_publishes_sql_server_on_loopback_only` | Every published port is bound to `127.0.0.1`. A `ports` value on the key's own line, such as a flow list, fails the test instead of being skipped. |
+
+A comment at the end of a line becomes part of the value, so the tests fail on it rather than pass.
+
+Each of these deliberate breaks failed the intended test: another image tag, a password in the file, a password variable with a default (`:-`), a password under `SA_PASSWORD`, the port published on every interface, and the ports written as a flow list.
+
+The compose file was also run by hand, with Docker Compose 5.0.2 on Windows:
+
+- Without the password, `docker compose config` stopped with the message. With it, and with `.env` files that have CRLF line endings or a UTF-8 byte order mark, the password and `CATALOG_DB_PORT` came through.
+- `docker compose up --detach --wait` returned in about 10 seconds with the server healthy. A Development host with the documented connection string created, migrated and seeded `eShopCatalog` (items 1–12, `catalog_hilo` at 11) before it logged `Now listening`, and `/health/ready` answered 200. `sys.dm_exec_connections` showed its connections encrypted. The connection string was passed as an environment variable, which overrides user secrets, so no developer's secrets were touched.
+- The databases survived `down` and `up`. With another password, `up --wait` recreated the container and reported it unhealthy. A password that fails the policy made the container exit.
+- After the health check moved to `SQLCMDPASSWORD`, `up --wait` again reported the server healthy.
+
+Not checked: Linux and macOS hosts, and emulation on Arm64.
+
+### Alternatives considered
+
+- **The container as the default**, with its connection string in `appsettings.Development.json`. The file would hold a password, and every developer would need Docker, where on Windows LocalDB needs nothing and is what the legacy app uses.
+- **The API in `compose.yaml` too.** It would need a Dockerfile and a second way to run and debug the API. An image of the API belongs with a deployment target, and there is none yet.
+- **Aspire** (formerly .NET Aspire), an AppHost that starts SQL Server and the API. It adds two projects and another orchestration model to a solution with one service. Compose needs only Docker, which the integration tests need already.
+- **A login other than `sa`.** Creating it needs a script after the first start, which the image has no hook for, and the login would need rights to create databases anyway.
+- **`Encrypt=False`** instead of trusting the certificate. The session would not be encrypted, and the app would connect differently from the tests.
+- **Publishing on every interface** (`1433:1433`, as most examples do). The `sa` login would be open to the network.
+- **A folder in the working tree for the data.** Database files next to the code, and a folder that the container's `mssql` user must be able to write.
+
+### Consequences
+
+- The API can be developed on Linux and macOS, given Docker.
+- The container option asks for the password twice, in `.env` and in the connection string. Changing it later means starting over with a new volume, or changing it on the server as well.
+- Every clone and worktree on a machine shares the compose project `eshop-catalog`, and with it one container and one volume. `docker compose down --volumes` in any of them removes the databases of all of them, and a clone with another password in its `.env` recreates the shared container, which then reports unhealthy. A second clone that needs its own server runs compose with another project name (`--project-name`) and port.
+- An upgrade of the tests' image upgrades the local server too. A later major version upgrades the databases in the volume when it starts, and an older server cannot open them afterwards; `docker compose down --volumes` starts over.
+- No automated test runs `compose.yaml`: its image, password variable and port binding are tested, and the run above is the evidence that the whole works.

@@ -1,5 +1,5 @@
-using System.Data.Common;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,13 +58,31 @@ public sealed class ConfigurationTests(CatalogApiFactory factory) : IClassFixtur
             .AddJsonFile("appsettings.Development.json", optional: false)
             .Build();
 
-        // DbConnectionStringBuilder matches keywords literally, so this checks the keywords the file
-        // uses. SqlConnectionStringBuilder, which also knows their synonyms, arrives with SqlClient in 4.1.
-        var connectionString = new DbConnectionStringBuilder { ConnectionString = configuration.GetConnectionString("CatalogDb") };
+        // SqlConnectionStringBuilder knows the keyword synonyms, such as Server or MARS Connection.
+        var connectionString = new SqlConnectionStringBuilder(configuration.GetConnectionString("CatalogDb"));
 
-        Assert.Equal(@"(localdb)\MSSQLLocalDB", connectionString["Data Source"]);
-        Assert.Equal("eShopCatalog", connectionString["Initial Catalog"]);
-        Assert.False(connectionString.ContainsKey("MultipleActiveResultSets"));
+        Assert.Equal(@"(localdb)\MSSQLLocalDB", connectionString.DataSource);
+        Assert.Equal("eShopCatalog", connectionString.InitialCatalog);
+        Assert.False(connectionString.MultipleActiveResultSets);
+    }
+
+    // Only the committed files, as above. Migrating on startup is a Development convenience (ADR-0013).
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void Committed_settings_turn_migrate_on_startup_on_in_Development_only(bool development, bool expected)
+    {
+        var files = new ConfigurationBuilder()
+            .SetBasePath(ContentRoot)
+            .AddJsonFile("appsettings.json", optional: false);
+        if (development)
+        {
+            files.AddJsonFile("appsettings.Development.json", optional: false);
+        }
+
+        var configuration = files.Build();
+
+        Assert.Equal(expected, configuration.GetValue<bool?>("Database:MigrateOnStartup"));
     }
 
     // User secrets are a JSON source for secrets.json, added whether or not the file exists yet.
