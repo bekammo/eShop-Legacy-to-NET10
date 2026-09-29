@@ -41,6 +41,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 eShop.Catalog.slnx           New solution (.NET 10, built with the dotnet CLI)
 eShopLegacyMVC.sln           Legacy solution (built with MSBuild until cutover)
 global.json                  .NET SDK and test runner selection
+dotnet-tools.json            Local .NET tools (dotnet-ef)
 Directory.Build.props        Build settings for the new solution
 Directory.Packages.props     Central package versions for the new solution
 nuget.config                 Package sources (both solutions)
@@ -57,7 +58,7 @@ src/
   eShopLegacy.Utilities/     Shared class library (.NET Framework 4.6.1)
 tests/
   eShop.Catalog.Api.UnitTests/         Tests without a host (xUnit v3)
-  eShop.Catalog.Api.IntegrationTests/  HTTP tests against the in-memory host (xUnit v3)
+  eShop.Catalog.Api.IntegrationTests/  Tests against the in-memory host and SQL Server in a container (xUnit v3)
   Shared/                              Test code both projects compile, such as the readers of docs/legacy
 ```
 
@@ -114,15 +115,43 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 |---|---|---|
 | `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
 
-The host does not start without a connection string. It does not connect to the database yet: migrations arrive in Stage 4.2, and Stage 4.4 applies them at startup in Development. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
+The host does not start without a connection string. It does not connect to the database yet: Stage 4.4 applies the migrations at startup in Development. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api
 ```
 
+## Database migrations
+
+The schema is created and changed by EF Core migrations in `src/eShop.Catalog.Api/Data/Migrations` ([ADR-0011](DECISIONS.md#adr-0011-ef-core-migration-strategy)). The `dotnet-ef` tool is pinned in [dotnet-tools.json](dotnet-tools.json). Restore it once per clone:
+
+```bash
+dotnet tool restore
+```
+
+The `dotnet ef` commands need the solution restored, so build it once first (`dotnet build eShop.Catalog.slnx`). After a model change, add a migration. A unit test fails while the model has changes that no migration captures.
+
+```bash
+dotnet ef migrations add <Name> --project src/eShop.Catalog.Api --output-dir Data/Migrations
+```
+
+Create or update the Development database, here the LocalDB one:
+
+```bash
+dotnet ef database update --project src/eShop.Catalog.Api --connection "Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=eShopCatalog;Integrated Security=True"
+```
+
+Write the SQL that brings an empty database, or one these migrations created, up to date, for review before a deployment applies it. A legacy database needs the Stage 4.3 baseline first. The `artifacts` folder is ignored by git.
+
+```bash
+dotnet ef migrations script --idempotent --project src/eShop.Catalog.Api --output artifacts/migrate.sql
+```
+
+The tool does not start the app: it builds the `DbContext` through a design-time factory, so these commands need no configuration. Only `database update` connects. `dotnet ef migrations remove` tries to check the database first, so remove an unapplied migration with `--force`.
+
 ## Running the tests
 
-The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). No test needs Docker yet. From Stage 4.2 the integration tests start SQL Server in a container, so Docker must be running.
+The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). The unit tests need only the SDK. The integration tests start SQL Server in a container, so Docker must be running. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`. Each test class gets a database of its own in that container, created by the migrations.
 
 Run every test:
 

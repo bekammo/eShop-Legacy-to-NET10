@@ -66,6 +66,7 @@ internal static class EfModelSchema
                 filter: null));
         }
 
+        // EF Core has no update action and always creates enabled, trusted foreign keys.
         foreach (var foreignKey in mapped.ForeignKeyConstraints)
         {
             facts.Add(SchemaFacts.ForeignKey(
@@ -73,7 +74,10 @@ internal static class EfModelSchema
                 foreignKey.Columns.Select(c => c.Name),
                 QualifiedName(foreignKey.PrincipalTable),
                 foreignKey.PrincipalColumns.Select(c => c.Name),
-                OnDelete(foreignKey.OnDeleteAction)));
+                OnDelete(foreignKey.OnDeleteAction),
+                onUpdate: "NO ACTION",
+                enabled: true,
+                trusted: true));
         }
 
         facts.AddRange(mapped.CheckConstraints.Select(check => SchemaFacts.CheckConstraint(check.Name!)));
@@ -81,13 +85,14 @@ internal static class EfModelSchema
         return SchemaFacts.Sorted(facts);
     }
 
+    // EF Core has no cache setting for sequences, so it creates them with the server's default cache.
     public static IReadOnlyList<string> SequenceFacts(IModel model) =>
         SchemaFacts.Sorted(model.GetSequences().Select(sequence =>
         {
             var (type, min, max) = StoreType(sequence.Type);
             return SchemaFacts.Sequence(
                 $"{sequence.Schema}.{sequence.Name}", type, sequence.StartValue, sequence.IncrementBy,
-                sequence.MinValue ?? min, sequence.MaxValue ?? max, sequence.IsCyclic);
+                sequence.MinValue ?? min, sequence.MaxValue ?? max, sequence.IsCyclic, cached: true, cacheSize: null);
         }));
 
     private static string QualifiedName(ITable table) => $"{table.Schema}.{table.Name}";

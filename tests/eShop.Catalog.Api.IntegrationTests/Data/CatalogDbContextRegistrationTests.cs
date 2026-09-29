@@ -17,7 +17,7 @@ public sealed class CatalogDbContextRegistrationTests(CatalogApiFactory factory)
         var context = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
 
         // EF Core adds an Application Name when the connection string has none, so compare the target.
-        var expected = new SqlConnectionStringBuilder(CatalogApiFactory.ConnectionString);
+        var expected = new SqlConnectionStringBuilder(factory.ConnectionString);
         var actual = new SqlConnectionStringBuilder(context.Database.GetConnectionString());
         Assert.Equal(expected.DataSource, actual.DataSource);
         Assert.Equal(expected.InitialCatalog, actual.InitialCatalog);

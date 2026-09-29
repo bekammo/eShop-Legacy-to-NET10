@@ -144,7 +144,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - `AddDbContext`, failing fast when the connection string is missing. The `Testing` environment has no connection string of its own (ADR-0009), so `CatalogApiFactory` sets a placeholder that no test connects to until 4.2.
 
   Unit tests assert the model metadata.
-- [ ] 4.2 Add the `dotnet-ef` local tool and the `InitialCreate` migration, plus the Testcontainers fixture (pinned image, one database per test class). Tests:
+- [x] 4.2 Add the `dotnet-ef` local tool and the `InitialCreate` migration, plus the Testcontainers fixture (pinned image, one database per test class). Tests:
   - migrations apply cleanly
   - the schema matches `docs/legacy/schema.json`
   - brands and types get their legacy IDs

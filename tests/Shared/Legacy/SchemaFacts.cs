@@ -32,13 +32,20 @@ internal static class SchemaFacts
     }
 
     public static string ForeignKey(
-        string name, IEnumerable<string> columns, string principalTable, IEnumerable<string> principalColumns, string onDelete) =>
-        $"foreign key {name} ({string.Join(", ", columns)}) references {principalTable} ({string.Join(", ", principalColumns)}) on delete {onDelete}";
+        string name, IEnumerable<string> columns, string principalTable, IEnumerable<string> principalColumns,
+        string onDelete, string onUpdate, bool enabled, bool trusted) =>
+        $"foreign key {name} ({string.Join(", ", columns)}) references {principalTable} ({string.Join(", ", principalColumns)})" +
+        $" on delete {onDelete} on update {onUpdate}{(enabled ? "" : " disabled")}{(trusted ? "" : " not trusted")}";
 
     public static string CheckConstraint(string name) => $"check constraint {name}";
 
-    public static string Sequence(string name, string type, long start, long increment, long min, long max, bool cycle) =>
-        $"sequence {name} {type} start {start} increment {increment} min {min} max {max}{(cycle ? " cycle" : " no cycle")}";
+    // cacheSize is null when the sequence uses the server's default cache size.
+    public static string Sequence(string name, string type, long start, long increment, long min, long max, bool cycle, bool cached, int? cacheSize) =>
+        $"sequence {name} {type} start {start} increment {increment} min {min} max {max}{(cycle ? " cycle" : " no cycle")}" +
+        (!cached ? " no cache" : cacheSize is { } size ? $" cache {size}" : " cache");
+
+    // How many schema objects of one type (sys.objects type_desc) the database has.
+    public static string ObjectCount(string type, int count) => $"{count} {type}";
 
     public static IReadOnlyList<string> Sorted(IEnumerable<string> facts) => [.. facts.Order(StringComparer.Ordinal)];
 

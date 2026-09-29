@@ -183,9 +183,10 @@ Stage 4.1 compares the EF Core model with this file, and Stage 4.2 compares the 
   - a column `collation`, only where it differs from the database collation. In the legacy schema every string column uses the server default (`SQL_Latin1_General_CP1_CI_AS`), which is not a model setting.
   - the primary key: name, clustered or not, and columns with their sort order
   - indexes and unique constraints: name, uniqueness, clustered or not, key columns with their sort order, included columns and filter
-  - foreign keys: name, columns, principal table and columns, and `onDelete`
+  - foreign keys: name, columns, principal table and columns, `onDelete`, `onUpdate`, and whether the key is enabled and trusted
   - check constraints. The legacy schema has none: `objectCounts` lists no `CHECK_CONSTRAINT`.
-- Compared for the `catalog_hilo` sequence: type, start, increment, minimum, maximum and cycle.
+- Compared for the `catalog_hilo` sequence: type, start, increment, minimum, maximum, cycle, and the cache setting.
+- `objectCounts`, from Stage 4.2 against a live database, so that objects in `sys.objects` without facts of their own (table triggers, views, procedures, functions, synonyms and so on) cannot slip in. Schemas, user-defined types and database-level DDL triggers are not in `sys.objects`; the tests require that there are none. Users, permissions and statistics are not compared. The count leaves out the two unused sequences below. EF6's `__MigrationHistory` table and its primary key give way to EF Core's `__EFMigrationsHistory` and its primary key, so those two counts stay the same.
 - Not compared:
   - Column `ordinal`: EF Core orders columns its own way.
   - `__MigrationHistory`: it is EF6's table. EF Core keeps its own `__EFMigrationsHistory`.

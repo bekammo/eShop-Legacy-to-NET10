@@ -54,7 +54,10 @@ internal static class LegacySchema
                 foreignKey["columns"]!.AsArray().Select(c => (string)c!),
                 (string)foreignKey["principalTable"]!,
                 foreignKey["principalColumns"]!.AsArray().Select(c => (string)c!),
-                (string)foreignKey["onDelete"]!));
+                (string)foreignKey["onDelete"]!,
+                (string)foreignKey["onUpdate"]!,
+                (bool)foreignKey["enabled"]!,
+                (bool)foreignKey["trusted"]!));
         }
 
         return SchemaFacts.Sorted(facts);
@@ -70,7 +73,24 @@ internal static class LegacySchema
             (long)json["increment"]!,
             (long)json["minValue"]!,
             (long)json["maxValue"]!,
-            (bool)json["cycle"]!);
+            (bool)json["cycle"]!,
+            (bool)json["cached"]!,
+            (int?)json["cacheSize"]);
+    }
+
+    // The object counts a database migrated by the new API must have: the legacy counts, less the
+    // objects the comparison leaves out, plus EF Core's history table. This catches objects that
+    // the other facts do not describe, such as triggers, views or procedures.
+    public static IReadOnlyList<string> ObjectCountFacts()
+    {
+        var counts = Schema["objectCounts"]!.AsObject().ToDictionary(p => p.Key, p => (int)p.Value!);
+
+        // The unused catalog_brand_hilo and catalog_type_hilo.
+        counts["SEQUENCE_OBJECT"] -= 2;
+
+        // EF6's __MigrationHistory and its primary key give way to EF Core's __EFMigrationsHistory
+        // and its primary key, so USER_TABLE and PRIMARY_KEY_CONSTRAINT stay as they are.
+        return SchemaFacts.Sorted(counts.Where(c => c.Value > 0).Select(c => SchemaFacts.ObjectCount(c.Key, c.Value)));
     }
 
     // schema.json lists check constraints only as a count. The legacy schema has none, so the tables
