@@ -14,7 +14,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 1 — Baseline audit | Done |
 | 2 — Scaffolding | Done |
 | 3 — Configuration | Done |
-| 4 — Domain & EF Core | Not started |
+| 4 — Domain & EF Core | In progress |
 | 5 — Application services & DI | Not started |
 | 6 — Logging | Not started |
 | 7 — HTTP endpoints | Not started |
@@ -58,6 +58,7 @@ src/
 tests/
   eShop.Catalog.Api.UnitTests/         Tests without a host (xUnit v3)
   eShop.Catalog.Api.IntegrationTests/  HTTP tests against the in-memory host (xUnit v3)
+  Shared/                              Test code both projects compile, such as the readers of docs/legacy
 ```
 
 The build files at the repository root reach every project below them. Three folders opt out with stop-files (`Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`): the two legacy project folders and the Stage 1.2 capture tool in `docs/legacy/capture` ([ADR-0006](DECISIONS.md#adr-0006-solution-structure-and-build-conventions)).
@@ -111,9 +112,9 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 
 | Setting | Development | Other environments |
 |---|---|---|
-| `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`) | Required from Stage 4.1, for example as the environment variable `ConnectionStrings__CatalogDb` |
+| `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
 
-Nothing reads the connection string yet: the database arrives in Stage 4. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
+The host does not start without a connection string. It does not connect to the database yet: migrations arrive in Stage 4.2, and Stage 4.4 applies them at startup in Development. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api

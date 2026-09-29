@@ -174,25 +174,28 @@ When a create attempt breaks more than one rule, which message the form shows is
     Their status code is still the contract. A difference forced by the platform (Kestrel instead of IIS) is recorded as a delta.
 12. `files-*` exchanges describe the retired endpoint. The new API answers `410 Gone` (Stage 7.3), and the tests assert that against this delta.
 
-### Schema (`schema.json`), used from Stage 4.2
+### Schema (`schema.json`), used from Stage 4.1
+
+Stage 4.1 compares the EF Core model with this file, and Stage 4.2 compares the database that the migrations create. Both state the schema as one line per column, key, index, foreign key, check constraint or sequence ("schema facts", in `tests/Shared/Legacy`).
 
 - Compared for `Catalog`, `CatalogBrand` and `CatalogType`:
-  - column names, `storeType`, `nullable` and `identity`
-  - the primary key name and columns
-  - index names, columns and uniqueness
-  - foreign key names, columns, principal table and columns, and `onDelete`
+  - columns: name, `storeType`, `nullable`, `identity`, and whether a default or a computed expression exists. The expressions themselves are not compared, because SQL Server rewrites them.
+  - a column `collation`, only where it differs from the database collation. In the legacy schema every string column uses the server default (`SQL_Latin1_General_CP1_CI_AS`), which is not a model setting.
+  - the primary key: name, clustered or not, and columns with their sort order
+  - indexes and unique constraints: name, uniqueness, clustered or not, key columns with their sort order, included columns and filter
+  - foreign keys: name, columns, principal table and columns, and `onDelete`
+  - check constraints. The legacy schema has none: `objectCounts` lists no `CHECK_CONSTRAINT`.
 - Compared for the `catalog_hilo` sequence: type, start, increment, minimum, maximum and cycle.
 - Not compared:
   - Column `ordinal`: EF Core orders columns its own way.
   - `__MigrationHistory`: it is EF6's table. EF Core keeps its own `__EFMigrationsHistory`.
-  - `catalog_brand_hilo` and `catalog_type_hilo`: the legacy seeding reads them once, and the values it takes are discarded because the brand and type IDs are `IDENTITY` columns. Stage 4 decides whether the new schema keeps them, and the baseline for existing databases (Stage 4.3) has to tolerate them either way.
-- `collation` is the server default (`SQL_Latin1_General_CP1_CI_AS`), not a model setting.
+  - `catalog_brand_hilo` and `catalog_type_hilo`: the legacy seeding reads them once, and the values it takes are discarded because the brand and type IDs are `IDENTITY` columns. The new schema does not have them ([ADR-0010](../../DECISIONS.md#adr-0010-data-model)). The baseline for existing databases (Stage 4.3) has to tolerate them.
 - `objectCounts` shows that there are no views, procedures, triggers or default constraints.
 
-### Seed data (`seed-data.json`), used from Stage 4.4
+### Seed data (`seed-data.json`), used from Stage 4.1
 
-- Brand and type IDs and names must match exactly: the new app seeds them with `HasData` using the legacy IDs.
-- The 12 items must match column by column. In a fresh database HiLo hands out IDs 1–12, so the IDs match too.
+- Brand and type IDs and names must match exactly: the new app seeds them with `HasData` using the legacy IDs. Stage 4.1 checks the model's seed data, and Stage 4.2 the rows in the database.
+- From Stage 4.4, the 12 items must match column by column. In a fresh database HiLo hands out IDs 1–12, so the IDs match too.
 - `catalog_hilo` is 11 after seeding. The seeding took two blocks of 10: IDs 1–10, then 11–20, of which items 11 and 12 used two. An EF Core `UseHiLo` seeder with the same sequence takes the same blocks.
 - The `__MigrationHistory` row is informational.
 

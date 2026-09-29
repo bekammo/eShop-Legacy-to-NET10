@@ -19,6 +19,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0007](#adr-0007-test-strategy) | Test strategy | Accepted | 2.2 |
 | [ADR-0008](#adr-0008-continuous-integration) | Continuous integration | Accepted | 2.3 |
 | [ADR-0009](#adr-0009-configuration) | Configuration | Accepted | 3.1 |
+| [ADR-0010](#adr-0010-data-model) | Data model | Accepted | 4.1 |
 
 ## Template
 
@@ -625,3 +626,119 @@ Each test was checked against a deliberate break, and each break failed the inte
 - From Stage 4.1 the factory has to set a connection string, because the host does not start without one.
 - Configuration errors stop the host at startup and name the setting, instead of failing the first request that reads it.
 - The request-body limit is an open item for Stage 7.6, and the plan records it there.
+
+---
+
+## ADR-0010: Data model
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.1
+
+### Context
+
+- The legacy app has three EF6 entities: `CatalogItem`, `CatalogBrand` and `CatalogType` ([audit: EF6 data model](docs/legacy-audit.md#5-ef6-data-model-and-expected-schema)). `CatalogItem` mixes storage with the UI:
+  - MVC validation and display attributes (`[Required]`, `[Range]`, `[RegularExpression]`, `[Display]`, `[DataType]`)
+  - a `PictureUri` that the mapping ignores and a controller fills for each request
+  - a constructor that defaults `PictureFileName` to `dummy.png`
+- The Stage 1.2 capture recorded the schema that EF6 creates ([`schema.json`](docs/legacy/schema.json)):
+  - EF6 constraint names: `PK_dbo.Catalog`, `FK_dbo.Catalog_dbo.CatalogBrand_CatalogBrandId`, `IX_CatalogBrandId`
+  - `decimal(18,2)` prices and cascading foreign keys
+  - `IDENTITY` brand and type IDs
+  - item IDs from the `catalog_hilo` sequence (`bigint`, start 1, increment 10), through a hand-rolled HiLo generator
+- EF Core's conventions name the same objects differently: `PK_Catalog`, `FK_Catalog_CatalogBrand_CatalogBrandId`, `IX_Catalog_CatalogBrandId`.
+- The legacy schema has two more sequences, `catalog_brand_hilo` and `catalog_type_hilo`. The seeding reads each once and discards the value, because brand and type IDs are `IDENTITY` ([audit: sequences](docs/legacy-audit.md#53-sequences-and-hilo)).
+- Brand and type IDs are visible outside the database. `GET /api/brands` returns them, and the sample items refer to brand IDs 2 and 5 and type IDs 1–3 ([`seed-data.json`](docs/legacy/seed-data.json)).
+- The [comparison rules](docs/legacy/README.md#schema-schemajson-used-from-stage-41) say which parts of the schema the new one must reproduce.
+- Stage 4.3 lets the new API adopt an existing legacy database. That works without renaming anything only if the new schema uses the legacy names.
+
+### Decision
+
+**1. Entities** (`Catalog/`)
+
+`CatalogItem`, `CatalogBrand` and `CatalogType` are `internal sealed` classes that hold only the stored data. They live in `Catalog/`, and the EF Core mapping in `Data/`, because the brands, items and types endpoints of Stage 7 all share them ([ADR-0006](#adr-0006-solution-structure-and-build-conventions) keeps a folder per feature).
+
+- **No attributes.** Input validation belongs to the request contracts of the write endpoints (Stages 7.6 and 7.7). The display attributes went with the UI.
+- **No `PictureUri`.** It is a URL computed for each response (Stage 7.5), not data.
+- **No `dummy.png` default.** It is a rule of item creation, and it arrives with item creation (Stage 7.6).
+- **Nullability follows the schema.** `Description` is the only nullable column (`string?`), and the other strings are `required`. The navigations `CatalogBrand?` and `CatalogType?` are nullable, because they are loaded only when a query includes them.
+
+**2. Mapping** (`Data/`)
+
+`CatalogDbContext` applies one `IEntityTypeConfiguration<T>` per entity. The mapping reproduces the legacy schema under the comparison rules:
+
+- the table names, and the EF6 names of every primary key, foreign key and index
+- `nvarchar(50)` for item names, `nvarchar(100)` for brand and type names, `decimal(18,2)` for prices, `nvarchar(max)` for the other strings
+- cascading deletes on both foreign keys, as in the legacy schema (nothing deletes a brand or a type)
+- the tables, the sequence and EF Core's `__EFMigrationsHistory` table all in `dbo`, named explicitly, so the default schema of the login that applies the migrations does not matter. `HasDefaultSchema` places the tables and the sequence. The history table is not part of the model, so the SQL Server options place it (decision 5).
+
+**3. IDs**
+
+- **Item IDs** use `UseHiLo("catalog_hilo")` on a `bigint` sequence that starts at 1 and increments by 10. EF Core's HiLo allocates blocks the same way as the legacy generator ([audit](docs/legacy-audit.md#53-sequences-and-hilo)), so a fresh database gives the sample items IDs 1–12 again.
+- **Brand and type IDs** stay `IDENTITY(1,1)`.
+- **`catalog_brand_hilo` and `catalog_type_hilo` are not modeled.** Nothing uses their values. A legacy database that still has them is handled by the Stage 4.3 baseline.
+
+**4. Reference data**
+
+Brands and types are seeded with `HasData`, with the legacy IDs and names. The seed becomes part of the migrations, so every database gets the same IDs, which clients and the sample items rely on. The sample items are not reference data. They are seeded at runtime (Stage 4.4), because their IDs come from HiLo.
+
+**5. Registration**
+
+`AddCatalogDbContext` registers the context with `AddDbContext` on `ConnectionStrings:CatalogDb`.
+
+- **Shared options.** `UseCatalogSqlServer` holds the SQL Server options, so that the app, the tests and the design-time tooling of Stage 4.2 build the same context. Today it sets the provider and puts the migrations history table in `dbo`.
+- **Fail fast.** A missing or blank connection string throws at startup. The message names the setting and where to set it ([ADR-0009](#adr-0009-configuration)).
+- **No pooling, no retries.** There is no context pooling and no retry-on-failure. The legacy app had neither. A cloud database would reopen the retry question.
+- **Application Name.** When the connection string sets no `Application Name`, EF Core 10 adds `EFCore/<version> (<OS>)`. The value is left as is.
+
+**Tests**
+
+Unit tests compare the EF Core design-time model with `schema.json` and `seed-data.json`. They need no database, only the two files that the build copies next to them.
+
+| Test | What it pins |
+|---|---|
+| `CatalogModelTests.Model_maps_exactly_the_legacy_catalog_tables` | The model maps `dbo.Catalog`, `dbo.CatalogBrand` and `dbo.CatalogType`, and nothing else. |
+| `CatalogModelTests.Table_matches_the_legacy_schema` (one case per table) | Columns, primary key, indexes, unique constraints, foreign keys and check constraints equal `schema.json` under the comparison rules. |
+| `CatalogModelTests.Item_ids_come_from_the_legacy_hilo_sequence` | The only sequence is `catalog_hilo`, with the legacy type, start, increment, range and cycle setting, and the item ID uses it through HiLo. |
+| `CatalogModelTests.Brands_are_seeded_with_their_legacy_ids`, `Types_are_seeded_with_their_legacy_ids` | The `HasData` rows equal `seed-data.json`. |
+| `CatalogDbContextRegistrationTests.Registration_fails_when_the_connection_string_is_missing` | Registration throws, naming `ConnectionStrings:CatalogDb`, when no source sets it. |
+
+Integration tests check the registration in the host:
+
+| Test | What it pins |
+|---|---|
+| `CatalogDbContextRegistrationTests.DbContext_uses_the_configured_connection_string` | The context is configured with the factory's server and database. |
+| `CatalogDbContextRegistrationTests.Migrations_history_table_is_in_dbo` | The registered context creates `[dbo].[__EFMigrationsHistory]`. |
+| `CatalogDbContextRegistrationTests.Host_does_not_start_without_a_connection_string` (empty, blank) | The host fails at startup with a message that names `ConnectionStrings:CatalogDb`. |
+
+The comparison uses schema facts: one line per column, key, index, foreign key, check constraint or sequence. The same format is produced from `schema.json` (`tests/Shared/Legacy`) and from the model (`tests/eShop.Catalog.Api.UnitTests/Data/EfModelSchema.cs`), and Stage 4.2 produces it from a live database as well. The [comparison rules](docs/legacy/README.md#schema-schemajson-used-from-stage-41) list what a fact contains.
+
+Each test was checked against a deliberate break, and each break failed the intended test:
+
+- a primary key renamed, or made nonclustered
+- an index left with its EF Core convention name, or given a filter, an included column or a descending key
+- `Restrict` instead of `Cascade`
+- an identity column instead of HiLo for item IDs
+- the item name length changed, or a collation set on it
+- a default value on the price, or a computed column
+- a check constraint added
+- a brand renamed
+- the default schema removed
+- the sequence increment changed
+- the history table left in the login's default schema
+
+### Alternatives considered
+
+- **EF Core's naming conventions.** Every primary key, foreign key and index name would differ from the legacy database. The schema comparison would need exceptions, and adopting a legacy database (Stage 4.3) would first have to rename its constraints.
+- **Reverse engineering (`dotnet ef dbcontext scaffold`) from a legacy database.** It would reproduce the names and column types. It would also scaffold `__MigrationHistory` and the unused sequences, and it would take none of the decisions: HiLo, the `HasData` seed, the explicit `dbo` schema, nullable navigations. The model is small enough to write by hand, and the schema test checks it either way.
+- **An `IDENTITY` column for item IDs.** It is simpler, but the legacy `Catalog.Id` is not an identity column, and SQL Server cannot add `IDENTITY` to an existing column. Adopting a legacy database (Stage 4.3) would mean rebuilding its `Catalog` table. With HiLo, an adopted database continues from its own sequence.
+- **Keeping the brand and type sequences.** They would be dead objects in every new database.
+- **Seeding brands and types at runtime, with the items.** Their IDs would depend on the insertion order in each database, as they did in the legacy app, where `IDENTITY` assigned them in list order.
+- **Mapping with data annotations.** Attributes cannot name the constraints or declare the sequence, so the fluent configuration would be needed anyway, and the mapping would be split between two places.
+
+### Consequences
+
+- Every test run checks the EF Core model against the legacy schema, without a database. Stage 4.2 checks the database that the migrations create against the same file.
+- A change to any compared part of the schema fails the tests until the comparison rules allow it.
+- Validation, the picture URL and the default picture are not on the entity. Stages 7.5 to 7.7 implement them.
+- The host needs a connection string in every environment, including `Testing`. `CatalogApiFactory` sets a placeholder until Stage 4.2 gives each test class a database ([ADR-0009](#adr-0009-configuration)). Stage 5.3 decides how mock mode, which needs no database, fits with this.

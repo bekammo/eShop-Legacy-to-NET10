@@ -23,4 +23,15 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!--
+    The Stage 1.2 characterization data (docs/legacy) and the code that reads it, shared by both test
+    projects: the unit tests compare the EF Core model with it, and from Stage 4.2 the integration
+    tests compare a live database.
+  -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Shared\**\*.cs" LinkBase="Shared" />
+    <None Include="$(MSBuildThisFileDirectory)..\docs\legacy\schema.json;$(MSBuildThisFileDirectory)..\docs\legacy\seed-data.json"
+          LinkBase="Legacy" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

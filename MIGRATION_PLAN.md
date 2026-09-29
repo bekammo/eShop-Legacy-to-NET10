@@ -137,7 +137,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   ADR: configuration, including a table that records the fate of every `Web.config` element.
 
 ### Stage 4 — Domain & EF Core
-- [ ] 4.1 Domain and model:
+- [x] 4.1 Domain and model:
   - Entities (`string? Description`, no UI attributes, `PictureUri` moved out of the entity).
   - `CatalogDbContext` with `IEntityTypeConfiguration<T>` classes that reproduce the EF6 schema: the EF6 PK/FK/index names, `decimal(18,2)`, cascades, and the `catalog_hilo` sequence with `UseHiLo`.
   - `HasData` for brands and types, with the legacy IDs.
@@ -216,7 +216,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - `GET /api/items` (validated `pageSize` 1–100 and `pageIndex` ≥ 0)
   - `GET /api/items/{id}`
   - `GET /api/types`
-- [ ] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
+- [ ] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable: a new item gets the legacy default picture `dummy.png`. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
 - [ ] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
 
 ### Stage 8 — Async verification

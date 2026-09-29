@@ -1,5 +1,5 @@
-using System.Data.Common;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,13 +58,12 @@ public sealed class ConfigurationTests(CatalogApiFactory factory) : IClassFixtur
             .AddJsonFile("appsettings.Development.json", optional: false)
             .Build();
 
-        // DbConnectionStringBuilder matches keywords literally, so this checks the keywords the file
-        // uses. SqlConnectionStringBuilder, which also knows their synonyms, arrives with SqlClient in 4.1.
-        var connectionString = new DbConnectionStringBuilder { ConnectionString = configuration.GetConnectionString("CatalogDb") };
+        // SqlConnectionStringBuilder knows the keyword synonyms, such as Server or MARS Connection.
+        var connectionString = new SqlConnectionStringBuilder(configuration.GetConnectionString("CatalogDb"));
 
-        Assert.Equal(@"(localdb)\MSSQLLocalDB", connectionString["Data Source"]);
-        Assert.Equal("eShopCatalog", connectionString["Initial Catalog"]);
-        Assert.False(connectionString.ContainsKey("MultipleActiveResultSets"));
+        Assert.Equal(@"(localdb)\MSSQLLocalDB", connectionString.DataSource);
+        Assert.Equal("eShopCatalog", connectionString.InitialCatalog);
+        Assert.False(connectionString.MultipleActiveResultSets);
     }
 
     // User secrets are a JSON source for secrets.json, added whether or not the file exists yet.
