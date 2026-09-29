@@ -162,7 +162,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - no HiLo collision after seeding
 
   ADR: seeding and migrate-on-startup policy.
-- [ ] 4.5 Document the local database options: LocalDB by default, and `compose.yaml` SQL Server using the same pinned image as the tests.
+- [x] 4.5 Document the local database options: LocalDB by default, and `compose.yaml` SQL Server using the same pinned image as the tests. Unit tests keep the compose image equal to the tests' image, the `sa` password out of the file and the port on loopback. ADR: local development databases.
 
 ### Stage 5 — Application services & DI
 - [ ] 5.1 Async service layer:

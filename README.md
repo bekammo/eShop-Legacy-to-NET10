@@ -14,7 +14,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 1 — Baseline audit | Done |
 | 2 — Scaffolding | Done |
 | 3 — Configuration | Done |
-| 4 — Domain & EF Core | In progress |
+| 4 — Domain & EF Core | Done |
 | 5 — Application services & DI | Not started |
 | 6 — Logging | Not started |
 | 7 — HTTP endpoints | Not started |
@@ -42,6 +42,7 @@ eShop.Catalog.slnx           New solution (.NET 10, built with the dotnet CLI)
 eShopLegacyMVC.sln           Legacy solution (built with MSBuild until cutover)
 global.json                  .NET SDK and test runner selection
 dotnet-tools.json            Local .NET tools (dotnet-ef)
+compose.yaml                 SQL Server in a container, for local development
 Directory.Build.props        Build settings for the new solution
 Directory.Packages.props     Central package versions for the new solution
 nuget.config                 Package sources (both solutions)
@@ -97,7 +98,7 @@ dotnet build eShop.Catalog.slnx
 dotnet run --project src/eShop.Catalog.Api --launch-profile http
 ```
 
-The app listens on `http://localhost:5043`. In Development it first creates or updates its LocalDB database and seeds a new one with the sample items (see [Database migrations](#database-migrations)), so LocalDB must be available. LocalDB runs only on Windows; elsewhere, point the connection string at another SQL Server with user secrets (see [Configuration](#configuration)).
+The app listens on `http://localhost:5043`. In Development it first creates or updates its database and seeds a new one with the sample items (see [Database migrations](#database-migrations)), so its database server must be available: LocalDB on Windows by default, or SQL Server in a container on any OS (see [Local database](#local-database)).
 
 | Endpoint | Answers |
 |---|---|
@@ -118,7 +119,7 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 
 | Setting | Development | Other environments |
 |---|---|---|
-| `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
+| `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`), unless user secrets override it (see [Local database](#local-database)) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
 | `Database:MigrateOnStartup` | `true`: the migrations are applied, and a new database seeded, before the app accepts requests | `false`. The host refuses to start with `true` outside Development. |
 
 The host does not start without a connection string, or with an invalid setting. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
@@ -126,6 +127,66 @@ The host does not start without a connection string, or with an invalid setting.
 ```bash
 dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api
 ```
+
+## Local database
+
+In Development the API needs a SQL Server of its own. There are two options, and in both the app creates, migrates and seeds the database `eShopCatalog` when it starts ([ADR-0014](DECISIONS.md#adr-0014-local-development-databases)).
+
+| | LocalDB (default) | SQL Server in a container |
+|---|---|---|
+| Runs on | Windows | Windows, Linux or macOS, with Docker |
+| Server | The installed SQL Server Express LocalDB | [`compose.yaml`](compose.yaml), with the image the integration tests run |
+| Setup | None: `appsettings.Development.json` points at it | A password in `.env` and a connection string in user secrets |
+| Start over | Drop the database | `docker compose down --volumes` |
+
+### LocalDB
+
+LocalDB comes with Visual Studio (the *SQL Server Express LocalDB* component) and with the SQL Server Express installer. `appsettings.Development.json` points at its default instance, `(localdb)\MSSQLLocalDB`, which starts on the first connection, so there is nothing to set up. To check that it is installed:
+
+```bash
+sqllocaldb info MSSQLLocalDB
+```
+
+To start over with the sample items, stop the app and drop the database, for example with sqlcmd:
+
+```bash
+sqlcmd -S "(localdb)\MSSQLLocalDB" -Q "DROP DATABASE eShopCatalog"
+```
+
+### SQL Server in a container
+
+`compose.yaml` runs SQL Server only. The API still runs with `dotnet run`. SQL Server needs at least 2 GB of memory. There is no Arm64 image. A Mac with Apple silicon can run the amd64 image under Docker Desktop's Rosetta emulation, but this setup has not been tested here, and other Arm64 machines may not run it at all.
+
+1. Choose a password for the `sa` login and put it in a file named `.env` next to `compose.yaml`. Git ignores that file. SQL Server requires at least 8 characters, from at least three of these groups: upper-case letters, lower-case letters, digits and symbols. Use upper-case and lower-case letters with digits only. That meets the policy, and it avoids symbols such as `$`, `#`, `!`, `;` and quotes, which `.env` files, shells or connection strings treat specially.
+
+   ```text
+   MSSQL_SA_PASSWORD=<password>
+   ```
+
+2. Start the server. `--wait` returns once it accepts logins. The databases are kept in the Docker volume `eshop-catalog_sqlserver-data`.
+
+   ```bash
+   docker compose up --detach --wait
+   ```
+
+3. Point the API at it with user secrets, using the same password:
+
+   ```bash
+   dotnet user-secrets set ConnectionStrings:CatalogDb 'Data Source=127.0.0.1,1433;Initial Catalog=eShopCatalog;User ID=sa;Password=<password>;TrustServerCertificate=True' --project src/eShop.Catalog.Api
+   ```
+
+4. Run the API as usual. It creates, migrates and seeds `eShopCatalog` on that server.
+
+The server accepts connections from `127.0.0.1` only. If port 1433 is taken, for example by a SQL Server installed on the machine, add `CATALOG_DB_PORT=<port>` to `.env` and use that port in the connection string. The connection is encrypted, but the server's certificate is self-signed, so the connection string trusts it (`TrustServerCertificate=True`). That is acceptable only for a server on your own machine.
+
+| To | Run |
+|---|---|
+| Stop the server and keep the databases | `docker compose stop`, or `docker compose down`, which also removes the container |
+| Start over without databases | `docker compose down --volumes` |
+| See why the server did not start | `docker compose logs sqlserver` |
+| Go back to LocalDB | `dotnet user-secrets remove "ConnectionStrings:CatalogDb" --project src/eShop.Catalog.Api` |
+
+SQL Server sets the `sa` password only on its first start, when it creates its system databases in the empty volume. If you later change it in `.env`, the server keeps the old one, its health check fails, and `docker compose up --wait` reports it unhealthy. Change the password back, change it on the server too (`ALTER LOGIN sa WITH PASSWORD = ...`, logged in with the old one), or start over with `docker compose down --volumes`. If SQL Server rejects the password as too weak, the container exits at once, and `docker compose logs sqlserver` shows why.
 
 ## Database migrations
 
@@ -141,7 +202,7 @@ The `dotnet ef` commands need the solution restored, so build it once first (`do
 dotnet ef migrations add <Name> --project src/eShop.Catalog.Api --output-dir Data/Migrations
 ```
 
-In Development the app applies the migrations when it starts (`Database:MigrateOnStartup`). To create or update a database without starting the app, for example the LocalDB one:
+In Development the app applies the migrations when it starts (`Database:MigrateOnStartup`). To create or update a database without starting the app, for example the LocalDB one (for the container, use the connection string from [SQL Server in a container](#sql-server-in-a-container)):
 
 ```bash
 dotnet ef database update --project src/eShop.Catalog.Api --connection "Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=eShopCatalog;Integrated Security=True"
@@ -161,7 +222,7 @@ A database that the legacy app created cannot take the migrations until [`docs/l
 
 ## Running the tests
 
-The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). The unit tests need only the SDK. The integration tests start SQL Server in a container, so Docker must be running. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`. Each test class, or each test that needs one, gets a database of its own in that container.
+The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). The unit tests need only the SDK. The integration tests start SQL Server in a container, so Docker must be running. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`, which `compose.yaml` also runs for [local development](#sql-server-in-a-container). Each test class, or each test that needs one, gets a database of its own in that container.
 
 Run every test:
 

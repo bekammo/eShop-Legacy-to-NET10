@@ -1,6 +1,7 @@
 using System.Text;
 using DotNet.Testcontainers.Containers;
 using eShop.Catalog.Api.IntegrationTests;
+using eShop.Catalog.Api.Tests;
 using Microsoft.Data.SqlClient;
 using Testcontainers.MsSql;
 
@@ -12,11 +13,7 @@ namespace eShop.Catalog.Api.IntegrationTests;
 // needs one, gets a database of its own in it, so they never share data and can run in parallel.
 public sealed class SqlServerFixture : IAsyncLifetime
 {
-    // Pinned, so that every machine and CI run the same server and an upgrade is a deliberate change
-    // (ADR-0011). SQL Server 2025 is the version the legacy capture ran on.
-    public const string Image = "mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04";
-
-    private readonly MsSqlContainer _container = new MsSqlBuilder(Image).Build();
+    private readonly MsSqlContainer _container = new MsSqlBuilder(SqlServerImage.Name).Build();
 
     public async ValueTask InitializeAsync() => await _container.StartAsync(TestContext.Current.CancellationToken);
 

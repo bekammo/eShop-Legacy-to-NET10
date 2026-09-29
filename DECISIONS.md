@@ -23,6 +23,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0011](#adr-0011-ef-core-migration-strategy) | EF Core migration strategy | Accepted | 4.2 |
 | [ADR-0012](#adr-0012-adopting-a-legacy-database) | Adopting a legacy database | Accepted | 4.3 |
 | [ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness) | Seeding, migrate-on-startup and readiness | Accepted | 4.4 |
+| [ADR-0014](#adr-0014-local-development-databases) | Local development databases | Accepted | 4.5 |
 
 ## Template
 
@@ -1155,3 +1156,99 @@ A Development host was also run by hand against LocalDB: it applied `InitialCrea
 - A test that reverts the migrations and applies them again in the same process has to apply them from a context with EF Core's internal services to itself (`CatalogDatabase.CreateContextAsInANewProcess`).
 - Stage 5.3's mock mode needs no database. It has to turn migrate-on-startup and the readiness database check off, or a Development host started without a database fails at startup.
 - The two new unit tests need only the SDK. The other new tests need SQL Server.
+
+---
+
+## ADR-0014: Local development databases
+
+- **Status:** Accepted
+- **Date:** 2026-09-29
+- **Plan stage:** 4.5
+
+### Context
+
+- The Development connection string points at LocalDB, database `eShopCatalog` ([ADR-0009](#adr-0009-configuration), decision 2). LocalDB runs only on Windows. ADR-0009 left the other operating systems to this stage: SQL Server in a container, reached through a connection string in user secrets.
+- Since Stage 4.4 a Development host creates, migrates and seeds its database before it accepts requests, and does not start while the server is down ([ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness), decision 4). Its login therefore has to be able to create a database and change its schema.
+- The integration tests run the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04` ([ADR-0011](#adr-0011-ef-core-migration-strategy), decision 4). The LocalDB of the legacy capture is SQL Server 2025 as well (17.0.4025.3, [`capture-info.json`](docs/legacy/capture-info.json)).
+- The image needs a password for the `sa` login: at least 8 characters, from three of four character groups. It uses the password only when it creates its system databases. Its certificate is self-signed, and SqlClient encrypts by default and validates the server's certificate.
+- No committed file holds a credential ([ADR-0009](#adr-0009-configuration), decision 1). `.gitignore` already ignores `.env`.
+
+### Decision
+
+**1. Two options, LocalDB by default**
+
+| | LocalDB | SQL Server in a container |
+|---|---|---|
+| Where | Windows | Any OS with Docker |
+| Chosen by | `appsettings.Development.json`, unchanged | A connection string in user secrets, which overrides it |
+| Server | The installed SQL Server Express LocalDB | `compose.yaml`, with the tests' image |
+| Login | The developer's Windows account | `sa` |
+
+Either way the app creates, migrates and seeds `eShopCatalog` as ADR-0013 describes. The README's [Local database](README.md#local-database) section has the steps.
+
+**2. `compose.yaml` runs SQL Server only**
+
+The file at the repository root has one service, `sqlserver`. The API is not in it: it runs with `dotnet run` on every OS, so debugging and hot reload work the same everywhere. The compose project is named `eshop-catalog`, so its volume has the same name in every clone, whatever the folder is called.
+
+**3. The tests' image**
+
+- The service runs the image of the integration tests. The image name moves from the constant `SqlServerFixture.Image` to `SqlServerImage.Name` in `tests/Shared/SqlServerImage.cs`, which both test projects compile, and a unit test keeps `compose.yaml` equal to it. So an upgrade changes both, and a developer's server is the server the tests ran on.
+- There is no Arm64 image. `platform: linux/amd64` lets Docker Desktop on a Mac with Apple silicon pull the amd64 image and run it under Rosetta emulation. Other Arm64 hosts may not run it at all.
+- The edition is Developer, the image's default, stated in the file: free, and not licensed for production.
+
+**4. Credentials**
+
+- The `sa` password comes from the variable `MSSQL_SA_PASSWORD`, which compose reads from the environment or from `.env` next to `compose.yaml`. With `${MSSQL_SA_PASSWORD:?…}`, every compose command stops with a message while it is unset or empty, instead of starting a server without a password. Nothing in the repository holds it.
+- The connection string, with the password, goes into user secrets, as ADR-0009 planned. The password is therefore kept in two places on the developer's machine, both outside the repository.
+- The app connects as `sa`. It has to create the database and change its schema at startup, and the image has no hook that could create a narrower login when it first starts.
+
+**5. Network and encryption**
+
+- The port is published on `127.0.0.1` only, so the `sa` login cannot be reached from another machine. The host port is 1433, and `CATALOG_DB_PORT` changes it.
+- The documented connection string names `127.0.0.1` and keeps SqlClient's default encryption, with `TrustServerCertificate=True` for the self-signed certificate, as the Testcontainers connection strings of the tests do. The traffic is encrypted, but the server is not authenticated, which is acceptable only on the loopback interface.
+
+**6. Data and health**
+
+- The databases live in the named volume `eshop-catalog_sqlserver-data`, so they survive `docker compose down`. `docker compose down --volumes` starts over, which is also the simplest way to change the `sa` password. A named volume, not a folder in the working tree, keeps database files out of the repository and needs no host-folder permissions for the container's non-root `mssql` user.
+- A health check logs in with the image's `sqlcmd`, so `docker compose up --wait` returns once the server accepts logins, and an app started after it finds the server ready. `sqlcmd` takes the password from `SQLCMDPASSWORD`, not from its command line, which other users of a Linux host could list. The check uses the password that compose gives the container now, so a password changed after the volume was created shows as an unhealthy container, not only as a login failure in the app.
+
+**Tests** (`tests/eShop.Catalog.Api.UnitTests/Data/ComposeFileTests.cs`)
+
+They read `compose.yaml` as text, one setting per line, because `docker compose config` would need Docker and the unit tests need only the SDK.
+
+| Test | What it pins |
+|---|---|
+| `Compose_runs_the_sql_server_image_of_the_integration_tests` | `compose.yaml` names one image, `SqlServerImage.Name`. |
+| `Compose_takes_the_sa_password_from_the_environment` | The password is a required variable without a default, and the file does not set `SA_PASSWORD`, the older name that the image still reads. |
+| `Compose_publishes_sql_server_on_loopback_only` | Every published port is bound to `127.0.0.1`. A `ports` value on the key's own line, such as a flow list, fails the test instead of being skipped. |
+
+A comment at the end of a line becomes part of the value, so the tests fail on it rather than pass.
+
+Each of these deliberate breaks failed the intended test: another image tag, a password in the file, a password variable with a default (`:-`), a password under `SA_PASSWORD`, the port published on every interface, and the ports written as a flow list.
+
+The compose file was also run by hand, with Docker Compose 5.0.2 on Windows:
+
+- Without the password, `docker compose config` stopped with the message. With it, and with `.env` files that have CRLF line endings or a UTF-8 byte order mark, the password and `CATALOG_DB_PORT` came through.
+- `docker compose up --detach --wait` returned in about 10 seconds with the server healthy. A Development host with the documented connection string created, migrated and seeded `eShopCatalog` (items 1–12, `catalog_hilo` at 11) before it logged `Now listening`, and `/health/ready` answered 200. `sys.dm_exec_connections` showed its connections encrypted. The connection string was passed as an environment variable, which overrides user secrets, so no developer's secrets were touched.
+- The databases survived `down` and `up`. With another password, `up --wait` recreated the container and reported it unhealthy. A password that fails the policy made the container exit.
+- After the health check moved to `SQLCMDPASSWORD`, `up --wait` again reported the server healthy.
+
+Not checked: Linux and macOS hosts, and emulation on Arm64.
+
+### Alternatives considered
+
+- **The container as the default**, with its connection string in `appsettings.Development.json`. The file would hold a password, and every developer would need Docker, where on Windows LocalDB needs nothing and is what the legacy app uses.
+- **The API in `compose.yaml` too.** It would need a Dockerfile and a second way to run and debug the API. An image of the API belongs with a deployment target, and there is none yet.
+- **Aspire** (formerly .NET Aspire), an AppHost that starts SQL Server and the API. It adds two projects and another orchestration model to a solution with one service. Compose needs only Docker, which the integration tests need already.
+- **A login other than `sa`.** Creating it needs a script after the first start, which the image has no hook for, and the login would need rights to create databases anyway.
+- **`Encrypt=False`** instead of trusting the certificate. The session would not be encrypted, and the app would connect differently from the tests.
+- **Publishing on every interface** (`1433:1433`, as most examples do). The `sa` login would be open to the network.
+- **A folder in the working tree for the data.** Database files next to the code, and a folder that the container's `mssql` user must be able to write.
+
+### Consequences
+
+- The API can be developed on Linux and macOS, given Docker.
+- The container option asks for the password twice, in `.env` and in the connection string. Changing it later means starting over with a new volume, or changing it on the server as well.
+- Every clone and worktree on a machine shares the compose project `eshop-catalog`, and with it one container and one volume. `docker compose down --volumes` in any of them removes the databases of all of them, and a clone with another password in its `.env` recreates the shared container, which then reports unhealthy. A second clone that needs its own server runs compose with another project name (`--project-name`) and port.
+- An upgrade of the tests' image upgrades the local server too. A later major version upgrades the databases in the volume when it starts, and an older server cannot open them afterwards; `docker compose down --volumes` starts over.
+- No automated test runs `compose.yaml`: its image, password variable and port binding are tested, and the run above is the evidence that the whole works.
