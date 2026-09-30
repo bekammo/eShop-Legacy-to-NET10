@@ -27,7 +27,10 @@ public sealed class CatalogApiFactory(SqlServerFixture sqlServer) : WebApplicati
     // WebApplicationFactory passes host settings to Program as command-line arguments, which
     // CreateBuilder reads first, so Program.cs sees them while it registers services; they also
     // override environment variables. ConfigureAppConfiguration would apply only after that.
+    // Database mode, whatever a developer's environment variables say (ADR-0017): a test that wants mock mode sets
+    // it with UseSetting, which comes later and wins.
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder.UseEnvironment(EnvironmentName)
-            .UseSetting("ConnectionStrings:CatalogDb", ConnectionString);
+            .UseSetting("ConnectionStrings:CatalogDb", ConnectionString)
+            .UseSetting("Catalog:UseMockData", "false");
 }

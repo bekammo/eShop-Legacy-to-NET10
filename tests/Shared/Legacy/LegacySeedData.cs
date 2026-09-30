@@ -21,6 +21,21 @@ internal static class LegacySeedData
         (int)row["CatalogTypeId"]!, (int)row["CatalogBrandId"]!, (int)row["AvailableStock"]!, (int)row["RestockThreshold"]!,
         (int)row["MaxStockThreshold"]!, (bool)row["OnReorder"]!))];
 
+    // One "<name> | <brand> | <type>" line per item, in ID order, with the names of its brand and type.
+    public static IReadOnlyList<string> ItemsWithBrandAndType
+    {
+        get
+        {
+            var brands = Table("CatalogBrand").ToDictionary(row => (int)row["Id"]!, row => (string)row["Brand"]!);
+            var types = Table("CatalogType").ToDictionary(row => (int)row["Id"]!, row => (string)row["Type"]!);
+            return
+            [
+                .. Table("Catalog").Select(row =>
+                    ItemWithBrandAndType((string)row["Name"]!, brands[(int)row["CatalogBrandId"]!], types[(int)row["CatalogTypeId"]!])),
+            ];
+        }
+    }
+
     // The last value the legacy seeding drew from each sequence (sys.sequences.current_value).
     public static IReadOnlyDictionary<string, long> SequenceCurrentValues =>
         SeedData["sequenceCurrentValues"]!.AsObject().ToDictionary(p => p.Key, p => (long)p.Value!);
@@ -34,6 +49,13 @@ internal static class LegacySeedData
     public static string Item(CatalogItem item) => Item(
         item.Id, item.Name, item.Description, item.Price, item.PictureFileName, item.CatalogTypeId, item.CatalogBrandId,
         item.AvailableStock, item.RestockThreshold, item.MaxStockThreshold, item.OnReorder);
+
+    // The same line for an item of the new API, to compare it with ItemsWithBrandAndType. A brand or type that
+    // was not loaded shows as "(not loaded)".
+    public static string ItemWithBrandAndType(CatalogItem item) =>
+        ItemWithBrandAndType(item.Name, item.CatalogBrand?.Brand ?? "(not loaded)", item.CatalogType?.Type ?? "(not loaded)");
+
+    public static string ItemWithBrandAndType(string name, string brand, string type) => $"{name} | {brand} | {type}";
 
     public static string Item(
         int id, string name, string? description, decimal price, string pictureFileName, int catalogTypeId, int catalogBrandId,

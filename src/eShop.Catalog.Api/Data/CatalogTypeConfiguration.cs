@@ -16,10 +16,6 @@ internal sealed class CatalogTypeConfiguration : IEntityTypeConfiguration<Catalo
         builder.Property(type => type.Type).HasMaxLength(100);
 
         // Reference data with the IDs the legacy app assigns: the sample items refer to them.
-        builder.HasData(
-            new CatalogType { Id = 1, Type = "Mug" },
-            new CatalogType { Id = 2, Type = "T-Shirt" },
-            new CatalogType { Id = 3, Type = "Sheet" },
-            new CatalogType { Id = 4, Type = "USB Memory Stick" });
+        builder.HasData(PreconfiguredData.CatalogTypes());
     }
 }
