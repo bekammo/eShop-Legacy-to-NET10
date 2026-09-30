@@ -1,3 +1,4 @@
+using System.Globalization;
 using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Tests.Legacy;
 
@@ -183,6 +184,42 @@ public abstract class CatalogServiceContractTests
         Assert.False(await Service.UpdateCatalogItemAsync(13, fields, CancellationToken));
 
         Assert.Equal(LegacySeedData.Items, await AllItemsAsync());
+    }
+
+    // As the decimal(18,2) column holds them: 8 reads back as 8.00, which JSON shows. What create returns is not
+    // read back, so it is not compared.
+    [Fact]
+    public async Task Prices_are_read_back_with_two_decimal_places()
+    {
+        var created = await Service.CreateCatalogItemAsync(NewFields("Created") with { Price = 8m }, CancellationToken);
+        Assert.True(await Service.UpdateCatalogItemAsync(1, NewFields("Updated") with { Price = 8.5m }, CancellationToken));
+
+        var page = await Service.GetCatalogItemsPaginatedAsync(100, 0, CancellationToken);
+        Assert.Equal("8.00", Price(page.Data.Single(item => item.Id == created.Id)));
+        Assert.Equal("8.50", Price(page.Data.Single(item => item.Id == 1)));
+        Assert.Equal("8.00", Price((await Service.FindCatalogItemAsync(created.Id, CancellationToken))!));
+
+        static string Price(CatalogItem item) => item.Price.ToString(CultureInfo.InvariantCulture);
+    }
+
+    // The legacy mock numbered a new item after the highest ID, which threw on an empty catalog (audit D15).
+    [Fact]
+    public async Task Emptied_catalog_takes_new_items()
+    {
+        foreach (var id in SampleItemIds)
+        {
+            Assert.True(await Service.RemoveCatalogItemAsync(id, CancellationToken));
+        }
+
+        var empty = await Service.GetCatalogItemsPaginatedAsync(10, 0, CancellationToken);
+        Assert.Equal(0L, empty.TotalItems);
+        Assert.Equal(0L, empty.TotalPages);
+        Assert.Empty(empty.Data);
+
+        var created = await Service.CreateCatalogItemAsync(NewFields("Created"), CancellationToken);
+
+        Assert.DoesNotContain(created.Id, SampleItemIds);
+        Assert.Equal([ItemLine(created.Id, NewFields("Created"), "dummy.png")], await AllItemsAsync());
     }
 
     // A store that keeps items in insertion order, or reuses a removed item's slot, would put the new item first.

@@ -25,6 +25,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness) | Seeding, migrate-on-startup and readiness | Accepted | 4.4 |
 | [ADR-0014](#adr-0014-local-development-databases) | Local development databases | Accepted | 4.5 |
 | [ADR-0015](#adr-0015-async-first-catalog-service) | Async-first catalog service | Accepted | 5.1 |
+| [ADR-0016](#adr-0016-in-memory-catalog-service) | In-memory catalog service | Accepted | 5.2 |
 
 ## Template
 
@@ -1411,3 +1412,85 @@ Each of these deliberate breaks failed the intended tests:
 - The exception for an unknown brand or type differs between create and update, and may differ between implementations. An endpoint that relied on it would answer differently in mock mode, so the endpoints are expected to check first.
 - The 50-character limit on names and the two decimal places of prices are enforced by the database only: `nvarchar(50)` refuses a longer name, and `decimal(18,2)` keeps two decimal places of a price. Stages 7.6 and 7.7 are expected to validate both (D9, D10).
 - [docs/behavior-changes.md](docs/behavior-changes.md) gets no entry: nothing reaches HTTP yet. D2, D6, D11 and D17 change what clients see only when the endpoints of Stage 7 expose them, and those commits record it.
+
+---
+
+## ADR-0016: In-memory catalog service
+
+- **Status:** Accepted
+- **Date:** 2026-09-30
+- **Plan stage:** 5.2
+
+### Context
+
+- The legacy app runs without a database when `UseMockData` is `true` ([audit: configuration](docs/legacy-audit.md#61-webconfig)). Autofac then registers `CatalogServiceMock` as a singleton, over a `List<CatalogItem>` filled from `PreconfiguredData`, the same data that seeds the database ([audit: components](docs/legacy-audit.md#21-components)).
+- [ADR-0001](#adr-0001-migration-scope) keeps the in-memory mode. Stage 5.3 wires it to `Catalog:UseMockData`.
+- The audit lists the mock's defects as D15 ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)):
+  - One instance serves every request, but the list is a plain `List<T>`, changed by concurrent requests.
+  - Every read sets the brand and type of the shared items in place (`ComposeCatalogItems`), and hands those objects to the caller.
+  - A new item gets `Max(Id) + 1`: that throws on an empty list, and gives a removed item's ID to the next one.
+  - An item with an unknown brand or type is stored, and every later read of the item list throws, because `First()` finds no brand.
+- [ADR-0015](#adr-0015-async-first-catalog-service) defines the service contract, and a shared suite that each implementation must pass.
+
+### Decision
+
+**1. `InMemoryCatalogService`** (`Catalog/InMemoryCatalogService.cs`) implements `ICatalogService` in memory. Stage 5.3 registers it as a singleton in mock mode. It loses its changes when the process ends, as the legacy mock did.
+
+**2. The same starting data as a new database.** The brands, types and sample items move out of the EF Core mapping and the seeder into `Catalog/PreconfiguredData.cs`, named after the legacy class. The migrations get the brands and types from it through `HasData`, the seeder gets the items, and the in-memory service gets all three. The items take IDs 1–12 in list order, as HiLo gives them in a new database. `SampleItemSeeder.CreateItems` (ADR-0013) becomes `PreconfiguredData.CatalogItems`. The model and the migration snapshot do not change.
+
+**3. Thread safety.** A `System.Threading.Lock` guards the items and the last ID given. Every read and write of the items holds it. Brands and types are reference data that nothing changes, so they need no lock.
+
+**4. What it fixes of D15**
+
+| Legacy mock | `InMemoryCatalogService` |
+|---|---|
+| A plain list changed by concurrent requests | Items in a `SortedDictionary` by ID, under the lock |
+| Reads set the brand and type of the shared items and return them | Reads return copies, with copies of the brand and the type. Create returns a copy, made under the lock, because an update may already change the stored item. |
+| `Max(Id) + 1`: throws on an empty catalog, reuses a removed item's ID | A counter that starts after the sample items and only goes up |
+| Stores an item with an unknown brand or type, after which the item list fails | Refuses it with an `ArgumentException`, as the foreign keys refuse it |
+| Updates replace the stored object with the posted one | Updates write the nine fields of `CatalogItemFields` into the stored item, as `CatalogService` does |
+
+**5. Asynchronous like `CatalogService`.** The operations do no I/O, so they complete synchronously, but they end the way the EF Core service's do: a token that is already cancelled gives a cancelled task, and an exception, an argument check's included, is in the returned task rather than thrown by the call.
+
+**6. Prices as the database holds them.** The `decimal(18,2)` column gives back a price with two decimal places, so 8 reads as 8.00, which JSON shows. The in-memory service stores a price the same way. The item that create returns is not read back: the EF Core service returns the price as it was given, and the in-memory service as it is stored. The suite compares only prices that are read back. More than two decimal places is left to the API's validation (Stage 7.6).
+
+**Tests**
+
+`InMemoryCatalogServiceTests`, in the unit tests, runs the whole contract suite of ADR-0015 against a new instance per test, without Docker. The new tests:
+
+| Test | What it pins |
+|---|---|
+| `CatalogServiceContractTests.Emptied_catalog_takes_new_items`, against both implementations | With every item removed, a page is empty with 0 pages, and a new item gets an ID that no sample item had (the legacy `Max(Id) + 1` threw). |
+| `CatalogServiceContractTests.Prices_are_read_back_with_two_decimal_places`, against both implementations | A created price of 8 and an updated price of 8.5 read back as `8.00` and `8.50`. |
+| `InMemoryCatalogServiceTests.Concurrent_writes_and_reads_keep_the_catalog_consistent` | 200 parallel writers each create an item, find it on a page, update it, read it back updated, and every second one removes it. Every ID is distinct, and the catalog ends with the sample items and the kept items, updated. |
+| `PreconfiguredDataTests` (4 tests) | The brands, the types and the items, numbered in list order, equal `seed-data.json`, and each call returns new instances. The item test moved here from `SampleItemSeederTests` (ADR-0013). |
+
+Each of these deliberate breaks failed the intended tests:
+
+- no mutual exclusion, with each `lock` on a new object: `Concurrent_writes_and_reads_keep_the_catalog_consistent`, in each of three runs
+- new IDs from `Max(Id) + 1`, as in the legacy mock: `Ids_are_never_given_again`, `Emptied_catalog_takes_new_items` and the concurrency test
+- reads that return the stored items: `Changing_what_the_service_returned_changes_nothing`
+- no check of the brand and the type: the four cases of `Item_with_an_unknown_brand_or_type_is_refused`
+- an unsorted `Dictionary` for the items: `Pages_stay_in_id_order_after_removes_and_creates` and the concurrency test
+- no check of the cancelled token: `Cancelled_operations_change_nothing`
+- prices kept as given: `Prices_are_read_back_with_two_decimal_places`
+
+Not tested:
+
+- A narrower race, such as only the ID counter outside the lock, fails the concurrency test only now and then: in 2–11% of runs of a model of the test that the review ran outside this repository. The test shows that the lock is there, not that every statement is inside it.
+- The copy that create returns is made under the lock. The review found it outside. A test would have to time an update of the new ID between the add and the copy.
+
+### Alternatives considered
+
+- **`ConcurrentDictionary` without a lock.** Each operation would be atomic, but a page needs a consistent ordered view, and an update checks, then writes. A lock around a sorted dictionary is simpler, and a mock does not need more throughput.
+- **Immutable collections swapped with `Interlocked`.** Reads without a lock, at the price of a retry loop on every write. Not needed at this load.
+- **EF Core's in-memory provider**, or SQLite in memory, behind `CatalogService`. Neither runs the `catalog_hilo` sequence ([ADR-0007](#adr-0007-test-strategy)), and mock mode should need no EF Core model at all.
+- **Keeping `Max(Id) + 1`.** It reuses IDs, and a reused ID could point a client's cached link at another item.
+- **Storing unknown brands and types, and returning items without them.** The in-memory mode would accept data that the database refuses.
+
+### Consequences
+
+- Mock mode behaves like the database for everything the contract suite covers, and the suite runs on every build without Docker.
+- A change to the contract has to be implemented twice, and the suite shows where the two differ.
+- The sample data lives in one place, `PreconfiguredData`, for the migrations, the seeder and mock mode.
+- The mock keeps every item in one process. Several instances of the API in mock mode each have their own catalog, as in the legacy app.

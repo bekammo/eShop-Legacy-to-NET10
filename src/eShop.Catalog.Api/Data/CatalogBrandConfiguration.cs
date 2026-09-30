@@ -17,11 +17,6 @@ internal sealed class CatalogBrandConfiguration : IEntityTypeConfiguration<Catal
 
         // Reference data with the IDs the legacy app assigns: GET /api/brands returns them, and
         // the sample items refer to them.
-        builder.HasData(
-            new CatalogBrand { Id = 1, Brand = "Azure" },
-            new CatalogBrand { Id = 2, Brand = ".NET" },
-            new CatalogBrand { Id = 3, Brand = "Visual Studio" },
-            new CatalogBrand { Id = 4, Brand = "SQL Server" },
-            new CatalogBrand { Id = 5, Brand = "Other" });
+        builder.HasData(PreconfiguredData.CatalogBrands());
     }
 }
