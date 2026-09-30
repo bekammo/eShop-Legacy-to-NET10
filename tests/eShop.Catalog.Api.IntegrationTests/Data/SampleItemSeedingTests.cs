@@ -31,7 +31,7 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
             .Select(item => item.Name + " | " + item.CatalogBrand!.Brand + " | " + item.CatalogType!.Type)
             .ToListAsync(CancellationToken);
 
-        Assert.Equal(LegacyItemsWithBrandAndType(), items);
+        Assert.Equal(LegacySeedData.ItemsWithBrandAndType, items);
     }
 
     // The legacy seeding took two blocks of 10 for its 12 items, and left the sequence at 11.
@@ -168,18 +168,6 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         ("catalog_brand_hilo", "DROP SEQUENCE dbo.catalog_brand_hilo"),
         ("catalog_type_hilo", "DROP SEQUENCE dbo.catalog_type_hilo"),
     ];
-
-    // seed-data.json's items with the names of their brands and types.
-    private static IReadOnlyList<string> LegacyItemsWithBrandAndType()
-    {
-        var brands = LegacySeedData.Table("CatalogBrand").ToDictionary(row => (int)row["Id"]!, row => (string)row["Brand"]!);
-        var types = LegacySeedData.Table("CatalogType").ToDictionary(row => (int)row["Id"]!, row => (string)row["Type"]!);
-        return
-        [
-            .. LegacySeedData.Table("Catalog").Select(row =>
-                (string)row["Name"]! + " | " + brands[(int)row["CatalogBrandId"]!] + " | " + types[(int)row["CatalogTypeId"]!]),
-        ];
-    }
 
     // sys.sequences.current_value, the value that seed-data.json records.
     private static async Task<long> ItemIdSequenceAsync(string database)

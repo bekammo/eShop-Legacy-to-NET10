@@ -15,7 +15,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 2 — Scaffolding | Done |
 | 3 — Configuration | Done |
 | 4 — Domain & EF Core | Done |
-| 5 — Application services & DI | Not started |
+| 5 — Application services & DI | In progress |
 | 6 — Logging | Not started |
 | 7 — HTTP endpoints | Not started |
 | 8 — Async verification | Not started |

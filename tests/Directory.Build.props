@@ -28,7 +28,8 @@
     reads them, shared by both test projects: the unit tests compare the EF Core model with the data
     and check the script, and the integration tests compare live databases and run the script.
     Shared also holds the SQL Server image name, which the integration tests run and the unit tests
-    compare with compose.yaml (ADR-0014).
+    compare with compose.yaml (ADR-0014), and the catalog service contract suite, which each project runs
+    against the implementations it can host (ADR-0015).
   -->
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Shared\**\*.cs" LinkBase="Shared" />

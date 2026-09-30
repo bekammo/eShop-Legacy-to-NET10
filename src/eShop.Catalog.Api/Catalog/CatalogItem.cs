@@ -4,6 +4,10 @@ namespace eShop.Catalog.Api.Catalog;
 // picture URL is computed per request (Stage 7.5), so neither lives here (ADR-0010).
 internal sealed class CatalogItem
 {
+    // The picture that the service gives every new item, as the legacy CatalogItem constructor did. Clients do not
+    // choose pictures (ADR-0015).
+    internal const string DefaultPictureFileName = "dummy.png";
+
     // Assigned by HiLo from the catalog_hilo sequence when the item is added to the context.
     public int Id { get; set; }
 

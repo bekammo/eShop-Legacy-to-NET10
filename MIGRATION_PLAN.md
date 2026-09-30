@@ -165,7 +165,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 4.5 Document the local database options: LocalDB by default, and `compose.yaml` SQL Server using the same pinned image as the tests. Unit tests keep the compose image equal to the tests' image, the `sa` password out of the file and the port on loopback. ADR: local development databases.
 
 ### Stage 5 — Application services & DI
-- [ ] 5.1 Async service layer:
+- [x] 5.1 Async service layer:
   - `ICatalogService` returns tasks, takes a `CancellationToken`, and is not `IDisposable`.
   - EF Core `CatalogService`: no-tracking ordered reads, server-side brand lookup, and updates that apply explicit fields.
   - `PaginatedItems<T>` with guards.

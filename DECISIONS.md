@@ -24,6 +24,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0012](#adr-0012-adopting-a-legacy-database) | Adopting a legacy database | Accepted | 4.3 |
 | [ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness) | Seeding, migrate-on-startup and readiness | Accepted | 4.4 |
 | [ADR-0014](#adr-0014-local-development-databases) | Local development databases | Accepted | 4.5 |
+| [ADR-0015](#adr-0015-async-first-catalog-service) | Async-first catalog service | Accepted | 5.1 |
 
 ## Template
 
@@ -1252,3 +1253,161 @@ Not checked: Linux and macOS hosts, and emulation on Arm64.
 - Every clone and worktree on a machine shares the compose project `eshop-catalog`, and with it one container and one volume. `docker compose down --volumes` in any of them removes the databases of all of them, and a clone with another password in its `.env` recreates the shared container, which then reports unhealthy. A second clone that needs its own server runs compose with another project name (`--project-name`) and port.
 - An upgrade of the tests' image upgrades the local server too. A later major version upgrades the databases in the volume when it starts, and an older server cannot open them afterwards; `docker compose down --volumes` starts over.
 - No automated test runs `compose.yaml`: its image, password variable and port binding are tested, and the run above is the evidence that the whole works.
+
+---
+
+## ADR-0015: Async-first catalog service
+
+- **Status:** Accepted
+- **Date:** 2026-09-30
+- **Plan stage:** 5.1
+
+### Context
+
+- The legacy controllers reach the data through `ICatalogService` ([audit: components](docs/legacy-audit.md#21-components)). It has seven synchronous operations and is `IDisposable`. `CatalogService` implements it over EF6, and `CatalogServiceMock` over an in-memory list.
+- The audit traces these defects to the service ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)):
+  - **D2.** Edit attaches the posted object with `EntityState.Modified`, so every column is written, fields the form does not post included. `Id` and `PictureFileName` are bindable ([`edit-overwrites-unposted-fields`](docs/legacy/evidence/edit-overwrites-unposted-fields.json)).
+  - **D6.** Paging is not validated. `pageSize=0` divides by zero, negative values reach `Skip`/`Take`, and `pageSize * pageIndex` overflows ([`catalog-reads`](docs/legacy/evidence/catalog-reads.json)).
+  - **D11.** An edit of an unknown ID throws `DbUpdateConcurrencyException`, and a delete passes `null` to `Remove` ([`unknown-item-writes`](docs/legacy/evidence/unknown-item-writes.json)).
+  - **D16.** The controller disposes the service, and with it the `DbContext` that Autofac also disposes.
+  - **D17.** `GET /api/brands/{id}` loads every brand and searches them in memory. `GET /api/brands` returns the deferred `DbSet`, so the query runs while the response is serialized.
+  - **D15**, the mock, is Stage 5.2's.
+- The legacy create replaces a posted ID with the next HiLo value ([`create-ignores-posted-id`](docs/legacy/evidence/create-ignores-posted-id.json)), and a new item gets `dummy.png` from the `CatalogItem` constructor ([`create-default-picture`](docs/legacy/evidence/create-default-picture.json)). EF Core generates a key only when the property holds its CLR default, so an entity with a posted ID would be inserted under that ID.
+- Plan decision 6: the port is asynchronous from the start, and the async analyzers CA2016, CA1849 and CA2012 are errors ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). Stage 8 verifies that the request's `RequestAborted` token reaches EF Core.
+- [ADR-0010](#adr-0010-data-model) left the `dummy.png` default to item creation. [ADR-0007](#adr-0007-test-strategy) planned a service contract suite, run against SQL Server.
+
+### Decision
+
+**1. The interface** (`Catalog/ICatalogService.cs`)
+
+| Legacy | New | What changes |
+|---|---|---|
+| `GetCatalogItemsPaginated(pageSize, pageIndex)` | `GetCatalogItemsPaginatedAsync(pageSize, pageIndex, ct)` → `PaginatedItems<CatalogItem>` | A `pageSize` below 1 or a `pageIndex` below 0 throws `ArgumentOutOfRangeException` before any query. A page after the last one is empty. |
+| `FindCatalogItem(id)` | `FindCatalogItemAsync(id, ct)` → `CatalogItem?` | |
+| `GetCatalogBrands()`, a deferred `IEnumerable` | `GetCatalogBrandsAsync(ct)` → `IReadOnlyList<CatalogBrand>` | Read before it returns, in ID order (D17). |
+| none | `FindCatalogBrandAsync(id, ct)` → `CatalogBrand?` | One brand, looked up by the store (D17). |
+| `GetCatalogTypes()` | `GetCatalogTypesAsync(ct)` → `IReadOnlyList<CatalogType>` | Read before it returns, in ID order. |
+| `CreateCatalogItem(CatalogItem)` | `CreateCatalogItemAsync(CatalogItemFields, ct)` → the new item | The input has no ID and no picture (decision 2). |
+| `UpdateCatalogItem(CatalogItem)` | `UpdateCatalogItemAsync(id, CatalogItemFields, ct)` → `bool` | Writes exactly the given fields (decision 2). `false` for an unknown ID (D11). |
+| `RemoveCatalogItem(CatalogItem)` | `RemoveCatalogItemAsync(id, ct)` → `bool` | By ID. `false` for an unknown ID (D11). |
+| `Dispose()` | none | The container owns the context (D16). |
+
+- **Asynchronous, with a required token.** Every operation returns a `Task` and takes a `CancellationToken` with no default value, so a caller cannot forget to pass the request's token. A token that is already cancelled stops every operation before it changes anything.
+- **`Task`, not `ValueTask`.** Every call of the EF Core implementation does I/O, so a `ValueTask` would save nothing, and it has rules of use (CA2012).
+- **Results belong to the caller.** A caller can change an item, brand or type that the service returned without changing the catalog. EF6's tracked queries let a later `SaveChanges` write such a change back, and the legacy mock handed out its own objects.
+- **Not found is a value**: a `null` or `false`, not an exception. The endpoints decide the status: 404 for the brands and the items that are read (Stages 7.2 and 7.5), and 404 is also expected for updates and deletes of unknown items (Stage 7.7, [upcoming deltas](docs/behavior-changes.md#known-upcoming-deltas)).
+- **Unknown brands and types are refused** on create and update, as the database's foreign keys refuse them, and nothing changes. The exception is not part of the contract: the EF Core implementation throws `DbUpdateException` on create and the `SqlException` of the foreign key on update. The endpoints are expected to check the brand and the type before they call the service, and answer 400. Stages 7.6 and 7.7 decide it ([upcoming deltas](docs/behavior-changes.md#known-upcoming-deltas)). An update of an unknown ID returns `false` whatever the fields hold, because the database's `UPDATE` then matches no row and checks no foreign key.
+
+**2. Writes apply explicit fields** (`Catalog/CatalogItemFields.cs`)
+
+`CatalogItemFields` holds the nine fields that a caller writes: `Name`, `Description`, `Price`, `CatalogTypeId`, `CatalogBrandId`, `AvailableStock`, `RestockThreshold`, `MaxStockThreshold` and `OnReorder`. Each is `required`, so a caller sets every one.
+
+- **No ID.** The service assigns it, as the legacy create did.
+- **No picture.** A new item gets `dummy.png` (`CatalogItem.DefaultPictureFileName`), and an update keeps the picture. This moves the default that ADR-0010 left to Stage 7.6 into the service, because every implementation has to apply it and the contract suite checks it. The constant is declared on `CatalogItem`, but the entity does not apply it. This amends ADR-0010 decision 1. Stage 7.6 keeps the HTTP half: its request contract has no picture.
+- **An update writes the nine fields and nothing else.** That fixes D2 in the service: the ID and the picture cannot be overwritten, and a `null` description is written as `null` because the caller gave it. Which of the nine a request must carry is Stage 7.7's decision. `OnReorder` is among them, although the legacy edit form had no such field and so reset it on every edit.
+
+**3. The EF Core implementation** (`Catalog/CatalogService.cs`)
+
+- **Scoped**, on the scoped `CatalogDbContext`. Stage 5.3 registers it. Until then the tests construct it.
+- **Reads** use `AsNoTracking`. Lists are ordered by ID: the legacy brand and type queries had no `ORDER BY`, so SQL Server chose the order. The golden brand exchanges show ID order, and types follow the same rule. Items come with their brand and type (`Include`), as in the legacy service.
+- **Paging** counts with `LongCountAsync` and reads only the page, with `OFFSET`/`FETCH`, as the legacy service did. The offset is a `long`. A page that starts after the last item is empty without the page query, so an offset that reaches `Skip` is below the count. It fits an `int` unless the table holds more than `int.MaxValue` rows, and then a checked cast throws.
+- **The brand lookup** is one query on the key (D17).
+- **Create** adds the item with `AddAsync`, because HiLo may draw a new block from `catalog_hilo`, which is I/O, and then saves it. The item is detached afterwards, whether the save succeeded or not, so no later `SaveChanges` on the context writes it again.
+- **Update** is one `ExecuteUpdateAsync` that sets the nine fields. **Delete** is one `ExecuteDeleteAsync`. Each returns `true` when it touched a row.
+  - Neither reads the row first. A row that another request deletes in the meantime gives `false`, not a concurrency exception (D11).
+  - Both bypass the change tracker, which holds nothing of the service's that could go stale.
+  - Each write is one statement or one `SaveChanges`, so no explicit transaction is needed.
+
+**4. `PaginatedItems<T>`** (`Catalog/PaginatedItems.cs`)
+
+It replaces `PaginatedItemsViewModel` and keeps its property names (`ActualPage`, `ItemsPerPage`, `TotalItems`, `TotalPages`, `Data`), which the items endpoint of Stage 7.5 is expected to serialize.
+
+- **Guards** (D6): a `pageIndex` of 0 or more, a `pageSize` of 1 or more, a count of 0 or more, and a page that is not `null` and holds no more than `pageSize` items. The constructor does not check the page against the count. They come from two reads, which a concurrent write can put out of step, and that must not become an error.
+- **`TotalPages`** is `ceil(count / pageSize)`, 0 for an empty list, as in the legacy class. It is a `long`, like `TotalItems`, computed with integer arithmetic instead of the legacy `decimal` division and `int` cast.
+- **No upper bound on `pageSize`.** The limit of 100 is a rule of the HTTP API (Stage 7.5), not of the service.
+
+**5. The contract suite**
+
+`CatalogServiceContractTests` (`tests/Shared/Catalog`) is an abstract test class that both test projects compile. Each implementation's test class derives from it and supplies `Service`, over a catalog of its own that holds the legacy sample data: the brands, types and 12 items of [`seed-data.json`](docs/legacy/seed-data.json).
+
+- The EF Core class, `CatalogServiceTests` in the integration tests, uses a context of the host on the class's migrated database ([ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness)). Each test runs in a transaction that it never commits, so every test starts from the sample data. The two tests that inspect the SQL build a context of their own, with a command interceptor, outside the host and the transaction. They only read.
+- The in-memory class arrives with Stage 5.2, in the unit tests, so it needs no Docker.
+
+**Tests**
+
+The contract, run against the EF Core implementation:
+
+| Test | What it pins |
+|---|---|
+| `Brands_are_the_legacy_brands_in_id_order`, `Types_are_the_legacy_types_in_id_order` | The lists equal `seed-data.json`, in ID order. |
+| `Each_brand_is_found_by_its_id`, `Unknown_brand_is_not_found` (0, −1, 6, `int.MaxValue`) | The brand lookup. |
+| `Page_holds_the_items_at_its_place_in_id_order` (8 cases) | The items on the page, `ActualPage`, `ItemsPerPage`, `TotalItems` and `TotalPages`: first, last, exact and one-item pages, a page after the last one, and a `pageIndex` whose offset overflows an `int`. |
+| `Paged_items_come_with_their_brands_and_types` | Each item carries the names of its brand and type. |
+| `Invalid_paging_is_refused` (5 cases) | `ArgumentOutOfRangeException` naming `pageSize` or `pageIndex`. |
+| `Each_item_is_found_by_its_id_with_its_brand_and_type`, `Unknown_item_is_not_found` (0, −1, 13, `int.MaxValue`) | The item lookup, every column included. |
+| `Created_item_gets_a_new_id_the_given_fields_and_the_default_picture` | A new ID, every given field, `dummy.png`, no brand or type loaded, and the same item when read back. |
+| `Ids_are_never_given_again` | After a created item and item 12 are removed, the next item gets neither ID. |
+| `Update_writes_every_field_and_keeps_the_id_and_the_picture` | Every field changes, a `null` description included. The ID, the picture and every other item do not. |
+| `Update_of_an_unknown_item_changes_nothing`, `Removing_an_unknown_item_changes_nothing` (0, 13, `int.MaxValue`) | `false`, and the catalog is unchanged. |
+| `Update_of_an_unknown_item_with_an_unknown_brand_returns_false` | The unknown ID wins over the unknown brand and type. |
+| `Removed_item_is_gone` | The item is gone from lookups and pages, and a second removal returns `false`. |
+| `Pages_stay_in_id_order_after_removes_and_creates` | After item 1 is removed and an item created, the page holds items 2–12 and then the new one. |
+| `Item_with_an_unknown_brand_or_type_is_refused` (4 cases) | Create and update throw, and the catalog is unchanged. |
+| `Cancelled_operations_change_nothing` | With a token that is already cancelled, every operation throws `OperationCanceledException`, and the catalog is unchanged. |
+| `Changing_what_the_service_returned_changes_nothing` | Changes to returned items, brands and types, followed by another create, leave the catalog as it was. |
+
+Only the EF Core implementation:
+
+| Test | What it pins |
+|---|---|
+| `CatalogServiceTests.Service_leaves_nothing_tracked` | After one call of each operation, a refused create and a refused update included, the context tracks nothing. The refused create throws `DbUpdateException`, and the refused update `SqlException`. |
+| `CatalogServiceTests.Brand_lookup_asks_the_database_for_the_one_brand` | One `SELECT TOP(1) ... WHERE` (D17). |
+| `CatalogServiceTests.Paging_reads_only_the_rows_of_the_page_in_id_order` | A `COUNT_BIG(*)`, then one query with `ORDER BY [c].[Id]`, `OFFSET` and `FETCH NEXT`. |
+| `CatalogServiceTests.Brands_and_types_are_read_in_id_order` | Each list query has `ORDER BY [c].[Id]`. SQL Server returns these small tables in key order without one too, so the rows alone cannot show it. |
+
+Unit tests:
+
+| Test | What it pins |
+|---|---|
+| `PaginatedItemsTests.Page_keeps_what_it_was_given` | The four values and the page. |
+| `PaginatedItemsTests.Total_pages_hold_every_item` (7 cases) | `ceil(count / pageSize)`, from an empty list up to `long.MaxValue` items. |
+| `PaginatedItemsTests.Page_index_below_zero_is_refused` (2 cases), `Page_size_below_one_is_refused` (3 cases), `Negative_count_is_refused`, `Missing_data_is_refused`, `Page_larger_than_its_size_is_refused` | Each guard, with the parameter it names. |
+| `PaginatedItemsTests.Page_may_disagree_with_the_count` | A page with more items than the count is accepted. |
+
+`SampleItemSeedingTests` now takes the items' brand and type names from `LegacySeedData`, which the contract suite shares.
+
+Each of these deliberate breaks failed the intended tests:
+
+- the created item left tracked, or item reads that track: `Changing_what_the_service_returned_changes_nothing` and `Service_leaves_nothing_tracked`
+- an update that also resets the picture, or that skips the description: `Update_writes_every_field_and_keeps_the_id_and_the_picture`
+- a create that skips the description: the create, order and snapshot tests
+- the item lookup without its brand and type: the lookup, create, update and snapshot tests
+- the brand looked up among every brand, in memory: `Brand_lookup_asks_the_database_for_the_one_brand`, and `Cancelled_operations_change_nothing`, because that search ignored the token
+- the offset computed as an `int`: the `int.MaxValue` case of `Page_holds_the_items_at_its_place_in_id_order`
+- the service's paging guards removed: four of the five cases of `Invalid_paging_is_refused`. A `pageSize` of 0 is still refused, by `PaginatedItems`.
+- brands ordered by name: the brand list, ordering and snapshot tests
+- brands, or pages, without an `ORDER BY`: only `Brands_and_types_are_read_in_id_order` or `Paging_reads_only_the_rows_of_the_page_in_id_order`. SQL Server still returned the rows in ID order.
+- a delete that passes `CancellationToken.None`, which CA2016 accepts because a token is passed: `Cancelled_operations_change_nothing`
+- `TotalPages` with the legacy `decimal` division and `int` cast: the two `long.MaxValue` cases of `Total_pages_hold_every_item`
+- `PaginatedItems` without its page-size guard: `Page_larger_than_its_size_is_refused`
+
+### Alternatives considered
+
+- **Keeping the synchronous interface until Stage 8.** Plan decision 6 rules it out, and CA1849 fails a synchronous EF Core call inside async code.
+- **An optional `CancellationToken`** (`= default`). Easier to call, and just as easy to forget.
+- **`IAsyncEnumerable` for the lists.** There are 5 brands and 4 types, and the API caps a page at 100 items (Stage 7.5). A list that is read before it returns also keeps the query out of serialization (D17).
+- **The entity as the input of create and update**, as in the legacy service. It carries `Id` and `PictureFileName`, the two fields that a caller must not set, and EF Core would insert a non-zero ID as it is.
+- **Read, copy the fields, `SaveChanges`** for update. Two round trips, and a row deleted in between throws `DbUpdateConcurrencyException`. The legacy schema has no row version, so there is no concurrency token for such an update to check either. If one arrives, the change stays inside the service.
+- **A generic repository, or `IQueryable` for the endpoints.** A repository adds a layer that nothing else uses. `IQueryable` would carry EF Core into the endpoints, and an in-memory implementation could not translate it the same way.
+- **Response DTOs from the service.** The entities hold only stored data ([ADR-0010](#adr-0010-data-model)), and the response contracts of Stage 7 map from them.
+- **Not-found exceptions.** A `null` or `false` is cheaper, and the endpoints map it directly.
+- **A database per contract test.** The same isolation as the transaction, for the cost of creating and migrating a database for each test.
+
+### Consequences
+
+- The endpoints of Stage 7 use `ICatalogService`, not the `DbContext`.
+- The in-memory service of Stage 5.2 must pass the same suite: results that belong to the caller, IDs that are never given again, refused unknown brands and types, and cancelled tokens.
+- Nothing in the app uses the service until Stage 5.3 registers it.
+- The exception for an unknown brand or type differs between create and update, and may differ between implementations. An endpoint that relied on it would answer differently in mock mode, so the endpoints are expected to check first.
+- The 50-character limit on names and the two decimal places of prices are enforced by the database only: `nvarchar(50)` refuses a longer name, and `decimal(18,2)` keeps two decimal places of a price. Stages 7.6 and 7.7 are expected to validate both (D9, D10).
+- [docs/behavior-changes.md](docs/behavior-changes.md) gets no entry: nothing reaches HTTP yet. D2, D6, D11 and D17 change what clients see only when the endpoints of Stage 7 expose them, and those commits record it.
