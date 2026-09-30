@@ -26,6 +26,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0014](#adr-0014-local-development-databases) | Local development databases | Accepted | 4.5 |
 | [ADR-0015](#adr-0015-async-first-catalog-service) | Async-first catalog service | Accepted | 5.1 |
 | [ADR-0016](#adr-0016-in-memory-catalog-service) | In-memory catalog service | Accepted | 5.2 |
+| [ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode) | Built-in dependency injection and mock mode | Accepted | 5.3 |
 
 ## Template
 
@@ -1494,3 +1495,115 @@ Not tested:
 - A change to the contract has to be implemented twice, and the suite shows where the two differ.
 - The sample data lives in one place, `PreconfiguredData`, for the migrations, the seeder and mock mode.
 - The mock keeps every item in one process. Several instances of the API in mock mode each have their own catalog, as in the legacy app.
+
+---
+
+## ADR-0017: Built-in dependency injection and mock mode
+
+- **Status:** Accepted
+- **Date:** 2026-09-30
+- **Plan stage:** 5.3
+
+### Context
+
+- The legacy app builds an Autofac 6.1.0 container in `Application_Start` ([audit: dependency injection](docs/legacy-audit.md#24-dependency-injection-autofac-610)). It scans the MVC and Web API controllers, and registers `ApplicationModule`, which holds four registrations:
+
+  | Legacy registration | Lifetime |
+  |---|---|
+  | `ICatalogService` → `CatalogServiceMock` when `UseMockData` is `true`, otherwise `CatalogService` | Singleton (mock) / per lifetime scope |
+  | `CatalogDBContext` | Per lifetime scope |
+  | `CatalogDBInitializer` | Per lifetime scope, but resolved from the root container |
+  | `CatalogItemHiLoGenerator` | Singleton |
+
+- Two resolvers are set, one for MVC and one for Web API. `UseMockData` is read twice with `bool.Parse`, so a missing or malformed value stops `Application_Start` before any route is registered ([audit: appSettings consumers](docs/legacy-audit.md#62-appsettings-consumers)).
+- Autofac.Mvc5 4.0.2 runs outside its supported Autofac range through a binding redirect, and the build warns about it (D25).
+- Plan decision 3 drops Autofac for the built-in container. [ADR-0009](#adr-0009-configuration) maps `UseMockData` to `Catalog:UseMockData`, a typed option that arrives with its first consumer.
+- [ADR-0010](#adr-0010-data-model) makes a connection string mandatory, and [ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness) adds migrate-on-startup and a readiness check of the database. Both ADRs leave it to this stage to fit mock mode, which needs no database, around them.
+- ASP.NET Core validates scopes and service registrations only in the Development environment by default.
+
+### Decision
+
+**1. `AddCatalogServices`** (`Catalog/CatalogServiceCollectionExtensions.cs`) replaces `ApplicationModule`. `Program.cs` calls it once.
+
+| Legacy registration | Now |
+|---|---|
+| `ICatalogService` → `CatalogServiceMock`, singleton | `InMemoryCatalogService`, singleton ([ADR-0016](#adr-0016-in-memory-catalog-service)) |
+| `ICatalogService` → `CatalogService`, per scope | `CatalogService`, scoped ([ADR-0015](#adr-0015-async-first-catalog-service)) |
+| `CatalogDBContext`, per scope | `CatalogDbContext` through `AddDbContext`, scoped ([ADR-0010](#adr-0010-data-model)) |
+| `CatalogDBInitializer` | Gone: migrations, the seeder and migrate-on-startup ([ADR-0011](#adr-0011-ef-core-migration-strategy), [ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness)) |
+| `CatalogItemHiLoGenerator`, singleton | Gone: EF Core's `UseHiLo` ([ADR-0010](#adr-0010-data-model)) |
+| Controller scanning, two resolvers | Gone: Minimal API endpoints take their services as parameters from the one container (Stage 7) |
+
+**2. `Catalog:UseMockData`** is bound to `CatalogOptions` with `BindConfiguration`, `ValidateDataAnnotations` and `ValidateOnStart`, as ADR-0009 sets out. It is `false` in `appsettings.json`, as `UseMockData` was in `Web.config`, and no other committed file sets it.
+
+The mode decides what is registered, so `AddCatalogServices` also reads the section while it registers the services, before the container exists. A malformed value, such as `yes`, stops the host at startup with the binder's message, which names `Catalog:UseMockData`. A missing value means `false`: the legacy app did not start without one, but the new default lives in `appsettings.json`.
+
+The mode is therefore fixed from the configuration that `Program.cs` sees. A source added after it, such as a test's `ConfigureAppConfiguration`, would reach `IOptions<CatalogOptions>` but not the registrations, so nothing branches on the mode through the options, and tests set it with `UseSetting`, which `Program.cs` sees.
+
+**3. Mock mode registers nothing of the database.**
+
+| | Database mode | Mock mode |
+|---|---|---|
+| `ICatalogService` | `CatalogService`, scoped | `InMemoryCatalogService`, singleton |
+| `CatalogDbContext` and `ConnectionStrings:CatalogDb` | Registered; the host stops without a connection string | Not registered, not read |
+| Migrate on startup (`Database` section) | Registered; the setting and its Development-only rule apply | Not registered, not read |
+| `/health/ready` | Runs the `catalog-database` check | Runs no check, so it answers `200 Healthy` |
+
+So `dotnet run` in Development with `Catalog__UseMockData=true` starts without any database server, although `appsettings.Development.json` turns migrate-on-startup on. The `Database` settings are not validated in mock mode, because nothing uses them.
+
+**4. Scope validation in every environment.** `Program.cs` sets `ValidateScopes` and `ValidateOnBuild` on the default service provider:
+
+- A scoped service, such as `CatalogService` or the `DbContext`, cannot be resolved from the root provider, where it would live as long as the app.
+- Every registration by type is checked when the container is built, so a singleton that would hold a scoped service stops the host at startup, before anything resolves it. Registrations by factory are checked only when they are resolved.
+
+ASP.NET Core turns both on only in Development. The build check runs once at startup. The scope check runs on each resolution, and costs a reference comparison outside the root provider.
+
+**Tests**
+
+Integration tests, `CatalogServiceRegistrationTests`:
+
+| Test | What it pins |
+|---|---|
+| `Database_mode_gives_each_scope_its_own_catalog_service` | `CatalogService`, the same instance within a scope and another in the next scope, serving the sample items. |
+| `Mock_mode_serves_the_sample_data_without_a_database` (Development, Testing, Production) | With a blank connection string, migrate-on-startup on in every environment, and no database: `InMemoryCatalogService`, one instance for the root and every scope, no `CatalogDbContext`, no migrate-on-startup service, the sample items, and `/health/ready` `200 Healthy`. |
+| `Host_does_not_start_with_a_malformed_use_mock_data` | `yes` stops the host with a message that names `Catalog:UseMockData`. |
+| `Scoped_services_cannot_be_resolved_from_the_root_provider` | In the Testing environment, resolving `ICatalogService` from the root throws. |
+| `Host_does_not_start_with_a_singleton_that_holds_a_scoped_service` | A singleton that takes `ICatalogService` stops the host at startup, although nothing resolves it. |
+
+`ConfigurationTests.Committed_settings_keep_mock_mode_off` (with and without `appsettings.Development.json`) reads only the committed files, as the other settings tests do.
+
+Unit tests, `CatalogServiceCollectionExtensionsTests`, check the registrations without a host:
+
+| Test | What it pins |
+|---|---|
+| `Database_mode_registers_a_scoped_catalog_service_and_the_database` | With no `Catalog` section: `CatalogService` scoped, `CatalogDbContext`, the migrate-on-startup service and the `catalog-database` check. |
+| `Mock_mode_registers_one_in_memory_catalog_and_nothing_of_the_database` | With no connection string: `InMemoryCatalogService` as a singleton, and no `CatalogDbContext`, hosted service or health check. |
+| `Explicit_false_is_database_mode` (`false`, `False`) | The binder's spellings of `false`. |
+| `Database_mode_still_needs_a_connection_string` | ADR-0010's check still applies outside mock mode. |
+| `Malformed_use_mock_data_is_refused_while_registering` | `yes` throws while the services are registered, naming the setting. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- `ValidateScopes` off: `Scoped_services_cannot_be_resolved_from_the_root_provider`, and `Host_does_not_start_with_a_singleton_that_holds_a_scoped_service`, because the build check finds a captive scoped service only with scope validation on
+- `ValidateOnBuild` off: `Host_does_not_start_with_a_singleton_that_holds_a_scoped_service`
+- mock mode that also registers the `DbContext`, or migrate-on-startup, or the readiness check of the database, or a mode that is ignored: the three cases of `Mock_mode_serves_the_sample_data_without_a_database` and `Mock_mode_registers_one_in_memory_catalog_and_nothing_of_the_database`
+- a malformed value read as `false`: `Malformed_use_mock_data_is_refused_while_registering`. The host test still passed, because `ValidateOnStart` refuses the value too.
+- mock mode on in `appsettings.json`: `Committed_settings_keep_mock_mode_off`. The other tests passed, because `CatalogApiFactory` sets the mode.
+
+A Development host was also run by hand with `Catalog__UseMockData=true` and a connection string to a server that does not exist: it started, and `/health/live` and `/health/ready` answered `200 Healthy`. Without mock mode, it migrated its LocalDB database at startup and `/health/ready` answered 200.
+
+### Alternatives considered
+
+- **Keeping Autofac** through `Autofac.Extensions.DependencyInjection`. Four registrations need none of its features: modules, assembly scanning, property injection or decorators. It would be one more package to keep inside its supported range, which the legacy app did not manage (D25).
+- **Registering both implementations, and choosing one per resolution** with a factory that reads `IOptions<CatalogOptions>`. The mode would still need the connection string, the migration service and the readiness check registered in both modes, or conditions in each of them.
+- **Keyed services** (`AddKeyedScoped`). The endpoints would have to name a key, and only one implementation is ever used by a process.
+- **Refusing to start when mock mode meets database settings.** Development sets migrate-on-startup and a connection string by default, so every mock run in Development would first need them turned off.
+- **Leaving scope validation to the Development default.** A captive dependency would then only fail where developers run the app, and tests run in Testing.
+
+### Consequences
+
+- The legacy DI packages (`Autofac`, `Autofac.Mvc5`, `Autofac.WebApi2`) have no counterpart. They leave with the legacy project in Stage 11.3.
+- The endpoints of Stage 7 take `ICatalogService` as a parameter and work in both modes.
+- In mock mode, readiness says nothing about a database, because there is none. A deployment that turns mock mode on by mistake is ready, and serves the sample data.
+- `CatalogApiFactory` still gives each test class a database, and sets `Catalog:UseMockData` to `false`, so a developer's `Catalog__UseMockData` environment variable cannot switch the integration tests to mock mode. A test that wants mock mode sets it with `UseSetting`, which wins.
+- For the plan's end-to-end check, "run again with `Catalog__UseMockData=true` and no database", the host starts without a database from this stage. The endpoint checks follow in Stage 7.

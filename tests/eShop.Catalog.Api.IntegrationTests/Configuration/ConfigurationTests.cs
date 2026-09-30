@@ -85,6 +85,25 @@ public sealed class ConfigurationTests(CatalogApiFactory factory) : IClassFixtur
         Assert.Equal(expected, configuration.GetValue<bool?>("Database:MigrateOnStartup"));
     }
 
+    // Only the committed files, as above. The legacy Web.config had UseMockData false (ADR-0017).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Committed_settings_keep_mock_mode_off(bool development)
+    {
+        var files = new ConfigurationBuilder()
+            .SetBasePath(ContentRoot)
+            .AddJsonFile("appsettings.json", optional: false);
+        if (development)
+        {
+            files.AddJsonFile("appsettings.Development.json", optional: false);
+        }
+
+        var configuration = files.Build();
+
+        Assert.False(configuration.GetValue<bool?>("Catalog:UseMockData"));
+    }
+
     // User secrets are a JSON source for secrets.json, added whether or not the file exists yet.
     private static bool IsUserSecrets(IConfigurationProvider provider) =>
         provider is JsonConfigurationProvider { Source.Path: "secrets.json" };

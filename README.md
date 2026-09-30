@@ -15,7 +15,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 2 — Scaffolding | Done |
 | 3 — Configuration | Done |
 | 4 — Domain & EF Core | Done |
-| 5 — Application services & DI | In progress |
+| 5 — Application services & DI | Done |
 | 6 — Logging | Not started |
 | 7 — HTTP endpoints | Not started |
 | 8 — Async verification | Not started |
@@ -103,7 +103,13 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 | Endpoint | Answers |
 |---|---|
 | `GET /health/live` | `200 Healthy` while the process is up. It does not check the database or any other dependency. |
-| `GET /health/ready` | `200 Healthy` when the API can reach its database and the database has every migration, otherwise `503 Unhealthy` ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)). |
+| `GET /health/ready` | `200 Healthy` when the API can reach its database and the database has every migration, otherwise `503 Unhealthy` ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)). In mock mode it checks nothing and answers `200 Healthy`. |
+
+To run without any database, turn on mock mode, which serves the catalog from memory, starting with the legacy sample data, and loses every change when the app stops ([ADR-0017](DECISIONS.md#adr-0017-built-in-dependency-injection-and-mock-mode)). In Bash:
+
+```bash
+Catalog__UseMockData=true dotnet run --project src/eShop.Catalog.Api --launch-profile http
+```
 
 ## Configuration
 
@@ -121,8 +127,9 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 |---|---|---|
 | `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`), unless user secrets override it (see [Local database](#local-database)) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
 | `Database:MigrateOnStartup` | `true`: the migrations are applied, and a new database seeded, before the app accepts requests | `false`. The host refuses to start with `true` outside Development. |
+| `Catalog:UseMockData` | `false` (`appsettings.json`). `true` serves the catalog from memory, and the two settings above are not read. | `false`, as in Development |
 
-The host does not start without a connection string, or with an invalid setting. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
+The host does not start with an invalid setting, or without a connection string unless mock mode is on. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api
@@ -130,7 +137,7 @@ dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --pr
 
 ## Local database
 
-In Development the API needs a SQL Server of its own. There are two options, and in both the app creates, migrates and seeds the database `eShopCatalog` when it starts ([ADR-0014](DECISIONS.md#adr-0014-local-development-databases)).
+In Development the API needs a SQL Server of its own, unless mock mode is on. There are two options, and in both the app creates, migrates and seeds the database `eShopCatalog` when it starts ([ADR-0014](DECISIONS.md#adr-0014-local-development-databases)).
 
 | | LocalDB (default) | SQL Server in a container |
 |---|---|---|

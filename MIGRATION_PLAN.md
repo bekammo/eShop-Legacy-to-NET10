@@ -172,7 +172,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 
   Tests: a shared service contract suite (EF Core implementation) and pagination unit tests. ADR: async-first port.
 - [x] 5.2 Add a thread-safe `InMemoryCatalogService`, and run the same contract suite against it (no Docker needed).
-- [ ] 5.3 Add `AddCatalogServices`, which replaces the Autofac `ApplicationModule`:
+- [x] 5.3 Add `AddCatalogServices`, which replaces the Autofac `ApplicationModule`:
   - `Catalog:UseMockData` selects the implementation.
   - Mock mode needs no database.
   - Scope validation is on.
