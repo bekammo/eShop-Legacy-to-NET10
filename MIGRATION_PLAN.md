@@ -180,7 +180,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   Tests cover both modes. ADR: drop Autofac.
 
 ### Stage 6 — Logging
-- [ ] 6.1 Add Serilog via `AddSerilog`, configured from appsettings:
+- [x] 6.1 Add Serilog via `AddSerilog`, configured from appsettings:
   - console sink
   - file sink `logFiles/myapp.log`: rolls on size, 10 MB, 6 files retained (log4net's 5 backups plus the active file)
   - log-context and trace/span enrichment
@@ -220,7 +220,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [ ] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
 
 ### Stage 8 — Async verification
-- [ ] 8.1 Sweep for sync-over-async and synchronous I/O on request paths. Verify that cancellation flows from `RequestAborted` to EF Core. Add cancellation tests and update the async ADR.
+- [ ] 8.1 Sweep for sync-over-async and synchronous I/O on request paths, the log sinks included (ADR-0018). Verify that cancellation flows from `RequestAborted` to EF Core. Add cancellation tests and update the async ADR.
 
 ### Stage 9 — OpenAPI docs & Swagger UI
 - [ ] 9.1 Swagger UI at `/swagger` over `/openapi/v1.json` (Development only). ADR: OpenAPI tooling.

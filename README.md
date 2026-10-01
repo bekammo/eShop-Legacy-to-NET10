@@ -16,7 +16,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 3 — Configuration | Done |
 | 4 — Domain & EF Core | Done |
 | 5 — Application services & DI | Done |
-| 6 — Logging | Not started |
+| 6 — Logging | In progress |
 | 7 — HTTP endpoints | Not started |
 | 8 — Async verification | Not started |
 | 9 — OpenAPI docs & Swagger UI | Not started |
@@ -133,6 +133,27 @@ The host does not start with an invalid setting, or without a connection string 
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api
+```
+
+## Logging
+
+The API logs through Serilog, which the `Serilog` section of `appsettings.json` configures ([ADR-0018](DECISIONS.md#adr-0018-logging-with-serilog)). It logs events at Information and above, except the SQL of EF Core's commands, which it logs only from Warning. It writes them to two places:
+
+- **The console**, one line per event.
+- **A log file**, `logFiles/myapp.log` under the content root. With `dotnet run` that is `src/eShop.Catalog.Api/logFiles/`, which git ignores. Each line is one event as JSON, in the [compact log event format](https://clef-json.org) (CLEF), with the trace and span IDs in `@tr` and `@sp`.
+
+The file rolls at 10 MiB (10,485,760 bytes, log4net's `10MB`), and the 6 newest files are kept, as with log4net in the legacy app. The first file is `myapp.log`, then come `myapp_001.log`, `myapp_002.log` and so on. The file with the highest number is the current one.
+
+Like any setting, these can be overridden. For example, in Bash on Linux or macOS, to write the file elsewhere (its folder must be writable):
+
+```bash
+Serilog__WriteTo__File__Args__path=/tmp/eshop-catalog/myapp.log dotnet run --project src/eShop.Catalog.Api --launch-profile http
+```
+
+Or to see the SQL that EF Core runs (Bash cannot set a variable whose name holds dots, so it goes on the command line):
+
+```bash
+dotnet run --project src/eShop.Catalog.Api --launch-profile http -- --Serilog:MinimumLevel:Override:Microsoft.EntityFrameworkCore.Database.Command=Information
 ```
 
 ## Local database
