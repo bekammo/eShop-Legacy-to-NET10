@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Serilog.AspNetCore" />
     <!--
       Needed by the dotnet-ef tool only (ADR-0011). Without compile assets the app cannot use its
       APIs, and PrivateAssets keeps it out of the test projects and the published app.

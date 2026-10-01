@@ -1,6 +1,7 @@
 using System.Net;
 using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Data;
+using eShop.Catalog.Api.IntegrationTests.Logging;
 using eShop.Catalog.Api.Tests.Legacy;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -13,6 +14,9 @@ namespace eShop.Catalog.Api.IntegrationTests.Catalog;
 // database, and the container validates scopes in every environment.
 public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, SqlServerFixture sqlServer) : IClassFixture<CatalogApiFactory>
 {
+    // The name of the warning event: the name of its [LoggerMessage] method.
+    private const string MockModeEvent = "MockModeIsOn";
+
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -58,6 +62,31 @@ public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, S
         using var response = await client.GetAsync("/health/ready", CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("Healthy", await response.Content.ReadAsStringAsync(CancellationToken));
+    }
+
+    // A host in mock mode is ready at once, so it says what it serves when it starts (ADR-0019).
+    [Fact]
+    public async Task Mock_mode_warns_at_startup_that_changes_are_lost()
+    {
+        var logFile = Path.Combine(Path.GetDirectoryName(factory.LogFilePath)!, $"{Guid.NewGuid():N}.log");
+        await using (var host = factory.WithWebHostBuilder(builder =>
+            CatalogApiFactory.UseLogFile(builder.UseSetting("Catalog:UseMockData", "true"), logFile)))
+        {
+            _ = host.Services;
+        }
+
+        var warning = Assert.Single(LogFile.Events(logFile), static logEvent => LogFile.EventName(logEvent) == MockModeEvent);
+        Assert.Equal("Warning", LogFile.String(warning, "@l"));
+        Assert.StartsWith("Mock mode is on (Catalog:UseMockData)", LogFile.String(warning, "@mt"), StringComparison.Ordinal);
+        Assert.Contains("every change is lost", LogFile.String(warning, "@mt"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Database_mode_does_not_warn_about_mock_mode()
+    {
+        _ = factory.Services;
+
+        Assert.DoesNotContain(LogFile.Events(factory.LogFilePath), static logEvent => LogFile.EventName(logEvent) == MockModeEvent);
     }
 
     [Fact]

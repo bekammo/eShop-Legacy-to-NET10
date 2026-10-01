@@ -1,4 +1,6 @@
+using eShop.Catalog.Api.Logging;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Serilog.Events;
 
 namespace eShop.Catalog.Api.Health;
 
@@ -20,10 +22,14 @@ internal static class HealthCheckEndpoints
     // passes, otherwise 503 (ADR-0013).
     internal static readonly HealthCheckOptions ReadinessOptions = new() { Predicate = static check => check.Tags.Contains(ReadinessTag) };
 
+    // Probes call both every few seconds, so their request events are Debug, whatever the status (ADR-0019). A
+    // failing check is still logged, at Error, by the health check service.
+    internal static readonly RequestLogLevel ProbeRequestLogLevel = new(LogEventLevel.Debug);
+
     internal static IEndpointRouteBuilder MapHealthCheckEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapHealthChecks(LivenessPath, LivenessOptions);
-        endpoints.MapHealthChecks(ReadinessPath, ReadinessOptions);
+        endpoints.MapHealthChecks(LivenessPath, LivenessOptions).WithMetadata(ProbeRequestLogLevel);
+        endpoints.MapHealthChecks(ReadinessPath, ReadinessOptions).WithMetadata(ProbeRequestLogLevel);
         return endpoints;
     }
 }

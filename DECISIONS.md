@@ -27,6 +27,8 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0015](#adr-0015-async-first-catalog-service) | Async-first catalog service | Accepted | 5.1 |
 | [ADR-0016](#adr-0016-in-memory-catalog-service) | In-memory catalog service | Accepted | 5.2 |
 | [ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode) | Built-in dependency injection and mock mode | Accepted | 5.3 |
+| [ADR-0018](#adr-0018-logging-with-serilog) | Logging with Serilog | Accepted | 6.1 |
+| [ADR-0019](#adr-0019-request-logging-and-application-log-events) | Request logging and application log events | Accepted | 6.2 |
 
 ## Template
 
@@ -1607,3 +1609,259 @@ A Development host was also run by hand with `Catalog__UseMockData=true` and a c
 - In mock mode, readiness says nothing about a database, because there is none. A deployment that turns mock mode on by mistake is ready, and serves the sample data.
 - `CatalogApiFactory` still gives each test class a database, and sets `Catalog:UseMockData` to `false`, so a developer's `Catalog__UseMockData` environment variable cannot switch the integration tests to mock mode. A test that wants mock mode sets it with `UseSetting`, which wins.
 - For the plan's end-to-end check, "run again with `Catalog__UseMockData=true` and no database", the host starts without a database from this stage. The endpoint checks follow in Stage 7.
+
+---
+
+## ADR-0018: Logging with Serilog
+
+- **Status:** Accepted
+- **Date:** 2026-10-01
+- **Plan stage:** 6.1
+
+### Context
+
+- The legacy app logs with log4net 2.0.10, configured from `log4Net.xml` ([audit: logging](docs/legacy-audit.md#64-logging-log4net)):
+  - Every level (`ALL`), in every environment.
+  - One `RollingFileAppender` writing `logFiles\myapp.log`, resolved against the app root, so the file sits inside the IIS web root.
+  - It rolls by size at `10MB`, which log4net reads as 10,485,760 bytes. It keeps 5 backups (`myapp.log.1`–`.5`) beside the active `myapp.log`, so at most 6 files.
+  - A multi-line text layout. Its `%property{activity}` never matches the `activityid` key that `Application_BeginRequest` sets, so it always prints `(null)`.
+- Nothing logs at WARN or above, and no code path logs an exception. The call sites are DEBUG lines (`WebApplication_BeginRequest` on every request, and `Now disposing` twice per request in `CatalogController`) and INFO `Now loading...` and `Now processing...` lines in the MVC controllers, which Stage 7 replaces.
+- The audit's D18 lists the logging defects: the `activity` mismatch, a configuration file name that works only on a case-insensitive file system, every level everywhere, no exception ever logged, unsanitized input that can forge lines, and the file inside the web root ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)).
+- NuGet audit flags log4net 2.0.10 (NU1902, moderate, GHSA-4f7c-pmjv-c25w) ([audit: version conflicts](docs/legacy-audit.md#33-version-conflicts)).
+- Plan decision 4: Serilog behind `ILogger<T>`, registered with `AddSerilog` and without a static bootstrap logger, so test hosts stay isolated.
+- [ADR-0001](#adr-0001-migration-scope) keeps a size-rolled log file with log4net's limits. [ADR-0003](#adr-0003-non-goals) drops the log4net line format. [ADR-0009](#adr-0009-configuration) maps `log4Net.xml` to Serilog settings in `appsettings.json`.
+- Until this stage, the new host used the default ASP.NET Core providers (console, debug and EventSource at Information and above, and the event log on Windows from Warning), and wrote no file.
+
+### Decision
+
+**1. One package, `Serilog.AspNetCore` 10.0.0.** It brings Serilog 4.3, `AddSerilog` (`Serilog.Extensions.Hosting`), `ReadFrom.Configuration` (`Serilog.Settings.Configuration`), and the console sink, the file sink and the compact JSON formatter that the settings name. Stage 6.2 uses its request logging. The settings name these assemblies, which come in transitively. The tests build loggers from the committed settings, so an upgrade that drops one of them fails the tests.
+
+**2. Registration.** `AddCatalogLogging` (`Logging/LoggingServiceCollectionExtensions.cs`) calls `AddSerilog` with `preserveStaticLogger: true`:
+
+- The host's `ILoggerFactory` is Serilog's, so every `ILogger<T>` writes to Serilog, and the default providers are no longer used.
+- The logger is built from the host's configuration, when the container first resolves the logger factory, while the host is built.
+- The static `Log.Logger` stays Serilog's silent default. With the default `preserveStaticLogger: false`, every host would set it to its own logger, the loggers that a host creates would write to the sinks of the last host to start, and the first host to stop would close them. A test process runs many hosts at once.
+- There is no bootstrap logger. An exception that stops the host before its container exists, such as a missing connection string, reaches only the standard error output, as an unhandled exception.
+- `Program.cs` turns on Serilog's `SelfLog` on the standard error output. Without it, Serilog drops events silently when a sink fails, for example when it cannot open the log file.
+
+**3. Settings.** The `Serilog` section of `appsettings.json`:
+
+| Setting | Value | Why |
+|---|---|---|
+| `Using` | `Serilog.Sinks.Console`, `Serilog.Sinks.File` | The assemblies that hold the sinks. |
+| `MinimumLevel:Default` | `Information` | The level the host logged at before this stage. log4net logged every level, but its DEBUG events were the per-request line, which Stage 6.2 replaces, and `Now disposing`, which leaves with the MVC controller. |
+| `MinimumLevel:Override:Microsoft.EntityFrameworkCore.Database.Command` | `Warning` | EF Core logs the SQL of every command at Information. The legacy app logged no SQL. A failed command is still logged, at Error. |
+| `Enrich` | `FromLogContext` | Properties that code pushes with `LogContext.PushProperty` reach every event in their scope. The scopes of `ILogger.BeginScope`, such as ASP.NET Core's request ID, are added by Serilog's logger provider without it. |
+| `WriteTo:Console` | A one-line text template: time, level, source context, message | For developers, and for container log collectors. |
+| `WriteTo:File` | See below | log4net's file. |
+
+The sinks under `WriteTo` are keyed by name, not listed in an array. One setting then changes one sink whatever the order, for example the environment variable `Serilog__WriteTo__File__Args__path`. In an array the key would be the sink's position.
+
+Serilog watches `MinimumLevel:Default` and each override present at startup, so a change to their values in `appsettings.json` applies without a restart. Adding or removing an override needs a restart.
+
+**4. The log file, against log4net's.**
+
+| | log4net | Serilog |
+|---|---|---|
+| Path | `logFiles\myapp.log`, against the app root, inside the web root | `logFiles/myapp.log`, against the content root, which the API does not serve |
+| Roll | By size, at 10,485,760 bytes. Never by date. | The same (`rollOnFileSizeLimit`, `fileSizeLimitBytes`, no `rollingInterval`) |
+| Files kept | `myapp.log` and 5 backups | 6 files, the active one included (`retainedFileCountLimit`) |
+| Names | The active file is always `myapp.log`. Backups shift to `myapp.log.1`–`.5`, `.1` the newest. | `myapp.log`, then `myapp_001.log`, `myapp_002.log` and so on. The active file has the highest number, and the oldest file is deleted. |
+| Size of a full file | log4net checks the size before each event, so a file ends less than one event above the limit. | The same |
+| Format | Multi-line text | Compact log event format (CLEF): one JSON object per line |
+| Configuration | `log4Net.xml` | The `Serilog` section, overridable per environment and by environment variables |
+
+Serilog resolves a relative path against the working directory. The content root is usually the working directory, but not for a Windows service, which starts in `system32` and gets the app folder as its content root, nor for a host that sets its content root. `AddCatalogLogging` resolves the path against the content root, the folder whose `appsettings.json` the app reads, as log4net resolved its file against the app root. Environment variables in the path, which Serilog expands, are expanded first. With `dotnet run` the file is `src/eShop.Catalog.Api/logFiles/myapp.log`, which git ignores. A deployment can set an absolute path.
+
+**5. Format.** The file uses `CompactJsonFormatter`:
+
+- `@t`, the time in UTC
+- `@mt`, the message template, and `@r`, the renderings of formatted values
+- `@l`, the level, left out for Information
+- `@x`, the exception
+- `@tr` and `@sp`, the trace and span IDs
+- every property of the event, the source context and the scope properties included
+
+The console sink writes text: `[HH:mm:ss LVL] SourceContext: message`, and the exception on the following lines.
+
+**6. Trace and span IDs.** Serilog takes the trace and span IDs of `Activity.Current` for every event, those of `ILogger<T>` included, without an enricher package. ASP.NET Core starts an activity for each request, from the caller's W3C `traceparent` header when there is one. So every event of a request carries the request's trace ID. The trace ID is the counterpart of log4net's `activityid`, which never printed. Stage 6.2 adds the request event, and with it replaces `activityid` and `requestinfo`.
+
+**7. Test hosts.** In the test hosts the content root is the API's source folder, and every host would write to the same file there. `CatalogApiFactory` gives each factory a temporary directory, and deletes it when the factory is disposed. The factory's own host writes `myapp.log` in it, and each host that `WithWebHostBuilder` derives writes a file of its own beside it: two hosts writing to one file overwrite each other's lines on Linux, and on Windows the second one moves to another file.
+
+It sets the path with a configuration source (`UseLogFile`), not with `UseSetting`. `WebApplicationFactory` passes host settings to `Program` as command-line arguments, and it passes each parent section of a key too, as an empty value. Serilog takes a `WriteTo` entry with a value for the name of a sink. Without the resolution of decision 4, as in the deliberate break below, the empty `Serilog:WriteTo:File` was read as a sink named "", which does not exist, and the file sink was left out, with only a `SelfLog` message. The resolution hides the empty values, but only because the configuration it builds treats empty values as missing, and the tests should not rely on that. A deployment's settings have no such empty sections.
+
+**Tests**
+
+Unit tests, `LoggingServiceCollectionExtensionsTests`:
+
+| Test | What it pins |
+|---|---|
+| `Relative_file_path_is_resolved_against_the_content_root` | `logFiles/myapp.log` becomes a path under the content root. |
+| `Absolute_file_path_is_kept` | An absolute path is not changed. |
+| `Environment_variables_are_expanded_before_the_path_is_resolved` | A variable that holds an absolute path does not end up under the content root. |
+| `Configuration_without_a_file_path_is_returned_as_it_is` | Without a file path, the configuration is returned unchanged, as the same object. |
+| `Resolved_configuration_reads_through_to_the_settings_and_passes_on_their_reloads` | A reload of the settings reaches the configuration that Serilog reads, so the levels still follow it. |
+
+Integration tests, `LoggingTests`:
+
+| Test | What it pins |
+|---|---|
+| `Committed_settings_log_from_Information_to_the_console_and_to_the_log4net_file` | The committed levels (Information, and Warning for EF Core's commands, the only override), sinks and enrichment, and the file: path, size limit, roll on size, 6 files, no date rolling, CLEF. |
+| `Log_file_rolls_at_10_MiB_and_keeps_the_6_newest_files` | The committed file sink alone, written into a seventh file in 64 KiB events: `myapp_001.log`–`myapp_006.log` remain, and each full file ends between 10 MiB and one event above it. |
+| `Host_writes_each_event_as_a_CLEF_line_with_its_trace_span_and_log_context` | An `ILogger<T>` event of the test host, in its file: the template, the trace and span IDs of the current activity, the source context, a property pushed on the log context, and no `@l` for Information. |
+| `Each_host_writes_to_its_own_sinks_and_leaves_the_static_logger_silent` | Two hosts at once: each probe is only in its own host's file, and `Log.Logger` is not enabled even for Fatal. |
+| `Relative_log_file_path_is_resolved_against_the_content_root` | A host whose content root is a temporary directory, with the committed relative path, writes its file under that directory. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- `preserveStaticLogger: false`: `Each_host_writes_to_its_own_sinks_and_leaves_the_static_logger_silent`, and `Host_writes_each_event_as_a_CLEF_line_with_its_trace_span_and_log_context`, whose event went to another host's file. A first version of the isolation test, which only looked at `Log.Logger` after its class's host had started, passed this break: another host had reset the static logger when it stopped. The test now runs two hosts at once.
+- the registration without the resolution against the content root: `Relative_log_file_path_is_resolved_against_the_content_root`
+- environment variables expanded after the resolution: `Environment_variables_are_expanded_before_the_path_is_resolved`
+- 5 retained files: `Log_file_rolls_at_10_MiB_and_keeps_the_6_newest_files` and `Committed_settings_log_from_Information_to_the_console_and_to_the_log4net_file`
+- 10,000,000 bytes for the limit: the same two tests. With 512 KiB events, the first version of the rolling test passed it, so its events are now 64 KiB.
+- no roll on size: the same two tests. The rolling test first waited for a seventh file that never came, so it now stops after eight files' worth of events.
+- no `FromLogContext`: `Host_writes_each_event_as_a_CLEF_line_with_its_trace_span_and_log_context` and the committed-settings test
+- `RenderedCompactJsonFormatter`: the same two tests
+
+Development hosts were also run by hand, on LocalDB and in mock mode. The console showed the startup and request events, and `src/eShop.Catalog.Api/logFiles/myapp.log` held them as CLEF. A request with a `traceparent` header logged its events with that trace ID in `@tr`. EF Core's SQL appeared only with the command-line override that the README shows.
+
+### Alternatives considered
+
+- **log4net 3 through `Microsoft.Extensions.Logging.Log4Net.AspNetCore`.** It would keep `log4Net.xml` and the file names, but the settings would stay outside `appsettings.json`, the events would stay text, and plan decision 4 chose Serilog.
+- **The built-in providers and a third-party file provider.** ASP.NET Core has no general file provider for `ILogger` (`AddW3CLogging` writes only W3C request lines), so a third-party package would be needed anyway, and plan decision 4 chose Serilog.
+- **A static bootstrap logger** (`CreateBootstrapLogger` and `UseSerilog`). It would also log the failures before the container exists, but it is process-wide state that every test host would share. Plan decision 4 rules it out.
+- **The log4net layout as a text template.** [ADR-0003](#adr-0003-non-goals) drops the line format, and text loses the properties of each event.
+- **`RenderedCompactJsonFormatter`.** It writes the rendered message instead of the template, but it quotes every string value in the message, as in `Now listening on: "http://localhost:5043"`.
+- **The `Serilog.Enrichers.Span` package.** Serilog has taken the trace and span IDs itself since version 3.1.
+- **The working directory, or the build output folder, for a relative path.** The working directory is not the content root for a Windows service, and the file would then land in `system32`. The output folder is not where log4net put the file, and with `dotnet run` it is under `bin`.
+
+### Consequences
+
+- log4net and its advisory leave with the legacy project in Stage 11.3.
+- A tool that follows `myapp.log` has to follow the file with the highest number instead.
+- The `Logging` section of ASP.NET Core is not read. The levels are under `Serilog:MinimumLevel`.
+- The sinks are configured only in `appsettings.json`. A host whose content root lacks that file, for example a published app started from another working directory, logs nothing at all, where the default providers still wrote to the console.
+- The log file's folder must be writable. Otherwise the host runs, writes no file, and Serilog's `SelfLog` reports every event it could not write on the standard error output. A container that runs as a user without write access to the app folder needs an absolute path on a writable volume.
+- Of D18, this stage fixes the level, the file in the web root, the activity mismatch (with trace IDs), the configuration file name, and forged lines in the file, because JSON escapes line breaks. Two parts stay open: exceptions, which the request logging of Stage 6.2 and the error handling of Stage 7.1 log, and the console, whose template writes string values as they are, line breaks included.
+- Serilog's request logging writes to the static logger unless it is given one, so Stage 6.2 gives it the host's logger.
+- The console and file sinks write on the calling thread, as log4net did. Stage 8.1, which sweeps the request paths for synchronous I/O, now names the log sinks, and decides whether they move behind a background queue (`Serilog.Sinks.Async`).
+- The test hosts' log files live only as long as their factory, except, on Windows, the file of a host that failed to start. A test that changes a `Serilog` setting uses a configuration source, as `UseLogFile` does, not `UseSetting`.
+
+---
+
+## ADR-0019: Request logging and application log events
+
+- **Status:** Accepted
+- **Date:** 2026-10-01
+- **Plan stage:** 6.2
+
+### Context
+
+- The legacy `Application_BeginRequest` (`Global.asax.cs`) sets two log4net properties for each request, then logs `WebApplication_BeginRequest` at DEBUG ([audit: logging](docs/legacy-audit.md#64-logging-log4net)):
+  - `requestinfo`: the raw URL and the user agent, which the layout prints with every event of the request
+  - `activityid`: a correlation GUID, which the layout never prints, because it asks for `activity`
+- The MVC controllers log `Now loading...` and `Now processing...` lines at INFO from interpolated strings, so the IDs, the paging values and the item name in them are text, not properties. Nothing logs a request's status or its duration, and the app logs no exception (D18).
+- [ADR-0018](#adr-0018-logging-with-serilog) puts Serilog behind `ILogger<T>`, adds the trace and span IDs to every event, and leaves the static `Log.Logger` silent. Serilog's request logging middleware writes to the static logger unless it is given one.
+- ADR-0018 counts exceptions among the parts of D18 that stay open. That overstates it: Kestrel already logs an exception that escapes the app, at Error, and did before Stage 6.
+- Until this stage, ASP.NET Core logged three or four events at Information for each request: hosting's `Request starting` and `Request finished`, and either routing's `Executing endpoint` and `Executed endpoint` or, for a request that no endpoint took, hosting's `Request reached the end of the middleware pipeline without being handled by application code`.
+- Plan 6.2: request logging in place of `Application_BeginRequest` and its two properties, and source-generated `LoggerMessage` methods.
+
+### Decision
+
+**1. One event per request.** `UseCatalogRequestLogging` (`Logging/RequestLoggingApplicationBuilderExtensions.cs`) sets up Serilog's `UseSerilogRequestLogging`, and `Program.cs` adds it as the app's first middleware. `WebApplication` runs routing before the app's middleware and the endpoints after it, so the request logging wraps every request that routing passes on, matched or not, with the matched endpoint known. The event is written when the request completes:
+
+| log4net | Now |
+|---|---|
+| `WebApplication_BeginRequest` at DEBUG, when the request begins | `HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms`, Serilog's template, when the request completes |
+| `requestinfo`, the raw URL and the user agent, printed with every event of the request | `RequestPath` in the message, and `QueryString` and `UserAgent` as properties of the request event. The other events of the request share its trace ID instead. |
+| `activityid`, never printed | `@tr` and `@sp` on every event ([ADR-0018](#adr-0018-logging-with-serilog)). A caller's W3C `traceparent` header sets the trace ID. |
+
+The middleware gets the host's Serilog logger, `options.Logger`, which `AddSerilog` registers.
+
+Stage 7 does not port the controllers' `Now loading...` and `Now processing...` lines. The request event already has the method, the path and the query string of each request. What it does not show, such as the name of a created item, is left to Stage 7's endpoints, as `[LoggerMessage]` events where they need one.
+
+**2. Levels of the request event.** `RequestLevel` decides, in this order:
+
+| Request | Level |
+|---|---|
+| It threw, unless it was cancelled because the client went away | Error, with the exception in `@x` |
+| Its endpoint has `RequestLogLevel` metadata | That level, whatever the status |
+| Status 500 or above | Error |
+| Any other | Information. A 4xx is the client's error, not the server's. |
+
+A request that the client aborted, such as a probe that gave up, ends with an `OperationCanceledException` while `RequestAborted` is cancelled. That is not the server's error, so the other rules decide its level. Any other exception, a cancellation that the client did not cause included, is an Error.
+
+The health check endpoints carry `RequestLogLevel(Debug)`. Probes call them every few seconds, so at Information they would fill the log. A failing check is still logged, at Error, by ASP.NET Core's health check service. Endpoint metadata, rather than a test of the path, keeps the rule on the two endpoints, and off unknown paths under `/health`.
+
+**3. ASP.NET Core's own request events off.** `Serilog:MinimumLevel:Override:Microsoft.AspNetCore` is `Warning`. The request event replaces hosting's and routing's request events. ASP.NET Core's warnings and errors are still logged. Hosting still starts the request's activity, so the trace ID is still there.
+
+**4. Application events through `[LoggerMessage]`.**
+
+- The app logs through source-generated `[LoggerMessage]` methods: static partial methods in the class that logs. The template is checked at build time, its values become properties, and nothing is formatted when the level is off. log4net's interpolated strings kept the values only as text.
+- The method name is the event name (`EventId.Name`). The methods set no event ID: the generator derives a stable one from the name.
+- CA1848 already flags a call such as `logger.LogInformation(...)` as a warning in the `Recommended` analysis mode, which the build treats as an error ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). `.editorconfig` pins it as an error, beside the async analyzers, so the rule stays if the analysis mode changes.
+- The first event is `MockModeIsOn`, a Warning that `MockModeWarning`, a hosted service, logs once when the host starts. `AddCatalogServices` registers it in mock mode only. A host in mock mode needs no database and is ready at once ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)), so without it nothing would show a deployment that turned mock mode on by mistake.
+
+**Tests**
+
+Unit tests:
+
+| Test | What it pins |
+|---|---|
+| `RequestLoggingApplicationBuilderExtensionsTests.Status_sets_the_level_when_the_endpoint_sets_none` | 200, 400 and 404 are Information, and 500 and 503 are Error. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Endpoint_level_applies_whatever_the_status` | Debug metadata gives Debug for 200 and 503. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Request_that_threw_is_an_Error_whatever_the_endpoint_level` | An exception gives Error, with Debug metadata too. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Request_cancelled_because_the_client_went_away_is_not_an_Error` | An `OperationCanceledException` with `RequestAborted` cancelled gives Information, or Debug with Debug metadata. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Request_cancelled_while_the_client_waits_is_an_Error` | An `OperationCanceledException` without an aborted request gives Error. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Health_checks_ask_for_Debug` | `ProbeRequestLogLevel`, which both health check endpoints carry, is Debug. |
+| `CatalogServiceCollectionExtensionsTests` (amended) | Mock mode's one hosted service is `MockModeWarning`, and database mode does not register it. |
+
+Integration tests:
+
+| Test | What it pins |
+|---|---|
+| `RequestLoggingTests.Request_is_logged_once_with_its_trace_id_query_string_and_user_agent` | `GET /no-such-route?pageSize=10` with a `traceparent` and a user agent: the event in the host's file, with the template, the method, the path, 404, the time, the query string, the user agent and the caller's trace ID, at Information. It is the only event of that trace: ASP.NET Core's `Request starting` would be logged before it. |
+| `RequestLoggingTests.Request_that_throws_is_logged_at_Error_with_the_exception` | A middleware after the endpoints throws: the event is at Error, with status 500 and the exception. |
+| `RequestLoggingTests.Health_check_requests_are_logged_at_Debug` (`/health/live`, `/health/ready`) | With Debug events on, each health check request is logged at Debug. |
+| `CatalogServiceRegistrationTests.Mock_mode_warns_at_startup_that_changes_are_lost` | A mock-mode host logs `MockModeIsOn` once, at Warning, with the whole message. |
+| `CatalogServiceRegistrationTests.Database_mode_does_not_warn_about_mock_mode` | The factory's host does not. |
+| `LoggingTests.Committed_settings_log_from_Information_to_the_console_and_to_the_log4net_file` (amended) | The `Microsoft.AspNetCore` override. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- no `options.Logger`: all four cases of `RequestLoggingTests`, which waited in vain for events that went to the silent static logger
+- no `UseCatalogRequestLogging` in `Program.cs`: the same four
+- no `Microsoft.AspNetCore` override: `Request_is_logged_once_with_its_trace_id_query_string_and_user_agent`, which found `Request starting` in the trace, and the committed-settings test
+- no query string and user agent: `Request_is_logged_once_with_its_trace_id_query_string_and_user_agent`
+- health check endpoints without the metadata: both cases of `Health_check_requests_are_logged_at_Debug`
+- the endpoint's level before the exception: `Request_that_threw_is_an_Error_whatever_the_endpoint_level` with Debug metadata
+- Error for a request that the client aborted: both cases of `Request_cancelled_because_the_client_went_away_is_not_an_Error`
+- Warning for a server error: the 500 and 503 cases of `Status_sets_the_level_when_the_endpoint_sets_none`
+- no `MockModeWarning` in mock mode: `Mock_mode_registers_one_in_memory_catalog_and_nothing_of_the_database` and `Mock_mode_warns_at_startup_that_changes_are_lost`
+
+
+A call to `logger.LogInformation` failed the build with CA1848, as it already did through the `Recommended` mode.
+
+A host was also run by hand in Production, with a connection string to a server that does not exist. `/health/ready` answered 503 with no request event at Information, and the health check service logged the failing check at Error. A request to an unknown path gave one event, with its query string and user agent, and no event from ASP.NET Core.
+
+### Alternatives considered
+
+- **ASP.NET Core's HTTP logging** (`AddHttpLogging` with `CombineLogs`). It also writes one event per request, at Information. Serilog's middleware sets the level per request, and comes with the package that ADR-0018 chose.
+- **An event when the request begins**, as log4net had. It has no status or duration, and it doubles the events. A request that never completes is the case it would cover (see Consequences).
+- **ASP.NET Core's request events at Information.** Three or four events for each request, and none of them has both the status and the user agent.
+- **The query string in `RequestPath`** (`IncludeQueryInRequestPath`). Each query would make a different path, so events could no longer be grouped by path.
+- **Health checks found by their path.** The rule would also catch unknown paths under `/health`, and would drift if a path changed.
+- **Error for every exception, cancellations included.** Every client that hangs up, and every probe that gives up, would log an Error with a stack trace.
+- **Event ID numbers on every `[LoggerMessage]`.** They would need a registry to stay unique. The generator derives the ID from the name. Two classes can use the same name, and the source context tells their events apart.
+- **`LoggerMessage.Define` by hand.** It does the same with more code.
+
+### Consequences
+
+- A request that never completes, such as one that hangs, is not logged. Neither is a request that never reaches the app's middleware, such as one that Kestrel rejects as malformed.
+- At the default level, the health checks leave no request events, even when readiness answers 503. A failing check is still logged, at Error, by the health check service. A probe that gives up before the check finishes is logged at Debug, as an aborted request, and the check logs nothing.
+- The query string and the user agent are logged, as `requestinfo` logged them. An endpoint that took a secret in its query string would write it to the log. The bearer tokens of Stage 12 travel in the `Authorization` header, which is not logged.
+- The console shows the request's path, as the client sent it, but not its query string or user agent, which only the file holds. The console's template writes the path as it is ([ADR-0018](#adr-0018-logging-with-serilog)).
+- The request event logs an exception that escapes the app and lets it go on, so Kestrel also logs it, at Error. Stage 7.1 places the exception handler: inside the request logging, the handler logs the exception and the request event sees a 500 without one. Outside it, both log the exception.
+- Authentication and authorization middleware that `WebApplication` adds by itself runs before the app's middleware, so a request it rejects would not be logged. Stage 12 calls `UseAuthentication` and `UseAuthorization` itself, after the request logging. Plan 12.1 now says so.
+- New application events are `[LoggerMessage]` methods.
+- Mock mode now registers one hosted service, beside the in-memory catalog service ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)).

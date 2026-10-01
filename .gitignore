@@ -481,7 +481,7 @@ $RECYCLE.BIN/
 ## Project-specific
 ##
 
-# log4net RollingFileAppender output (see src/eShopLegacyMVC/log4Net.xml)
+# Log files: log4net in the legacy app (src/eShopLegacyMVC/log4Net.xml) and Serilog in the new API (ADR-0018)
 logFiles/
 
 # Claude Code local settings
