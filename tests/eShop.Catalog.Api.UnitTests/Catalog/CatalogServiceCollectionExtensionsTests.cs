@@ -22,10 +22,12 @@ public sealed class CatalogServiceCollectionExtensionsTests
         AssertCatalogService<CatalogService>(services, ServiceLifetime.Scoped);
         Assert.Contains(services, static service => service.ServiceType == typeof(CatalogDbContext));
         Assert.Contains(services, static service => service.ImplementationType == typeof(MigrateOnStartupService));
+        Assert.DoesNotContain(services, static service => service.ImplementationType == typeof(MockModeWarning));
         Assert.Equal(["catalog-database"], HealthChecks(services));
     }
 
-    // A mock-mode host needs no connection string, and reads no Database section.
+    // A mock-mode host needs no connection string, and reads no Database section. Its one hosted service warns that
+    // it runs in mock mode (ADR-0019).
     [Fact]
     public void Mock_mode_registers_one_in_memory_catalog_and_nothing_of_the_database()
     {
@@ -33,7 +35,8 @@ public sealed class CatalogServiceCollectionExtensionsTests
 
         AssertCatalogService<InMemoryCatalogService>(services, ServiceLifetime.Singleton);
         Assert.DoesNotContain(services, static service => service.ServiceType == typeof(CatalogDbContext));
-        Assert.DoesNotContain(services, static service => service.ServiceType == typeof(IHostedService));
+        Assert.Equal([typeof(MockModeWarning)],
+            services.Where(static service => service.ServiceType == typeof(IHostedService)).Select(static service => service.ImplementationType));
         Assert.Empty(HealthChecks(services));
     }
 

@@ -25,8 +25,9 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
         var serilog = CommittedSettings().GetSection("Serilog");
 
         Assert.Equal("Information", serilog["MinimumLevel:Default"]);
-        // EF Core logs the SQL of every command at Information. The legacy app logged no SQL.
-        Assert.Equal([("Microsoft.EntityFrameworkCore.Database.Command", "Warning")],
+        // ASP.NET Core's own request events give way to the request event (ADR-0019). EF Core logs the SQL of every
+        // command at Information, and the legacy app logged no SQL.
+        Assert.Equal([("Microsoft.AspNetCore", "Warning"), ("Microsoft.EntityFrameworkCore.Database.Command", "Warning")],
             serilog.GetSection("MinimumLevel:Override").GetChildren().Select(static level => (level.Key, level.Value)));
         Assert.Equal("Console", serilog["WriteTo:Console:Name"]);
         Assert.Equal("File", serilog["WriteTo:File:Name"]);
@@ -94,7 +95,7 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
             LogProbe(logger, probe);
         }
 
-        var logEvent = Assert.Single(Events(factory.LogFilePath), logEvent => HasProbe(logEvent, probe));
+        var logEvent = Assert.Single(LogFile.Events(factory.LogFilePath), logEvent => HasProbe(logEvent, probe));
         Assert.Equal("Logging test probe {Probe}", logEvent.GetProperty("@mt").GetString());
         Assert.Equal(activity.TraceId.ToHexString(), logEvent.GetProperty("@tr").GetString());
         Assert.Equal(activity.SpanId.ToHexString(), logEvent.GetProperty("@sp").GetString());
@@ -153,7 +154,7 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
                 LogProbe(logger, probe);
             }
 
-            Assert.Single(Events(Path.Combine(contentRoot.FullName, "logFiles", "myapp.log")), logEvent => HasProbe(logEvent, probe));
+            Assert.Single(LogFile.Events(Path.Combine(contentRoot.FullName, "logFiles", "myapp.log")), logEvent => HasProbe(logEvent, probe));
         }
         finally
         {
@@ -179,25 +180,10 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
             .AddInMemoryCollection([new("Serilog:WriteTo:File:Args:path", path)])
             .Build();
 
-    // The events of a log file, which its host may still hold open for writing.
-    private static List<JsonElement> Events(string path)
-    {
-        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(file);
-        var events = new List<JsonElement>();
-        while (reader.ReadLine() is { } line)
-        {
-            using var document = JsonDocument.Parse(line);
-            events.Add(document.RootElement.Clone());
-        }
-
-        return events;
-    }
-
     private static bool HasProbe(JsonElement logEvent, string probe) =>
         logEvent.TryGetProperty("Probe", out var value) && value.GetString() == probe;
 
     // Which of the probes a log file holds, if it exists.
     private static List<string> ProbesIn(string path, string[] probes) =>
-        File.Exists(path) ? [.. probes.Where(probe => Events(path).Any(logEvent => HasProbe(logEvent, probe)))] : [];
+        File.Exists(path) ? [.. probes.Where(probe => LogFile.Events(path).Any(logEvent => HasProbe(logEvent, probe)))] : [];
 }

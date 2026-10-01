@@ -186,7 +186,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - log-context and trace/span enrichment
 
   Test: the sink configuration. ADR: logging.
-- [ ] 6.2 Add request logging, which replaces `Application_BeginRequest` and the `requestinfo`/`activityid` properties, and source-generated `LoggerMessage` methods. Test: the request event is captured with a trace ID.
+- [x] 6.2 Add request logging, which replaces `Application_BeginRequest` and the `requestinfo`/`activityid` properties, and source-generated `LoggerMessage` methods. Test: the request event is captured with a trace ID.
 
 ### Stage 7 — HTTP endpoints (Minimal APIs)
 - [ ] 7.1 API conventions:
@@ -237,7 +237,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [ ] 11.4 Package hygiene, dead-code removal, and a final pass on the README, this plan and `DECISIONS.md`.
 
 ### Stage 12 — Post-migration: write-endpoint authorization
-- [ ] 12.1 Add JWT bearer auth with a `catalog:write` scope policy on item POST/PUT/DELETE. Tokens for local use come from `dotnet user-jwts`. Add the OpenAPI security scheme and tests (401/403/2xx). Reads and `/api/brands` stay anonymous. ADR.
+- [ ] 12.1 Add JWT bearer auth with a `catalog:write` scope policy on item POST/PUT/DELETE. Tokens for local use come from `dotnet user-jwts`. Call `UseAuthentication` and `UseAuthorization` after the request logging, so that rejected requests are logged too (ADR-0019). Add the OpenAPI security scheme and tests (401/403/2xx). Reads and `/api/brands` stay anonymous. ADR.
 
 ---
 

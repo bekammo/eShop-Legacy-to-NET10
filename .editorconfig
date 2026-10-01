@@ -88,6 +88,11 @@ dotnet_diagnostic.CA1849.severity = error
 # Use ValueTask correctly (await it once, never block on it).
 dotnet_diagnostic.CA2012.severity = error
 
+#### Logging analyzers (ADR-0019) ####
+
+# Log through source-generated [LoggerMessage] methods, not the ILogger extension methods such as LogInformation.
+dotnet_diagnostic.CA1848.severity = error
+
 #### Generated code ####
 
 # EF Core migrations are written by dotnet-ef (ADR-0011). Only SQL that EF Core cannot generate is

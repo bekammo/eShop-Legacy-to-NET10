@@ -28,6 +28,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0016](#adr-0016-in-memory-catalog-service) | In-memory catalog service | Accepted | 5.2 |
 | [ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode) | Built-in dependency injection and mock mode | Accepted | 5.3 |
 | [ADR-0018](#adr-0018-logging-with-serilog) | Logging with Serilog | Accepted | 6.1 |
+| [ADR-0019](#adr-0019-request-logging-and-application-log-events) | Request logging and application log events | Accepted | 6.2 |
 
 ## Template
 
@@ -1745,3 +1746,122 @@ Development hosts were also run by hand, on LocalDB and in mock mode. The consol
 - Serilog's request logging writes to the static logger unless it is given one, so Stage 6.2 gives it the host's logger.
 - The console and file sinks write on the calling thread, as log4net did. Stage 8.1, which sweeps the request paths for synchronous I/O, now names the log sinks, and decides whether they move behind a background queue (`Serilog.Sinks.Async`).
 - The test hosts' log files live only as long as their factory, except, on Windows, the file of a host that failed to start. A test that changes a `Serilog` setting uses a configuration source, as `UseLogFile` does, not `UseSetting`.
+
+---
+
+## ADR-0019: Request logging and application log events
+
+- **Status:** Accepted
+- **Date:** 2026-10-01
+- **Plan stage:** 6.2
+
+### Context
+
+- The legacy `Application_BeginRequest` (`Global.asax.cs`) sets two log4net properties for each request, then logs `WebApplication_BeginRequest` at DEBUG ([audit: logging](docs/legacy-audit.md#64-logging-log4net)):
+  - `requestinfo`: the raw URL and the user agent, which the layout prints with every event of the request
+  - `activityid`: a correlation GUID, which the layout never prints, because it asks for `activity`
+- The MVC controllers log `Now loading...` and `Now processing...` lines at INFO from interpolated strings, so the IDs, the paging values and the item name in them are text, not properties. Nothing logs a request's status or its duration, and the app logs no exception (D18).
+- [ADR-0018](#adr-0018-logging-with-serilog) puts Serilog behind `ILogger<T>`, adds the trace and span IDs to every event, and leaves the static `Log.Logger` silent. Serilog's request logging middleware writes to the static logger unless it is given one.
+- ADR-0018 counts exceptions among the parts of D18 that stay open. That overstates it: Kestrel already logs an exception that escapes the app, at Error, and did before Stage 6.
+- Until this stage, ASP.NET Core logged three or four events at Information for each request: hosting's `Request starting` and `Request finished`, and either routing's `Executing endpoint` and `Executed endpoint` or, for a request that no endpoint took, hosting's `Request reached the end of the middleware pipeline without being handled by application code`.
+- Plan 6.2: request logging in place of `Application_BeginRequest` and its two properties, and source-generated `LoggerMessage` methods.
+
+### Decision
+
+**1. One event per request.** `UseCatalogRequestLogging` (`Logging/RequestLoggingApplicationBuilderExtensions.cs`) sets up Serilog's `UseSerilogRequestLogging`, and `Program.cs` adds it as the app's first middleware. `WebApplication` runs routing before the app's middleware and the endpoints after it, so the request logging wraps every request that routing passes on, matched or not, with the matched endpoint known. The event is written when the request completes:
+
+| log4net | Now |
+|---|---|
+| `WebApplication_BeginRequest` at DEBUG, when the request begins | `HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms`, Serilog's template, when the request completes |
+| `requestinfo`, the raw URL and the user agent, printed with every event of the request | `RequestPath` in the message, and `QueryString` and `UserAgent` as properties of the request event. The other events of the request share its trace ID instead. |
+| `activityid`, never printed | `@tr` and `@sp` on every event ([ADR-0018](#adr-0018-logging-with-serilog)). A caller's W3C `traceparent` header sets the trace ID. |
+
+The middleware gets the host's Serilog logger, `options.Logger`, which `AddSerilog` registers.
+
+Stage 7 does not port the controllers' `Now loading...` and `Now processing...` lines. The request event already has the method, the path and the query string of each request. What it does not show, such as the name of a created item, is left to Stage 7's endpoints, as `[LoggerMessage]` events where they need one.
+
+**2. Levels of the request event.** `RequestLevel` decides, in this order:
+
+| Request | Level |
+|---|---|
+| It threw, unless it was cancelled because the client went away | Error, with the exception in `@x` |
+| Its endpoint has `RequestLogLevel` metadata | That level, whatever the status |
+| Status 500 or above | Error |
+| Any other | Information. A 4xx is the client's error, not the server's. |
+
+A request that the client aborted, such as a probe that gave up, ends with an `OperationCanceledException` while `RequestAborted` is cancelled. That is not the server's error, so the other rules decide its level. Any other exception, a cancellation that the client did not cause included, is an Error.
+
+The health check endpoints carry `RequestLogLevel(Debug)`. Probes call them every few seconds, so at Information they would fill the log. A failing check is still logged, at Error, by ASP.NET Core's health check service. Endpoint metadata, rather than a test of the path, keeps the rule on the two endpoints, and off unknown paths under `/health`.
+
+**3. ASP.NET Core's own request events off.** `Serilog:MinimumLevel:Override:Microsoft.AspNetCore` is `Warning`. The request event replaces hosting's and routing's request events. ASP.NET Core's warnings and errors are still logged. Hosting still starts the request's activity, so the trace ID is still there.
+
+**4. Application events through `[LoggerMessage]`.**
+
+- The app logs through source-generated `[LoggerMessage]` methods: static partial methods in the class that logs. The template is checked at build time, its values become properties, and nothing is formatted when the level is off. log4net's interpolated strings kept the values only as text.
+- The method name is the event name (`EventId.Name`). The methods set no event ID: the generator derives a stable one from the name.
+- CA1848 already flags a call such as `logger.LogInformation(...)` as a warning in the `Recommended` analysis mode, which the build treats as an error ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)). `.editorconfig` pins it as an error, beside the async analyzers, so the rule stays if the analysis mode changes.
+- The first event is `MockModeIsOn`, a Warning that `MockModeWarning`, a hosted service, logs once when the host starts. `AddCatalogServices` registers it in mock mode only. A host in mock mode needs no database and is ready at once ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)), so without it nothing would show a deployment that turned mock mode on by mistake.
+
+**Tests**
+
+Unit tests:
+
+| Test | What it pins |
+|---|---|
+| `RequestLoggingApplicationBuilderExtensionsTests.Status_sets_the_level_when_the_endpoint_sets_none` | 200, 400 and 404 are Information, and 500 and 503 are Error. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Endpoint_level_applies_whatever_the_status` | Debug metadata gives Debug for 200 and 503. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Request_that_threw_is_an_Error_whatever_the_endpoint_level` | An exception gives Error, with Debug metadata too. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Request_cancelled_because_the_client_went_away_is_not_an_Error` | An `OperationCanceledException` with `RequestAborted` cancelled gives Information, or Debug with Debug metadata. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Request_cancelled_while_the_client_waits_is_an_Error` | An `OperationCanceledException` without an aborted request gives Error. |
+| `RequestLoggingApplicationBuilderExtensionsTests.Health_checks_ask_for_Debug` | `ProbeRequestLogLevel`, which both health check endpoints carry, is Debug. |
+| `CatalogServiceCollectionExtensionsTests` (amended) | Mock mode's one hosted service is `MockModeWarning`, and database mode does not register it. |
+
+Integration tests:
+
+| Test | What it pins |
+|---|---|
+| `RequestLoggingTests.Request_is_logged_once_with_its_trace_id_query_string_and_user_agent` | `GET /no-such-route?pageSize=10` with a `traceparent` and a user agent: the event in the host's file, with the template, the method, the path, 404, the time, the query string, the user agent and the caller's trace ID, at Information. It is the only event of that trace: ASP.NET Core's `Request starting` would be logged before it. |
+| `RequestLoggingTests.Request_that_throws_is_logged_at_Error_with_the_exception` | A middleware after the endpoints throws: the event is at Error, with status 500 and the exception. |
+| `RequestLoggingTests.Health_check_requests_are_logged_at_Debug` (`/health/live`, `/health/ready`) | With Debug events on, each health check request is logged at Debug. |
+| `CatalogServiceRegistrationTests.Mock_mode_warns_at_startup_that_changes_are_lost` | A mock-mode host logs `MockModeIsOn` once, at Warning, with the whole message. |
+| `CatalogServiceRegistrationTests.Database_mode_does_not_warn_about_mock_mode` | The factory's host does not. |
+| `LoggingTests.Committed_settings_log_from_Information_to_the_console_and_to_the_log4net_file` (amended) | The `Microsoft.AspNetCore` override. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- no `options.Logger`: all four cases of `RequestLoggingTests`, which waited in vain for events that went to the silent static logger
+- no `UseCatalogRequestLogging` in `Program.cs`: the same four
+- no `Microsoft.AspNetCore` override: `Request_is_logged_once_with_its_trace_id_query_string_and_user_agent`, which found `Request starting` in the trace, and the committed-settings test
+- no query string and user agent: `Request_is_logged_once_with_its_trace_id_query_string_and_user_agent`
+- health check endpoints without the metadata: both cases of `Health_check_requests_are_logged_at_Debug`
+- the endpoint's level before the exception: `Request_that_threw_is_an_Error_whatever_the_endpoint_level` with Debug metadata
+- Error for a request that the client aborted: both cases of `Request_cancelled_because_the_client_went_away_is_not_an_Error`
+- Warning for a server error: the 500 and 503 cases of `Status_sets_the_level_when_the_endpoint_sets_none`
+- no `MockModeWarning` in mock mode: `Mock_mode_registers_one_in_memory_catalog_and_nothing_of_the_database` and `Mock_mode_warns_at_startup_that_changes_are_lost`
+
+
+A call to `logger.LogInformation` failed the build with CA1848, as it already did through the `Recommended` mode.
+
+A host was also run by hand in Production, with a connection string to a server that does not exist. `/health/ready` answered 503 with no request event at Information, and the health check service logged the failing check at Error. A request to an unknown path gave one event, with its query string and user agent, and no event from ASP.NET Core.
+
+### Alternatives considered
+
+- **ASP.NET Core's HTTP logging** (`AddHttpLogging` with `CombineLogs`). It also writes one event per request, at Information. Serilog's middleware sets the level per request, and comes with the package that ADR-0018 chose.
+- **An event when the request begins**, as log4net had. It has no status or duration, and it doubles the events. A request that never completes is the case it would cover (see Consequences).
+- **ASP.NET Core's request events at Information.** Three or four events for each request, and none of them has both the status and the user agent.
+- **The query string in `RequestPath`** (`IncludeQueryInRequestPath`). Each query would make a different path, so events could no longer be grouped by path.
+- **Health checks found by their path.** The rule would also catch unknown paths under `/health`, and would drift if a path changed.
+- **Error for every exception, cancellations included.** Every client that hangs up, and every probe that gives up, would log an Error with a stack trace.
+- **Event ID numbers on every `[LoggerMessage]`.** They would need a registry to stay unique. The generator derives the ID from the name. Two classes can use the same name, and the source context tells their events apart.
+- **`LoggerMessage.Define` by hand.** It does the same with more code.
+
+### Consequences
+
+- A request that never completes, such as one that hangs, is not logged. Neither is a request that never reaches the app's middleware, such as one that Kestrel rejects as malformed.
+- At the default level, the health checks leave no request events, even when readiness answers 503. A failing check is still logged, at Error, by the health check service. A probe that gives up before the check finishes is logged at Debug, as an aborted request, and the check logs nothing.
+- The query string and the user agent are logged, as `requestinfo` logged them. An endpoint that took a secret in its query string would write it to the log. The bearer tokens of Stage 12 travel in the `Authorization` header, which is not logged.
+- The console shows the request's path, as the client sent it, but not its query string or user agent, which only the file holds. The console's template writes the path as it is ([ADR-0018](#adr-0018-logging-with-serilog)).
+- The request event logs an exception that escapes the app and lets it go on, so Kestrel also logs it, at Error. Stage 7.1 places the exception handler: inside the request logging, the handler logs the exception and the request event sees a 500 without one. Outside it, both log the exception.
+- Authentication and authorization middleware that `WebApplication` adds by itself runs before the app's middleware, so a request it rejects would not be logged. Stage 12 calls `UseAuthentication` and `UseAuthorization` itself, after the request logging. Plan 12.1 now says so.
+- New application events are `[LoggerMessage]` methods.
+- Mock mode now registers one hosted service, beside the in-memory catalog service ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)).

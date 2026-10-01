@@ -16,7 +16,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 3 — Configuration | Done |
 | 4 — Domain & EF Core | Done |
 | 5 — Application services & DI | Done |
-| 6 — Logging | In progress |
+| 6 — Logging | Done |
 | 7 — HTTP endpoints | Not started |
 | 8 — Async verification | Not started |
 | 9 — OpenAPI docs & Swagger UI | Not started |
@@ -137,10 +137,12 @@ dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --pr
 
 ## Logging
 
-The API logs through Serilog, which the `Serilog` section of `appsettings.json` configures ([ADR-0018](DECISIONS.md#adr-0018-logging-with-serilog)). It logs events at Information and above, except the SQL of EF Core's commands, which it logs only from Warning. It writes them to two places:
+The API logs through Serilog, which the `Serilog` section of `appsettings.json` configures ([ADR-0018](DECISIONS.md#adr-0018-logging-with-serilog)). It logs events at Information and above, except ASP.NET Core's own events and the SQL of EF Core's commands, which it logs only from Warning. It writes them to two places:
 
 - **The console**, one line per event.
 - **A log file**, `logFiles/myapp.log` under the content root. With `dotnet run` that is `src/eShop.Catalog.Api/logFiles/`, which git ignores. Each line is one event as JSON, in the [compact log event format](https://clef-json.org) (CLEF), with the trace and span IDs in `@tr` and `@sp`.
+
+Each request is logged once, when it completes, for example as `HTTP GET /no-such-route responded 404 in 0.2975 ms`, with the query string and the user agent as properties of the event ([ADR-0019](DECISIONS.md#adr-0019-request-logging-and-application-log-events)). Every event of a request carries the request's trace ID, which a caller that sends a W3C `traceparent` header shares. Requests to the health checks are logged at Debug, so they do not show at the default level, but a failing check is still logged, at Error. In mock mode the app logs a warning when it starts.
 
 The file rolls at 10 MiB (10,485,760 bytes, log4net's `10MB`), and the 6 newest files are kept, as with log4net in the legacy app. The first file is `myapp.log`, then come `myapp_001.log`, `myapp_002.log` and so on. The file with the highest number is the current one.
 

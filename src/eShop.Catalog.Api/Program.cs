@@ -21,6 +21,7 @@ builder.Services.AddCatalogServices(builder.Configuration);
 
 var app = builder.Build();
 
+app.UseCatalogRequestLogging();
 app.MapHealthCheckEndpoints();
 
 await app.RunAsync();
