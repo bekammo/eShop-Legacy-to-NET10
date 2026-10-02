@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using eShop.Catalog.Api.Pictures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,9 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
     private const int MiB = 1024 * 1024;
 
     private string ContentRoot => factory.Services.GetRequiredService<IHostEnvironment>().ContentRootPath;
+
+    // The committed pictures folder, as an absolute path.
+    private string PicturesFolder => CatalogPictures.Root(CommittedSettings()["Catalog:PicturesPath"]!, ContentRoot);
 
     // Only the committed file, as in ConfigurationTests: an override must not fail the test.
     [Fact]
@@ -138,7 +142,8 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
     }
 
     // log4net resolved its file against the app root. The test host runs from the test's output folder, which is
-    // its working directory, with the content root in a directory of its own.
+    // its working directory, with the content root in a directory of its own. The pictures folder, which the committed
+    // settings name relative to the content root too, is given as an absolute path (ADR-0023).
     [Fact]
     public async Task Relative_log_file_path_is_resolved_against_the_content_root()
     {
@@ -148,7 +153,9 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
             File.Copy(Path.Combine(ContentRoot, "appsettings.json"), Path.Combine(contentRoot.FullName, "appsettings.json"));
             var probe = Guid.NewGuid().ToString("N");
             await using (var host = factory.WithWebHostBuilder(builder =>
-                CatalogApiFactory.UseLogFile(builder.UseContentRoot(contentRoot.FullName), "logFiles/myapp.log")))
+                CatalogApiFactory.UseLogFile(
+                    builder.UseContentRoot(contentRoot.FullName).UseSetting("Catalog:PicturesPath", PicturesFolder),
+                    "logFiles/myapp.log")))
             {
                 var logger = host.Services.GetRequiredService<ILogger<LoggingTests>>();
                 LogProbe(logger, probe);

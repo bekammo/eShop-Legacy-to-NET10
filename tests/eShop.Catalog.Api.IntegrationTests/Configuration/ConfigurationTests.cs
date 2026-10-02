@@ -104,6 +104,19 @@ public sealed class ConfigurationTests(CatalogApiFactory factory) : IClassFixtur
         Assert.False(configuration.GetValue<bool?>("Catalog:UseMockData"));
     }
 
+    // Only the committed files, as above. Until Stage 11.2 moves them, the pictures are the legacy app's (ADR-0005,
+    // ADR-0023), relative to the content root.
+    [Fact]
+    public void Committed_settings_serve_the_pictures_from_the_legacy_Pics_folder()
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(ContentRoot)
+            .AddJsonFile("appsettings.json", optional: false)
+            .Build();
+
+        Assert.Equal("../eShopLegacyMVC/Pics", configuration["Catalog:PicturesPath"]);
+    }
+
     // User secrets are a JSON source for secrets.json, added whether or not the file exists yet.
     private static bool IsUserSecrets(IConfigurationProvider provider) =>
         provider is JsonConfigurationProvider { Source.Path: "secrets.json" };

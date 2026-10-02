@@ -66,7 +66,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
    - Sample items are seeded through `UseSeeding`/`UseAsyncSeeding`.
    - The new app uses its own database. Adopting an existing legacy database is a separate, tested baseline procedure.
 6. **Async-first port.** No synchronous EF Core code is written only to be converted later. Async analyzers are errors from the first commit, and Stage 8 verifies the result.
-7. **OpenAPI via the built-in `Microsoft.AspNetCore.OpenApi`.** The document and a committed snapshot test arrive with the first endpoint, so every endpoint commit shows its contract diff. Swagger UI comes in Stage 9.
+7. **OpenAPI via the built-in `Microsoft.AspNetCore.OpenApi`.** The document and a committed snapshot test arrive in Stage 7.1, before the first endpoint, so every endpoint commit shows its contract diff. Swagger UI comes in Stage 9.
 8. **Tests:**
    - xUnit v3 on Microsoft.Testing.Platform, and `WebApplicationFactory` through a shared factory.
    - Testcontainers SQL Server with one container per test assembly and one database per test class.
@@ -189,7 +189,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 6.2 Add request logging, which replaces `Application_BeginRequest` and the `requestinfo`/`activityid` properties, and source-generated `LoggerMessage` methods. Test: the request event is captured with a trace ID.
 
 ### Stage 7 — HTTP endpoints (Minimal APIs)
-- [ ] 7.1 API conventions:
+- [x] 7.1 API conventions:
   - endpoint groups and `TypedResults`
   - PascalCase JSON
   - ProblemDetails and an exception handler
@@ -197,14 +197,14 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - OpenAPI document plus a committed snapshot test
 
   ADRs: Minimal APIs vs controllers; error contract.
-- [ ] 7.2 Brands, drop-in compatible:
+- [x] 7.2 Brands, drop-in compatible:
   - `GET /api/brands`, ordered by Id
   - `GET /api/brands/{id}`, where a non-integer ID still gets 400
   - `DELETE /api/brands/{id}` as a no-op
 
   Tests compare against the golden exchanges, and the deliberate deltas are asserted explicitly and recorded.
-- [ ] 7.3 Retire `/api/files` with a `410 Gone` ProblemDetails response that points to `/api/brands`. ADR and test.
-- [ ] 7.4 Picture endpoint `GET /items/{catalogItemId:int}/pic`, keeping the legacy route name:
+- [x] 7.3 Retire `/api/files` with a `410 Gone` ProblemDetails response that points to `/api/brands`. ADR and test.
+- [x] 7.4 Picture endpoint `GET /items/{catalogItemId:int}/pic`, keeping the legacy route name:
   - root directory from `Catalog:PicturesPath`, resolved at startup
   - traversal-safe lookup through `PhysicalFileProvider`
   - content type from `FileExtensionContentTypeProvider`
@@ -212,12 +212,12 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - 404 for a missing file (legacy returned 500)
 
   ADR: security fixes made during the migration.
-- [ ] 7.5 Catalog reads, with `PictureUri` built by `LinkGenerator`:
+- [x] 7.5 Catalog reads, with `PictureUri` built by `LinkGenerator`:
   - `GET /api/items` (validated `pageSize` 1–100 and `pageIndex` ≥ 0)
   - `GET /api/items/{id}`
   - `GET /api/types`
-- [ ] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable: a new item gets the legacy default picture `dummy.png`. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
-- [ ] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
+- [x] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable: a new item gets the legacy default picture `dummy.png`. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
+- [x] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
 
 ### Stage 8 — Async verification
 - [ ] 8.1 Sweep for sync-over-async and synchronous I/O on request paths, the log sinks included (ADR-0018). Verify that cancellation flows from `RequestAborted` to EF Core. Add cancellation tests and update the async ADR.

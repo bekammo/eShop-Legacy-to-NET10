@@ -17,7 +17,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 4 — Domain & EF Core | Done |
 | 5 — Application services & DI | Done |
 | 6 — Logging | Done |
-| 7 — HTTP endpoints | Not started |
+| 7 — HTTP endpoints | Done |
 | 8 — Async verification | Not started |
 | 9 — OpenAPI docs & Swagger UI | Not started |
 | 10 — Test consolidation | Not started |
@@ -33,6 +33,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | [docs/legacy-audit.md](docs/legacy-audit.md) | Audit of the legacy code: pipeline, packages, endpoints, schema, configuration, logging, defects and risks, build and tests. |
 | [docs/legacy/README.md](docs/legacy/README.md) | Characterization of the running legacy app: schema, seed data, golden HTTP exchanges, defect evidence, and the rules for comparing the new API against them. |
 | [docs/behavior-changes.md](docs/behavior-changes.md) | Register of every deliberate difference between the new API and the legacy app. |
+| [docs/openapi/v1.json](docs/openapi/v1.json) | The OpenAPI document of the new API, as the API serves it. A test keeps it current, so every change to the contract of an endpoint shows in its diff. |
 
 ## Repository layout
 
@@ -52,6 +53,7 @@ DECISIONS.md
 docs/
   legacy-audit.md
   behavior-changes.md
+  openapi/                   The OpenAPI document of the new API
   legacy/                    Characterization data and the tool that captures it
 src/
   eShop.Catalog.Api/         The new ASP.NET Core API (.NET 10)
@@ -104,6 +106,31 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 |---|---|
 | `GET /health/live` | `200 Healthy` while the process is up. It does not check the database or any other dependency. |
 | `GET /health/ready` | `200 Healthy` when the API can reach its database and the database has every migration, otherwise `503 Unhealthy` ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)). In mock mode it checks nothing and answers `200 Healthy`. |
+| `GET /openapi/v1.json` | The OpenAPI 3.1 document of the API, in every environment ([ADR-0020](DECISIONS.md#adr-0020-minimal-api-endpoints-and-the-openapi-document)). |
+| `GET /api/brands` | Every brand, in ID order: `[{"Id":1,"Brand":"Azure"}, ...]`. |
+| `GET /api/brands/{id}` | One brand, or 404. An ID that is not an integer is a 400. |
+| `DELETE /api/brands/{id}` | Deletes nothing, as in the legacy app: 200 for a brand that exists, 404 otherwise. |
+| `GET /api/files` | Retired: `410 Gone`, with a problem that points to `GET /api/brands`. The legacy app returned the brands there as a BinaryFormatter payload ([ADR-0022](DECISIONS.md#adr-0022-get-apifiles-retired-with-410-gone)). |
+| `GET /items/{id}/pic` | The picture of an item, from the folder that `Catalog:PicturesPath` names: 400 for an ID below 1, 404 for an unknown item or a picture that is not in the folder. A `Range` request gets the part it asks for (206) ([ADR-0023](DECISIONS.md#adr-0023-security-fixes-made-during-the-migration)). |
+| `GET /api/items?pageSize=10&pageIndex=0` | One page of items, in ID order: `ActualPage`, `ItemsPerPage`, `TotalItems`, `TotalPages` and `Data`. `pageSize` is 1–100 and `pageIndex` 0 or more; anything else is a 400 ([ADR-0024](DECISIONS.md#adr-0024-item-and-type-reads)). |
+| `GET /api/items/{id}` | One item, with its brand, its type and the URL of its picture, or 404. An ID that is not an integer is a 400. |
+| `POST /api/items` | Creates an item from a JSON body: 201, with its location and the item. A field that breaks its rule, or an unknown brand or type, is a 400 that names it ([ADR-0025](DECISIONS.md#adr-0025-creating-items)). Request bodies are limited to 4 MB. |
+| `PUT /api/items/{id}` | Replaces the item's fields, with the rules of the create: 204, 404 for an unknown item ([ADR-0026](DECISIONS.md#adr-0026-updating-and-deleting-items)). |
+| `DELETE /api/items/{id}` | Deletes the item: 204, or 404 for an unknown item. |
+| `GET /api/types` | Every item type, in ID order. |
+
+The brand and picture endpoints are drop-in compatible with the legacy app ([ADR-0002](DECISIONS.md#adr-0002-wire-contract-policy)). Their few deliberate differences, such as no XML, and the changes to the legacy item rules are in the [behavior-change register](docs/behavior-changes.md).
+
+The catalog endpoints answer with JSON, with property names in PascalCase as the legacy Web API wrote them, whatever the `Accept` header asks for. Every error, except the plain-text answers of the health checks, is a problem details object ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)), as `application/problem+json`, a route that matches nothing included. Its `traceId` holds the trace ID of the request, which finds the request's events in the log ([ADR-0021](DECISIONS.md#adr-0021-error-contract-problem-details)):
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+  "title": "Not Found",
+  "status": 404,
+  "traceId": "00-0af7651916cd43dd8448eb211c80319c-2e19c0fd39ec0d42-01"
+}
+```
 
 To run without any database, turn on mock mode, which serves the catalog from memory, starting with the legacy sample data, and loses every change when the app stops ([ADR-0017](DECISIONS.md#adr-0017-built-in-dependency-injection-and-mock-mode)). In Bash:
 
@@ -128,6 +155,7 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 | `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`), unless user secrets override it (see [Local database](#local-database)) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
 | `Database:MigrateOnStartup` | `true`: the migrations are applied, and a new database seeded, before the app accepts requests | `false`. The host refuses to start with `true` outside Development. |
 | `Catalog:UseMockData` | `false` (`appsettings.json`). `true` serves the catalog from memory, and the two settings above are not read. | `false`, as in Development |
+| `Catalog:PicturesPath` | `../eShopLegacyMVC/Pics`, the legacy app's pictures, relative to the content root (`appsettings.json`) | The same, until Stage 11.2 moves the pictures into the API. A published app needs it set, for example as `Catalog__PicturesPath`. The host does not start when the folder does not exist. |
 
 The host does not start with an invalid setting, or without a connection string unless mock mode is on. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 
@@ -271,6 +299,8 @@ Write a TRX report per test project into `TestResults/`:
 ```bash
 dotnet test --solution eShop.Catalog.slnx --report-xunit-trx --results-directory TestResults
 ```
+
+When a change alters the contract of an endpoint, `OpenApiDocumentTests.Document_matches_the_committed_snapshot` fails until [docs/openapi/v1.json](docs/openapi/v1.json) matches the document that the API serves. The test writes that document to `OpenApi/v1.received.json` in the integration tests' output folder, and its failure message gives the path. If the change is intended, copy that file over `docs/openapi/v1.json`, and review the diff with the code ([ADR-0020](DECISIONS.md#adr-0020-minimal-api-endpoints-and-the-openapi-document)).
 
 ## Continuous integration
 

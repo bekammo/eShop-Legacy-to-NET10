@@ -29,6 +29,13 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode) | Built-in dependency injection and mock mode | Accepted | 5.3 |
 | [ADR-0018](#adr-0018-logging-with-serilog) | Logging with Serilog | Accepted | 6.1 |
 | [ADR-0019](#adr-0019-request-logging-and-application-log-events) | Request logging and application log events | Accepted | 6.2 |
+| [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) | Minimal API endpoints and the OpenAPI document | Accepted | 7.1 |
+| [ADR-0021](#adr-0021-error-contract-problem-details) | Error contract: problem details | Accepted | 7.1 |
+| [ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone) | `GET /api/files` retired with 410 Gone | Accepted | 7.3 |
+| [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) | Security fixes made during the migration | Accepted | 7.4 |
+| [ADR-0024](#adr-0024-item-and-type-reads) | Item and type reads | Accepted | 7.5 |
+| [ADR-0025](#adr-0025-creating-items) | Creating items | Accepted | 7.6 |
+| [ADR-0026](#adr-0026-updating-and-deleting-items) | Updating and deleting items | Accepted | 7.7 |
 
 ## Template
 
@@ -1865,3 +1872,612 @@ A host was also run by hand in Production, with a connection string to a server 
 - Authentication and authorization middleware that `WebApplication` adds by itself runs before the app's middleware, so a request it rejects would not be logged. Stage 12 calls `UseAuthentication` and `UseAuthorization` itself, after the request logging. Plan 12.1 now says so.
 - New application events are `[LoggerMessage]` methods.
 - Mock mode now registers one hosted service, beside the in-memory catalog service ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)).
+
+---
+
+## ADR-0020: Minimal API endpoints and the OpenAPI document
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.1
+
+### Context
+
+- The legacy HTTP surface is two kinds of controller ([audit: endpoint inventory](docs/legacy-audit.md#4-endpoint-inventory)):
+  - Web API 2 `ApiController`s, routed by the convention `api/{controller}/{id}`, with the action chosen by its name and its parameters. They negotiate JSON, which Newtonsoft writes with its defaults, in PascalCase, or XML.
+  - MVC controllers behind the Razor UI, and the attribute-routed `PicController`.
+- Plan decision 2 chooses Minimal APIs over controllers: endpoint groups per resource, `TypedResults`, and .NET 10's built-in validation. XML content negotiation is the one controller feature that this gives up, and [ADR-0003](#adr-0003-non-goals) makes XML a non-goal.
+- Plan decision 7 chooses the built-in `Microsoft.AspNetCore.OpenApi` for the OpenAPI document, which arrives with a committed snapshot test, so that every endpoint commit shows its contract diff. Swagger UI is Stage 9's.
+- [ADR-0002](#adr-0002-wire-contract-policy) fixes what the ported endpoints keep: routes that ignore case and a trailing slash, PascalCase JSON on every endpoint, and the status codes, such as 400 for a brand ID that is not an integer ([`brands-get-by-id--non-integer`](docs/legacy/contract/brands-get-by-id.json)).
+- The endpoints take `ICatalogService` as a parameter ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)), and pass the caller's `CancellationToken` on ([ADR-0015](#adr-0015-async-first-catalog-service)).
+- A probe app on ASP.NET Core 10.0.12, with a route group and handlers like the brand endpoints, showed:
+  - Routing ignores case and a trailing slash: `/API/BRANDS` and `/api/brands/` reached `/api/brands`.
+  - An `{id}` without a constraint, bound to an `int id` parameter, answered 400 for `abc`, `1.5` and `2147483648`, and 200 for `01`, in Production. In Development, ASP.NET Core throws for a parameter that does not bind (`RouteHandlerOptions.ThrowOnBadRequest`), and an exception handler turned that into a 500.
+  - A method that the route does not have, `HEAD` and `OPTIONS` included, got 405 with an `Allow` header.
+  - Validation attributes on a handler's parameters were checked, whatever assembly the handler is in. Those on the members of a type that a handler binds were checked only when the type is public and in the assembly that calls `AddValidation`. An internal record or class with the same attributes was not checked, and nothing warned about it.
+  - The document is OpenAPI 3.1.1. Its `servers` entry is the URL of the request that fetched it. The schemas show `[Range]` and `[StringLength]` as `minimum`, `maximum` and `maxLength`.
+
+### Decision
+
+**1. Endpoints.** Each resource has a static class `<Resource>Endpoints` in its feature folder ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)), such as `Brands/BrandEndpoints.cs` from Stage 7.2. Its `Map<Resource>Endpoints` extension method on `IEndpointRouteBuilder`, which `Program.cs` calls, creates the resource's route group and maps the handlers into it.
+
+- **Handlers are static methods**, named for what they do, such as `GetBrandAsync`. A lambda would put the handler's code inside the mapping call, without a name.
+- **They return `TypedResults`**, declared as `Results<...>` when there is more than one outcome, such as `Results<Ok<CatalogBrandResponse>, NotFound>`. The statuses and the body types are then endpoint metadata, which the OpenAPI document shows.
+- **They take their services and a `CancellationToken` as parameters.** ASP.NET Core binds the token to the request's `RequestAborted`, and the handler passes it to the service.
+- **A collection's route is the group's own**, mapped with `MapGet("", ...)`, so its template, and its path in the document, has no trailing slash. A request with one still matches.
+
+**2. Route parameters.** A parameter gets a route constraint only where the legacy route had one: `{catalogItemId:int}` on the picture route (Stage 7.4). Elsewhere a template has `{id}`, bound to an `int id` parameter. A value that is not an int then matches the route and fails to bind, which is a 400, as Web API 2 answered. With a constraint it would match no route, which is a 404.
+
+**3. JSON.** System.Text.Json with ASP.NET Core's web defaults, except the naming policy, which `ConfigureHttpJsonOptions` removes:
+
+- Property names are the C# names, in PascalCase, as Web API 2 wrote them ([ADR-0002](#adr-0002-wire-contract-policy), decision 2).
+- The other web defaults stay. A number can be read from a JSON string, as Newtonsoft read it, so the document gives integer properties the type `["integer", "string"]`.
+- A result is JSON whatever the request's `Accept` header says. There is no content negotiation, so a client that asks for XML gets JSON. Stage 7.2 records this delta with the first endpoint that answers.
+- Response bodies are records in the resource's feature folder, mapped from the entities, which hold only stored data ([ADR-0010](#adr-0010-data-model)). The record's name is the name of its schema in the document.
+- ASP.NET Core's JSON options escape only what JSON requires, as Newtonsoft did, so `Cup<T> White Mug` and `.NET Black & White Mug` are written as they are. (System.Text.Json's own default escapes `<`, `>` and `&` as `\uXXXX`, but ASP.NET Core does not use it.) The [comparison rules](docs/legacy/README.md#comparison-rules) compare values, not text, either way.
+
+**4. Binding and validation.** `AddValidation` turns on .NET 10's validation of a handler's parameters, and of the members of the types they bind, from data annotations such as `[Range]`. A value that breaks one is a 400 problem with the messages in `errors` ([ADR-0021](#adr-0021-error-contract-problem-details)).
+
+- A parameter that does not bind is a 400 in every environment. `RouteHandlerOptions.ThrowOnBadRequest` is off in Development too, so the answer does not depend on the environment.
+- A request type with validation attributes on its members is `public`, an exception to ADR-0006's rule that types are internal, because the validation generator skips internal types without a warning. Each such type gets a test that an invalid value is refused, so a type that loses `public` fails a test. The first one is the item of Stage 7.6.
+
+**5. The OpenAPI document.** `Microsoft.AspNetCore.OpenApi` 10.0.12, the version of the ASP.NET Core runtime, registered with `AddOpenApi` and mapped with `MapOpenApi`:
+
+- `GET /openapi/v1.json` serves an OpenAPI 3.1 document in every environment. It describes the public contract and holds nothing secret, and a client can generate code from it against any environment. Swagger UI, a tool for developers, is Development only (Stage 9.1).
+- It lists the route handlers. The health checks are not route handlers, so they are not in it, and neither is the document itself.
+- Summaries, tags and the documented error responses are Stage 9.2's. Until then the document shows a 404, for example, without the problem body that ADR-0021 gives it.
+
+**6. The snapshot.** `docs/openapi/v1.json` is the document as the API serves it, without `servers`, which holds the URL of the request.
+
+- `OpenApiDocumentTests.Document_matches_the_committed_snapshot` fetches the document from the test host and compares it with the snapshot as JSON trees, so formatting does not count.
+- On a difference it writes the served document beside its copy of the snapshot, as `OpenApi/v1.received.json` in the test output, and its failure message names that file. An intended change is accepted by copying the file over the snapshot.
+- A commit that changes the contract of an endpoint therefore changes `docs/openapi/v1.json`, and its diff shows the change. In this stage the document has no paths.
+
+**7. Shared registration.** `AddCatalogHttp` (`Http/HttpServiceCollectionExtensions.cs`) registers what every endpoint shares: the JSON options, the binding option, validation, the OpenAPI document, and the problem details and Kestrel's `AddServerHeader` setting of [ADR-0021](#adr-0021-error-contract-problem-details). `Program.cs` calls it, adds the error handling, and maps the document.
+
+The OpenAPI tests are in the integration tests' `Http` folder, beside the other tests of what `AddCatalogHttp` registers: the API has no `OpenApi` folder for them to mirror ([ADR-0007](#adr-0007-test-strategy)).
+
+**Tests**
+
+The conventions are tested on endpoints of the test's own, in a host that has `AddCatalogHttp` and `UseCatalogErrorHandling` and nothing else (`HttpConventionsTests`), because the API's first endpoints arrive in Stage 7.2. From then on the golden exchanges check the real ones.
+
+| Test | What it pins |
+|---|---|
+| `HttpConventionsTests.Results_are_PascalCase_JSON_whatever_the_Accept_header` (7 `Accept` headers) | `{"Id":1,"Brand":"Azure"}` as `application/json; charset=utf-8`, for no `Accept` header, JSON, `*/*`, a browser's, XML, HTML and PNG. |
+| `HttpConventionsTests.Parameter_that_does_not_bind_is_a_400_problem_in_every_environment` (Development, Production) | `abc` for an `int` is a 400, not a 500, in Development too. |
+| `HttpConventionsTests.Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors` | `[Range(1, 100)]` refuses 0, with the message under the parameter's name. |
+| `OpenApiDocumentTests.Document_matches_the_committed_snapshot` | The served document, without `servers`, equals `docs/openapi/v1.json`. |
+| `OpenApiDocumentTests.Document_is_served_in_every_environment` (Development, Production) | `GET /openapi/v1.json` answers 200. The snapshot test covers Testing. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- the naming policy left at camelCase: all 7 cases of `Results_are_PascalCase_JSON_whatever_the_Accept_header`
+- `ThrowOnBadRequest` left at its default: the Development case of `Parameter_that_does_not_bind_is_a_400_problem_in_every_environment`
+- no `AddValidation`: `Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors`
+- the document mapped in Development only: the Production case of `Document_is_served_in_every_environment`, and `Document_matches_the_committed_snapshot`
+- an empty object, `{}`, as the snapshot: `Document_matches_the_committed_snapshot`, which wrote the served document to `v1.received.json`. That file became the snapshot.
+
+### Alternatives considered
+
+- **Controllers with `[ApiController]`.** They would keep XML through a formatter, and their model binding would look like Web API 2's. Plan decision 2 chose Minimal APIs, [ADR-0003](#adr-0003-non-goals) drops XML, and about ten endpoints need no filters, conventions or model binders.
+- **Lambdas in the `Map` calls.** Shorter for a one-line handler, but the mapping then holds the handler's code, and the handler has no name.
+- **A third-party endpoint library**, such as Carter or FastEndpoints. One more dependency, for about ten endpoints that ASP.NET Core maps without one.
+- **A route constraint on every ID** (`{id:int}`). A brand ID such as `abc` would then be a 404, where the legacy app answered 400.
+- **camelCase, ASP.NET Core's default.** [ADR-0002](#adr-0002-wire-contract-policy) keeps PascalCase on every endpoint until a v2.
+- **FluentValidation, or checks written in each handler.** One more dependency, or rules that the document cannot see. Data annotations are .NET 10's own, and the document shows them as schema constraints.
+- **The document in Development only**, as the project template maps it. The snapshot test runs in Testing, and a client could not fetch the contract of a deployed API.
+- **Swashbuckle or NSwag for the document.** Plan decision 7 chose the built-in generator, which ships with ASP.NET Core 10 and writes OpenAPI 3.1. Stage 9.1 chooses the UI.
+- **The document written at build time** (`Microsoft.Extensions.ApiDescription.Server`) and committed, with a check that it is current. The test also proves that the endpoint serves the document, and needs no build step.
+
+### Consequences
+
+- A client that asks for XML gets JSON. Stage 7.2 records the delta with the first endpoint.
+- Every endpoint commit updates `docs/openapi/v1.json`, and the snapshot test fails until it does.
+- Request types with validation attributes are public, against the default of ADR-0006.
+- The document is served to anyone who can reach the API, like the API itself, which stays away from untrusted clients until Stage 12 ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)).
+
+---
+
+## ADR-0021: Error contract: problem details
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.1
+
+### Context
+
+- The legacy error bodies are whatever the framework that failed writes, and they differ by client ([audit: error handling](docs/legacy-audit.md#25-error-handling)):
+  - Web API 2 writes `{"Message", "MessageDetail"}` for a binding error or an unknown controller ([`brands-get-by-id--non-integer`](docs/legacy/contract/brands-get-by-id.json), [`api-unknown-controller`](docs/legacy/contract/api-root.json)), and `{"Message"}` for a method that the route does not have ([`brands-post`](docs/legacy/contract/brands-other-verbs.json)), as XML for an XML `Accept` header (`brands-get-by-id--non-integer-xml`). Remote clients get `Message` only. An unhandled exception gives local clients its message, type and stack trace.
+  - The 404s that the code returns have no body (`brands-get-by-id--not-found`).
+  - IIS and ASP.NET answer the rest with HTML pages (`api-root`, `brands-get-by-id--dot-in-segment`, [`pic-get--not-found`](docs/legacy/contract/pictures.json)).
+- No code path logs an exception (D18). Local clients get stack traces, and the `Server`, `X-Powered-By`, `X-AspNet-Version` and `X-AspNetMvc-Version` headers name the stack (D19) ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)).
+- [ADR-0002](#adr-0002-wire-contract-policy), decision 4: status codes are contract, and error payloads are not. The new format is chosen in this stage and recorded as a delta. The [comparison rules](docs/legacy/README.md#comparison-rules) compare only the status of an error, and the `Allow` header of a 405.
+- [ADR-0019](#adr-0019-request-logging-and-application-log-events) left the place of the exception handler to this stage. Inside the request logging, the handler logs the exception, and the request event sees a 500 without one. Outside it, both log the exception.
+- ASP.NET Core writes problem details ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)) through `IProblemDetailsService`, which `AddProblemDetails` registers. The exception handler, the status code pages middleware and `TypedResults.Problem` use it. The probe of [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) showed:
+  - Its writer writes only for a request whose `Accept` header allows JSON: none, `*/*`, `application/json` or `application/problem+json`. For `application/xml`, `text/html` or `image/png`, which golden exchanges send, the status code pages wrote `Status Code: 404; Not Found` as `text/plain`, the exception handler answered 500 without a body, a validation failure came as `application/json` without `type`, `status` or `traceId`, and `TypedResults.Problem` wrote its problem without `traceId`.
+  - Its `traceId` is the W3C ID of the request's activity.
+  - Kestrel adds `Server: Kestrel` to every response.
+  - A request that the client aborted ended in the exception handler, which logged "The request was aborted by the client." at Debug and set the status to 499.
+
+### Decision
+
+**1. Every error is a problem.** Every error response that the app writes, 4xx or 5xx, is a problem details object with the media type `application/problem+json`, whatever the `Accept` header says, as every result is JSON ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)). Its members:
+
+| Member | Value |
+|---|---|
+| `type` | The section of RFC 9110 that defines the status, as ASP.NET Core links it, such as `https://tools.ietf.org/html/rfc9110#section-15.5.5` for 404. |
+| `title` | The name of the status, such as `Not Found`. A validation failure has `One or more validation errors occurred.`, and an exception `An error occurred while processing your request.` |
+| `status` | The status code. |
+| `detail` | Only when an endpoint has more to say, as `/api/files` will (Stage 7.3). |
+| `errors` | Only for a validation failure: the messages, under the name of each parameter or property that failed. |
+| `traceId` | The W3C ID of the request's activity, `00-{trace ID}-{span ID}-{flags}`. Its trace ID is the `@tr` of the request's log events ([ADR-0018](#adr-0018-logging-with-serilog)), and a caller's `traceparent` header sets it. |
+
+The member names are RFC 9457's, in lower case, and ASP.NET Core's `traceId` extension. They are the one exception to PascalCase ([ADR-0002](#adr-0002-wire-contract-policy), decision 2): error payloads are not contract, and these names are the standard's and the framework's.
+
+The health checks are not part of this contract. They keep their plain-text answers, `Unhealthy` with a 503 included ([ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness)): the status code pages leave a response that has a body alone.
+
+**2. Where the problems come from.** `UseCatalogErrorHandling` (`Http/HttpApplicationBuilderExtensions.cs`) adds two middlewares, and routing after them:
+
+| Middleware | Answers |
+|---|---|
+| `UseExceptionHandler()` | An unhandled exception, with a 500. |
+| `UseStatusCodePages()`, inside it | An error status without a body: a route that matches nothing (404), a method that the route does not have (405, whose `Allow` header stays), a parameter that does not bind (400), and an endpoint's own status, such as `TypedResults.NotFound()`. |
+
+An endpoint returns an error as its status alone, such as `TypedResults.NotFound()`, and leaves the body to the status code pages. One that has more to say returns `TypedResults.Problem` with a `detail`. A validation failure is a 400 problem with `errors` ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 4).
+
+`UseCatalogErrorHandling` ends with `UseRouting()`, so routing runs inside the error handling and the request logging. `WebApplication` would otherwise run routing before all of the app's middleware, and an exception in routing, such as the one for a request that two endpoints match, would reach neither: the client got a 500 without a body, only Kestrel logged the exception, and no request event was written. This amends [ADR-0019](#adr-0019-request-logging-and-application-log-events), decision 1, which has routing before the request logging. The request event still knows the matched endpoint, and so its level, because it is written when the request completes.
+
+**3. The writer.** `ProblemJsonWriter` (`Http/ProblemJsonWriter.cs`) writes every problem. `AddCatalogHttp` registers it before `AddProblemDetails`, so `IProblemDetailsService` asks it first, and ASP.NET Core's writer, which comes after it, is never used. It writes for any `Accept` header, and does what ASP.NET Core's writer does:
+
+- It fills in the status of the response, and the type and title that `TypedResults.Problem` gives that status.
+- It sets `traceId`, replacing any that the problem has, so that a problem that an endpoint returns twice does not keep the ID of the first request.
+- It applies `ProblemDetailsOptions.CustomizeProblemDetails`, should a later change set it.
+- It serializes with the API's JSON options, without the request's token. With the token, a client that had gone away made the writing throw, and the exception handler then logged the exception that it was handling a second time, as a failure of its own handler.
+
+**4. Nothing about the exception.** No response carries an exception's type, message or stack trace, in any environment (D19). The exception is in the log instead (decision 5).
+
+- In Development, `WebApplication` puts the developer exception page in front of the app's middleware. The exception handler answers before the page sees the exception, so Development gives the same 500 as Production.
+- Kestrel sends no `Server` header (`KestrelServerOptions.AddServerHeader`). The other headers that named the legacy stack came from IIS and ASP.NET, which the new API does not run on.
+
+**5. Logging.** `Program.cs` adds the error handling right after the request logging, so it runs inside it:
+
+- **An exception** is logged once, at Error, by the exception handler: "An unhandled exception has occurred while executing the request.", from `Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware`, with the request's trace ID. The request event then sees the 500, which makes it an Error ([ADR-0019](#adr-0019-request-logging-and-application-log-events), decision 2), without the exception.
+- **An exception after the response has started.** The handler can no longer answer. It logs the exception and a warning that the response has started, and lets the exception go on. The request event logs it too, as a request that threw, and so does Kestrel ([ADR-0019](#adr-0019-request-logging-and-application-log-events)). The client gets a response that breaks off.
+- **A request that the client aborted.** The handler logs "The request was aborted by the client." at Debug and sets the status to 499, which the client never sees. The request event, with status 499, is Information, or the level of its endpoint.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `HttpConventionsTests.Route_that_matches_nothing_is_a_404_problem_whatever_the_Accept_header` (7 `Accept` headers) | 404 as `application/problem+json`, with the type, title, status and a trace ID, for XML, HTML and PNG too. |
+| `HttpConventionsTests.Error_status_that_an_endpoint_returns_without_a_body_becomes_a_problem` | `TypedResults.NotFound()` becomes a 404 problem. |
+| `HttpConventionsTests.Method_that_the_route_does_not_allow_is_a_405_problem_with_the_Allow_header` | `DELETE` on a `GET` route: a 405 problem with `Allow: GET`. |
+| `HttpConventionsTests.Parameter_that_does_not_bind_is_a_400_problem_in_every_environment` (Development, Production) | A 400 problem, in Development too ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)). |
+| `HttpConventionsTests.Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors` | With `Accept: application/xml`: a 400 problem with `errors`. |
+| `HttpConventionsTests.Exception_is_a_500_problem_that_does_not_show_the_exception` (Development, Production) | With `Accept: text/html`: a 500 problem with exactly `type`, `title`, `status` and `traceId`. |
+| `HttpConventionsTests.Exception_in_routing_is_a_500_problem` | Two endpoints that match one route: routing throws, and the answer is a 500 problem. |
+| `HttpConventionsTests.Problem_that_an_endpoint_returns_keeps_its_detail_and_gets_the_trace_id` (7 `Accept` headers) | A 410 from `TypedResults.Problem` keeps its `detail`, and gets the title `Gone`, its RFC 9110 type and a trace ID. |
+| `ProblemJsonWriterTests.Problem_gets_the_status_type_and_title_of_the_response_and_the_trace_id` (unit) | A problem with nothing set gets 404, its type and title, the activity's ID and `application/problem+json`. |
+| `ProblemJsonWriterTests.Problem_written_before_gets_the_trace_id_of_the_current_request` (unit) | One problem written for two requests carries the second one's ID. |
+| `ProblemJsonWriterTests.Request_that_the_client_aborted_does_not_make_the_writer_throw` (unit) | Writing with `RequestAborted` cancelled completes. |
+| `ProblemJsonWriterTests.Customization_of_the_problem_details_options_applies` (unit) | `CustomizeProblemDetails` is applied. |
+| `HttpServiceCollectionExtensionsTests.Problem_json_writer_comes_before_ASP_NET_Core_s_writer` (unit) | `ProblemJsonWriter` is the first of the two registered writers. Every other test passes with it second, because ASP.NET Core's writer then writes the problems for clients that accept JSON, and the same body. |
+| `ErrorHandlingTests.Route_that_matches_nothing_is_a_404_problem_with_the_trace_id_of_the_request` | In the app that `Program.cs` builds: the problem's `traceId` holds the trace ID of the caller's `traceparent`. |
+| `ErrorHandlingTests.Exception_is_a_500_problem_that_does_not_show_the_exception` | In the app that `Program.cs` builds, for an exception thrown after the endpoints. |
+| `ErrorHandlingTests.Kestrel_sends_no_Server_header` | `AddServerHeader` is off. The test server sends no `Server` header either way, so the setting is checked. |
+| `RequestLoggingTests.Request_that_throws_is_logged_at_Error_and_its_exception_once` | Replaces ADR-0019's `Request_that_throws_is_logged_at_Error_with_the_exception`. The client gets a 500. The request event is an Error with status 500 and no exception, and the one event of the trace that has the exception is the handler's, at Error. |
+| `RequestLoggingTests.Request_that_throws_after_the_response_started_is_logged_with_its_exception` | The request event carries the exception that the handler could not answer. |
+
+The test host of `HttpConventionsTests` logs nothing, so ASP.NET Core starts no activity for its requests, and their `traceId` is the request's `TraceIdentifier`. `ErrorHandlingTests` checks the W3C form in the app that `Program.cs` builds.
+
+Each of these deliberate breaks failed the intended tests:
+
+- no `ProblemJsonWriter`: the XML, HTML and PNG cases of `Route_that_matches_nothing_is_a_404_problem_whatever_the_Accept_header` and of `Problem_that_an_endpoint_returns_keeps_its_detail_and_gets_the_trace_id`, `Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors`, and both cases of `HttpConventionsTests.Exception_is_a_500_problem_that_does_not_show_the_exception`
+- no status code pages: every case of `Route_that_matches_nothing_is_a_404_problem_whatever_the_Accept_header` and of `Parameter_that_does_not_bind_is_a_400_problem_in_every_environment`, `Error_status_that_an_endpoint_returns_without_a_body_becomes_a_problem`, `Method_that_the_route_does_not_allow_is_a_405_problem_with_the_Allow_header`, and `ErrorHandlingTests.Route_that_matches_nothing_is_a_404_problem_with_the_trace_id_of_the_request`
+- no exception handler: both `Exception_is_a_500_problem_that_does_not_show_the_exception` tests, three cases in all, and `Request_that_throws_is_logged_at_Error_and_its_exception_once`
+- the error handling before the request logging in `Program.cs`: `Request_that_throws_is_logged_at_Error_and_its_exception_once`, whose request event then had the exception too
+- the `Server` header left on: `Kestrel_sends_no_Server_header`
+- no `UseRouting()` in `UseCatalogErrorHandling`: `Exception_in_routing_is_a_500_problem`
+- the request's token passed to the serializer: `Request_that_the_client_aborted_does_not_make_the_writer_throw`
+- `traceId` added only when missing: `Problem_written_before_gets_the_trace_id_of_the_current_request`
+- no `CustomizeProblemDetails`: `Customization_of_the_problem_details_options_applies`
+- `ProblemJsonWriter` registered after `AddProblemDetails`: `Problem_json_writer_comes_before_ASP_NET_Core_s_writer`
+
+### Alternatives considered
+
+- **ASP.NET Core's writer as it is.** A client that does not accept JSON would get `text/plain`, an empty 500, or a problem without `traceId`, depending on which middleware answers, although every result it gets is JSON.
+- **A 406 for an `Accept` header without JSON.** The legacy app answered `Accept: image/png` with JSON ([`brands-get-all--accept-unsupported`](docs/legacy/contract/brands-list.json)), and statuses are contract.
+- **Web API 2's `{"Message", "MessageDetail"}`, emulated.** Custom code to keep a format that no standard describes, and that differed between local and remote clients anyway. Error payloads are not contract ([ADR-0002](#adr-0002-wire-contract-policy), decision 4).
+- **Problems written by each endpoint, without the status code pages.** The 404s and 405s of routing and the 400s of binding happen before any endpoint runs, and would keep empty bodies.
+- **The developer exception page in Development.** Stack traces in responses, and a contract that changes with the environment (D19).
+- **The exception handler outside the request logging.** Both would log the exception.
+- **The bare 32-character trace ID as `traceId`.** The W3C ID holds it, and it is the form that ASP.NET Core's own writer uses.
+
+### Consequences
+
+- A client that read `Message` or `MessageDetail` reads `title`, `detail` or `errors` instead. The statuses do not change. [BC-001](docs/behavior-changes.md#bc-001-error-responses-are-problem-details) records the delta.
+- A client can quote a problem's `traceId`, and its trace ID finds the request's events in the log.
+- The OpenAPI document shows error responses without their problem body until Stage 9.2.
+- The request event of an aborted request has status 499.
+- Of D18, exceptions are now logged, once each, except one thrown after the response has started (decision 5). Of D19, responses no longer carry stack traces or a `Server` header.
+- Any later middleware that writes an error body of its own has to write a problem too. One that sets only the status, as authentication's challenge does (Stage 12), gets a problem body from the status code pages if it runs inside them.
+
+---
+
+## ADR-0022: `GET /api/files` retired with 410 Gone
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.3
+
+### Context
+
+- The legacy `FilesController.Get()` reads every brand and returns them as a BinaryFormatter stream of `List<BrandDTO>`, which `eShopLegacy.Utilities` writes ([audit: endpoint inventory](docs/legacy-audit.md#4-endpoint-inventory), [eShopLegacy.Utilities](docs/legacy-audit.md#34-eshoplegacyutilities)). The response has no content type of its own, so ASP.NET labels it `text/html`.
+- The golden exchanges show the same 721 bytes without an `Accept` header and with `Accept: application/json`, since the action writes the stream itself and bypasses content negotiation, and for `/api/files/1`: the route `api/{controller}/{id}` takes an ID that the action does not use ([`files.json`](docs/legacy/contract/files.json): `files-get`, `files-get--accept-json`, `files-get-by-id`).
+- Audit D4: a client that deserializes the payload is exposed to BinaryFormatter's known risks, since BinaryFormatter can run code chosen by whoever controls the bytes. `DeserializeBinary` exists, unused ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)).
+- BinaryFormatter throws on .NET 9 and later, so the endpoint cannot be ported as it is.
+- The payload holds every brand's ID and name, which `GET /api/brands` already returns as JSON (Stage 7.2).
+- [ADR-0001](#adr-0001-migration-scope) retires the endpoint: it answers `410 Gone` and points to `/api/brands`. [ADR-0003](#adr-0003-non-goals): nothing brings BinaryFormatter back, and a bulk export would be a new JSON or CSV endpoint.
+- [ADR-0021](#adr-0021-error-contract-problem-details): an endpoint that has more to say than its status returns `TypedResults.Problem` with a `detail`.
+
+### Decision
+
+**1. 410 Gone.** `GET /api/files` and `GET /api/files/{id}`, for any ID, answer `410 Gone` with a problem:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.11",
+  "title": "Gone",
+  "status": 410,
+  "detail": "GET /api/files has been retired. It returned the brands as a BinaryFormatter payload, which is unsafe to deserialize. GET /api/brands returns them as JSON.",
+  "traceId": "00-…"
+}
+```
+
+As every problem, it is the same for any `Accept` header ([ADR-0021](#adr-0021-error-contract-problem-details)). The route takes `GET` only, as the legacy controller did; another method gets the 405 of routing, with `Allow: GET`.
+
+**2. Where it lives.** `FileEndpoints.MapFileEndpoints` (`Files/FileEndpoints.cs`), mapped from `Program.cs` like the other resources ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)).
+
+**3. Not in the OpenAPI document.** The route group is excluded from it (`ExcludeFromDescription`), an exception to [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 5, under which the document lists every route handler. The document lists what a client can call, and a client generated from it should not know a route that only says it is gone.
+
+**4. No BinaryFormatter in the new API**, and no reference to `eShopLegacy.Utilities`. Stage 11.3 deletes that project with the legacy app.
+
+**5. No log event of its own.** The request event of each call, at Information with status 410, holds the path and the user agent ([ADR-0019](#adr-0019-request-logging-and-application-log-events)). Operators find the clients that still call the endpoint by those events.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `FileEndpointsTests.Get_is_410_Gone_with_a_problem_that_points_to_the_brands` (5 cases) | `/api/files` with no `Accept` header, with JSON and with `application/octet-stream`, `/api/files/1` and `/API/FILES/abc`: 410, `application/problem+json`, the type and title of 410, and a `detail` that names `GET /api/brands`. |
+| `FileEndpointsTests.Retired_endpoint_is_not_in_the_OpenAPI_document` | No path of the document starts with `/api/files`. |
+| `LegacyContractTests` (`files.json`, [BC-006](docs/behavior-changes.md#bc-006-get-apifiles-is-gone)) | `files-get`, `files-get--accept-json` and `files-get-by-id` answer 410, in database mode and in mock mode (comparison rule 12). |
+
+Each of these deliberate breaks failed the intended tests:
+
+- 200 without a body, or 404 with the same problem: all 5 cases of `Get_is_410_Gone_with_a_problem_that_points_to_the_brands`, and the 6 cases of the three exchanges in `LegacyContractTests`
+- no `/{id}` route: the `/api/files/1` and `/API/FILES/abc` cases, and both cases of `files-get-by-id`
+- the group left in the OpenAPI document: `Retired_endpoint_is_not_in_the_OpenAPI_document` and `Document_matches_the_committed_snapshot`
+- the delta recorded under an ID that the register does not have: `Deltas_are_recorded_in_the_register`
+
+### Alternatives considered
+
+- **Port it with BinaryFormatter**, through the unsupported compatibility package that brings it back on .NET 9 and later. It keeps the risk of D4 that the retirement removes, and ADR-0003 rules it out.
+- **The same route with JSON.** A client that reads the BinaryFormatter payload fails anyway, with an error that does not say why, and the JSON already has a route, `GET /api/brands`.
+- **404, or no route.** It cannot be told from a typo or a broken deployment. 410 says that the resource is gone on purpose and for good.
+- **A redirect to `/api/brands`** (301 or 308). The client would follow it and get JSON that it cannot read as BinaryFormatter, and a redirect says that the same resource has moved, which it has not.
+- **`Deprecation` and `Sunset` headers on a working endpoint first.** The endpoint cannot work on .NET 10 without the compatibility package that ADR-0003 rules out.
+- **In the OpenAPI document, marked deprecated.** Deprecated means that it still works.
+
+### Consequences
+
+- A client of `/api/files` has to call `GET /api/brands` and read JSON with the same IDs and names. [BC-006](docs/behavior-changes.md#bc-006-get-apifiles-is-gone) records the delta.
+- The new API has no BinaryFormatter. `eShopLegacy.Utilities`, whose only consumer this was, is deleted in Stage 11.3.
+- The route stays mapped to answer 410 until a version 2 of the API decides to drop it.
+
+---
+
+## ADR-0023: Security fixes made during the migration
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.4
+
+### Context
+
+- The legacy code is frozen, so its defects are fixed only in the new API ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover)). [ADR-0002](#adr-0002-wire-contract-policy), decision 3, allows a delta that security forces, with an entry in the register and a test.
+- The audit lists the defects ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)). The worst is in the picture endpoint, `GET /items/{catalogItemId:int}/pic`:
+  - **D1 (High).** `PicController` reads `Path.Combine(Server.MapPath("~/Pics"), item.PictureFileName)`. `PictureFileName` was client-writable through the MVC forms, so a client could store `..\Global.asax` or `C:\Windows\win.ini`, and the endpoint served that file to anyone ([`pic-path-traversal-relative`](docs/legacy/evidence/pic-path-traversal-relative.json), [`pic-path-traversal-absolute`](docs/legacy/evidence/pic-path-traversal-absolute.json)).
+  - **D7.** A missing file gives a 500 with the `FileNotFoundException` ([`pic-missing-file`](docs/legacy/evidence/pic-missing-file.json)).
+  - **D8.** The MIME switch is case-sensitive, so `1.PNG` is sent as `application/octet-stream` ([`pic-extension-case`](docs/legacy/evidence/pic-extension-case.json)).
+- [ADR-0015](#adr-0015-async-first-catalog-service) already took the picture out of what a client writes: a new item gets `dummy.png`. A database adopted from the legacy app ([ADR-0012](#adr-0012-adopting-a-legacy-database)) can still hold the names above.
+- Until Stage 11.2 the new API serves the pictures from the legacy `Pics` folder, through `Catalog:PicturesPath` ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover)). [ADR-0009](#adr-0009-configuration): a typed option, validated when the host starts.
+- A probe on Windows showed that `PhysicalFileProvider` finds nothing for `..\Global.asax`, `../Global.asax` or `C:\Windows\win.ini`, and that `FileExtensionContentTypeProvider` gives `image/png` for `.PNG`. For two extensions of the legacy switch it gives another type: `.wmf` is `application/x-msmetafile` (legacy: `image/wmf`), and it has none for `.jp2` (legacy: `image/jp2`).
+
+### Decision
+
+**1. Where each security defect is fixed.** Each is fixed in the new API, not ported, or accepted as a risk, and each fix that a client can see is a delta with a test:
+
+| Defect | Fixed in | Record |
+|---|---|---|
+| D1, file read through the picture endpoint | Stage 5.1 (no client-written picture) and 7.4 (decision 2) | [ADR-0015](#adr-0015-async-first-catalog-service), [BC-008](docs/behavior-changes.md#bc-008-picture-names-outside-the-pictures-folder-are-not-served) |
+| D2, overposting | Stage 5.1 (explicit fields), and the request contracts of 7.6 and 7.7 | [ADR-0015](#adr-0015-async-first-catalog-service) |
+| D3, no authentication | Stage 12; until then an accepted risk | [ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover) |
+| D4, BinaryFormatter | Stage 7.3 | [ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone) |
+| D5, vulnerable Newtonsoft.Json and log4net | Stages 6.1 and 7.1: the new API uses neither. The legacy app keeps them until Stage 11.3. | |
+| D6, unbounded paging | Stage 5.1 (guards) and 7.5 (1–100) | [ADR-0015](#adr-0015-async-first-catalog-service) |
+| D7, missing file gives 500 | Stage 7.4 | [BC-007](docs/behavior-changes.md#bc-007-a-missing-picture-file-is-a-404) |
+| D8, case-sensitive MIME types | Stage 7.4 | [BC-009](docs/behavior-changes.md#bc-009-the-content-type-of-a-picture-ignores-the-case-of-its-extension) |
+| D9, D10, input validation | Stage 7.6 | |
+| D11, writes to unknown items give 500 | Stage 5.1 (`false` for an unknown ID) and 7.7 | [ADR-0015](#adr-0015-async-first-catalog-service) |
+| D15, mock mode not thread-safe | Stage 5.2 | [ADR-0016](#adr-0016-in-memory-catalog-service) |
+| D18, logging | Stages 6.1, 6.2 and 7.1 | [ADR-0018](#adr-0018-logging-with-serilog), [ADR-0019](#adr-0019-request-logging-and-application-log-events), [ADR-0021](#adr-0021-error-contract-problem-details) |
+| D19, information disclosure | Stage 7.1 | [ADR-0021](#adr-0021-error-contract-problem-details) |
+| D20, static files of the site root | Stage 7.4: the API serves no static files, only the pictures of items | |
+
+**2. The picture endpoint.** `Pictures/PictureEndpoints.cs` maps `GET /items/{catalogItemId:int}/pic` under the legacy route name `GetPicRouteTemplate`, with which Stage 7.5 builds each item's `PictureUri`. It keeps the legacy answers: 400 for an ID below 1, 404 for an unknown item, and a 404 from routing for an ID that is not an int. It changes these:
+
+- **The folder.** `Catalog:PicturesPath` names it. `appsettings.json` has `../eShopLegacyMVC/Pics`, which is resolved against the content root, as the log file is ([ADR-0018](#adr-0018-logging-with-serilog)). The setting is required, and the host does not start when the folder does not exist (an options check in `AddCatalogPictures`), because every picture would then be a 404. `CatalogPictures`, one for the app, resolves the folder once.
+- **The lookup (D1).** `CatalogPictures` looks the item's `PictureFileName` up through a `PhysicalFileProvider` over the folder. It finds only files inside the folder: a name that leaves it, or a rooted one, finds nothing. By default the provider also hides files whose names start with a dot, and hidden or system files.
+- **No file, no picture (D7).** When the lookup finds nothing, for any reason, the answer is a 404, and `CatalogPictures` logs `PictureNotFound` at Warning, with the item's ID and the name. A missing file, a misconfigured folder and a stored name that tries to leave the folder all need an operator.
+- **The content type (D8).** `FileExtensionContentTypeProvider` gives it, whatever the extension's case. An unknown extension is `application/octet-stream`, as in the legacy app.
+- **Ranges.** The picture is a physical file result with range processing on: a `Range` request gets 206 with the part that it asks for, every picture says `Accept-Ranges: bytes`, and the file result also sends `Last-Modified` and answers `If-Modified-Since` with 304. The legacy app sent the whole file every time.
+- **Other methods.** `HEAD`, `POST` and the rest get the 405 of routing, with `Allow: GET`, as on the brand routes. MVC answered them with 404. Answering `HEAD` with the picture's headers would be the HTTP default, but it is a new capability, and this ADR leaves it to a version 2, as [ADR-0002](#adr-0002-wire-contract-policy), decision 6, leaves idiomatic changes.
+
+The OpenAPI document lists the route, without its 200 response: a file result has no metadata to describe it. Stage 9.2 documents it.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `LegacyContractTests` (`pictures.json`, 23 exchanges) | Items 1–12, by length and SHA-256 (comparison rule 9), with the path in upper case, a trailing slash or `Accept: application/json`; 400 for 0 and -1; 404 for 13, `abc` and 2147483648; `pic-get--range` as 206 with the first 100 bytes ([BC-010](docs/behavior-changes.md#bc-010-range-requests-are-honoured)); `pic-head` and `pic-post` as 405 ([BC-011](docs/behavior-changes.md#bc-011-methods-other-than-get-on-the-picture-route-are-a-405)). In database mode and in mock mode. |
+| `PictureEndpointsTests.Picture_name_that_leaves_the_folder_is_a_404` (3 cases) | `../secret.txt`, `..\secret.txt` and the absolute path of a file beside the folder: 404, and the file's content is not in the response. |
+| `PictureEndpointsTests.Missing_picture_file_is_a_404_and_a_warning` | 404, and `PictureNotFound` at Warning with the item's ID and the name. |
+| `PictureEndpointsTests.Picture_has_its_last_modified_time_and_a_conditional_request_gets_304` | `Last-Modified` and `Accept-Ranges: bytes`, and 304 for `If-Modified-Since`. |
+| `PictureEndpointsTests.Legacy_route_name_builds_the_picture_path` | `GetPicRouteTemplate` builds `/items/7/pic`. |
+| `PictureEndpointsTests.Host_does_not_start_without_its_pictures_folder` (2 cases) | An empty setting, and a folder that does not exist, stop the host with a message that names the setting. |
+| `CatalogPicturesTests` (unit, 11 cases) | The lookup on a temporary folder: a relative and an absolute folder, names that leave the folder or are rooted, a missing file, a folder and an empty name, the case of the extension, and an unknown extension. |
+| `ConfigurationTests.Committed_settings_serve_the_pictures_from_the_legacy_Pics_folder` | `appsettings.json` names `../eShopLegacyMVC/Pics`. The replay of the 12 seeded pictures shows that it holds them. |
+
+`LoggingTests.Relative_log_file_path_is_resolved_against_the_content_root` runs a host whose content root is a temporary directory, so it now gives that host the pictures folder as an absolute path.
+
+Each of these deliberate breaks failed the intended tests:
+
+- the lookup through `Path.Combine`, as in the legacy app: the traversal cases of `CatalogPicturesTests` and of `Picture_name_that_leaves_the_folder_is_a_404`
+- a content type for lower-case `.png` only: `Extension_case_does_not_change_the_content_type`
+- range processing off: `pic-get--range` in both modes, and `Picture_has_its_last_modified_time_and_a_conditional_request_gets_304`
+- no check of the folder at startup: the missing-folder case of `Host_does_not_start_without_its_pictures_folder`
+- no check of the ID: `pic-get--zero` and `pic-get--negative` in both modes
+- no route name: `Legacy_route_name_builds_the_picture_path`
+
+### Alternatives considered
+
+- **`Path.Combine` with a check that the result starts with the folder's path.** It is the legacy code plus a hand-written guard, which has to get prefixes, case, separators and `..` right on two operating systems. `PhysicalFileProvider` is the framework's confinement to a folder, and the static files middleware uses it.
+- **An allowlist of picture names** (`^\w+\.png$`). It would refuse names that the legacy app stored and served legitimately, and the lookup has to be confined anyway.
+- **The static files middleware over the folder** (`/Pics/1.png`). It is another route, which no client of the API uses, and it would serve every file of the folder, not the picture of an item.
+- **500 for a missing file**, as the legacy app answered. The client cannot fix a missing file, and the old error page showed the path.
+- **Range processing off**, as the legacy app had it. Turning it on is the plan's choice (Stage 7.4). A client that sends `Range` asks for a part, and gets it.
+- **`HEAD` answered with the picture's headers.** See decision 2: a new capability, for a version 2.
+
+### Consequences
+
+- An item whose picture name leaves the folder, or whose file is missing, has no picture: 404, and a warning in the log.
+- A deployment has to set `Catalog:PicturesPath`, or keep the repository's layout, until Stage 11.2 moves the pictures into the API project. Without the folder the host does not start.
+- The deltas are [BC-007](docs/behavior-changes.md#bc-007-a-missing-picture-file-is-a-404) to [BC-011](docs/behavior-changes.md#bc-011-methods-other-than-get-on-the-picture-route-are-a-405).
+- The replay of the golden exchanges compares binary bodies from this stage (rule 9), and checks the 206 answer to a `Range` request against a slice of the recorded body.
+
+---
+
+## ADR-0024: Item and type reads
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.5
+
+### Context
+
+- The legacy app showed its items and types only through Razor pages, so these endpoints have no legacy wire contract ([ADR-0001](#adr-0001-migration-scope)). Their rules come from the MVC actions ([audit: business rules](docs/legacy-audit.md#44-business-rules-behind-the-ui), [`catalog-reads`](docs/legacy/evidence/catalog-reads.json)):
+  - `Index(int pageSize = 10, int pageIndex = 0)` showed one page of items in ID order. A `pageSize` of 0 divided by zero, a negative value reached `Skip`/`Take`, and `pageSize * pageIndex` overflowed: all 500s. `pageSize=100000` read the whole table, and `pageSize=abc` fell back to the default (audit D6).
+  - `Details(int? id)`: 400 without an ID or with `abc`, 404 for an unknown item.
+  - Each item's `PictureUri` was `Url.RouteUrl("GetPicRouteTemplate", ..., scheme)`, the absolute URL of its picture.
+  - The types filled a dropdown.
+- [ADR-0002](#adr-0002-wire-contract-policy), decision 2: PascalCase on every endpoint. [ADR-0015](#adr-0015-async-first-catalog-service) kept the property names of `PaginatedItemsViewModel` in `PaginatedItems<T>` for this endpoint, and left the limit of 100 to it. [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document): validation attributes on handler parameters.
+
+### Decision
+
+**1. Routes.** `Items/ItemEndpoints.cs` maps `GET /api/items` and `GET /api/items/{id}`, and `Types/TypeEndpoints.cs` maps `GET /api/types`.
+
+**2. An item** is a `CatalogItemResponse`: the legacy `CatalogItem` model's properties, with its brand and type as objects, as the model's navigation properties held them:
+
+```json
+{
+  "Id": 1, "Name": ".NET Bot Black Hoodie", "Description": ".NET Bot Black Hoodie", "Price": 19.50,
+  "PictureUri": "http://localhost:5043/items/1/pic",
+  "CatalogTypeId": 2, "CatalogType": { "Id": 2, "Type": "T-Shirt" },
+  "CatalogBrandId": 2, "CatalogBrand": { "Id": 2, "Brand": ".NET" },
+  "AvailableStock": 100, "RestockThreshold": 0, "MaxStockThreshold": 0, "OnReorder": false
+}
+```
+
+- `PictureUri` is the absolute URL of the item's picture, which `LinkGenerator` builds from the picture route's name ([ADR-0023](#adr-0023-security-fixes-made-during-the-migration)) and the request's scheme and host, as the legacy controller built it.
+- The picture's file name is not in it. It is a detail of the storage, which clients can no longer write ([ADR-0015](#adr-0015-async-first-catalog-service)), and `PictureUri` is how a client gets the picture.
+
+**3. A page** is a `PaginatedItems<CatalogItemResponse>`: `ActualPage`, `ItemsPerPage`, `TotalItems`, `TotalPages` and `Data`, the names of the legacy view model.
+
+**4. Paging rules.** `pageSize` and `pageIndex` come from the query string, with the legacy defaults, 10 and 0. `[Range(1, 100)]` on `pageSize` and `[Range(0, int.MaxValue)]` on `pageIndex` make a value out of range a 400 problem with the parameter in `errors` ([ADR-0021](#adr-0021-error-contract-problem-details)). A value that is not an integer is a 400 problem too. A page after the last one is empty, with the totals. [BC-012](docs/behavior-changes.md#bc-012-paging-is-validated) records the change.
+
+**5. One item.** `{id}` has no route constraint, so `abc` is a 400, as the legacy `Details` answered. An ID that no item has, 0 and negative IDs included, is a 404.
+
+**6. Types.** Every type, in ID order: `[{"Id": 1, "Type": "Mug"}, ...]`.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `ItemEndpointsTests.First_page_of_ten_items_in_ID_order_is_the_default` | Page 0 of 10, 12 items in 2 pages, IDs 1–10. |
+| `ItemEndpointsTests.Page_holds_the_items_of_its_index_and_a_page_after_the_last_is_empty` | `pageSize=5&pageIndex=2` holds 11 and 12, and page 100 is empty with the totals. |
+| `ItemEndpointsTests.Paging_outside_its_bounds_is_a_400_problem` (6 cases) | `pageSize` 0, -1, 101 and `abc`, and `pageIndex` -1 and `abc`. Out of range, the parameter is in `errors`. |
+| `ItemEndpointsTests.Page_of_100_items_is_allowed` | The upper bound. |
+| `ItemEndpointsTests.Item_has_the_legacy_model_s_properties_and_the_URL_of_its_picture` | Item 1, every property. |
+| `ItemEndpointsTests.Picture_URL_leads_to_the_picture` | `PictureUri` serves the picture. |
+| `ItemEndpointsTests.Item_that_does_not_exist_is_a_404_and_an_ID_that_is_not_an_integer_a_400` (3 cases) | 999 and 0, and `abc`. |
+| `ItemEndpointsTests.Mock_mode_answers_as_the_database_does` (3 cases) | A page, an item and the types are the same in both modes. |
+| `TypeEndpointsTests.Types_are_listed_in_ID_order` | The four types. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- no `[Range]` on `pageSize`: its 0, -1 and 101 cases of `Paging_outside_its_bounds_is_a_400_problem`
+- no `[Range]` on `pageIndex`: its -1 case
+- an `{id:int}` constraint: the `abc` case of `Item_that_does_not_exist_is_a_404_and_an_ID_that_is_not_an_integer_a_400`, which became a 404
+- a relative `PictureUri`: `Item_has_the_legacy_model_s_properties_and_the_URL_of_its_picture`
+- a default page size of 20: `First_page_of_ten_items_in_ID_order_is_the_default`
+
+### Alternatives considered
+
+- **A flat item**, with the names of the brand and the type instead of objects. The legacy model held objects, and a client that also needs an ID has both.
+- **The picture's file name in the response**, as the legacy model had it. Nothing needs it beside `PictureUri`.
+- **A relative `PictureUri`.** The legacy one was absolute.
+- **A page size above 100 cut down to 100.** A client would get fewer items than it asked for without being told.
+
+### Consequences
+
+- Behind a reverse proxy, `PictureUri` has the host and scheme that the API sees. The API reads no forwarded headers, as the legacy app did not, so a deployment behind a proxy has to pass the original host, or configure forwarded headers then.
+- A client that asks for more than 100 items gets a 400, and pages through them.
+- `PictureUri` also follows the `Host` header of the request. No `AllowedHosts` is set, so a deployment sets it to the hosts that it serves.
+
+---
+
+## ADR-0025: Creating items
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.6
+
+### Context
+
+- The legacy app created items only through its Razor form, whose rules the evidence records one at a time ([`create-item-validation`](docs/legacy/evidence/create-item-validation.json), [audit: business rules](docs/legacy-audit.md#44-business-rules-behind-the-ui)):
+  - `Name` is required. The column holds 50 characters, and a longer name gave a 500 from EF6 (D10).
+  - `Price` had a regular expression for at most two decimals without a sign, and `[Range(0, 1000000)]`, which rounds the decimal to an integer first, so 1000000.50 was accepted and 1000000.51 was not (D9). Both depended on the `en-US` culture that `Web.config` pinned ([ADR-0009](#adr-0009-configuration), decision 4).
+  - The stock fields are 0 to 10,000,000. Every value-type field on the form was required. `OnReorder` was not on the form, but `[Bind]` took it when posted, and it was `false` otherwise.
+  - An unknown brand or type gave a 500 from the foreign key (D10).
+  - A posted `Id` was bound and then replaced by HiLo, and a posted `PictureFileName` was stored and served ([`create-ignores-posted-id`](docs/legacy/evidence/create-ignores-posted-id.json), [`pic-path-traversal-relative`](docs/legacy/evidence/pic-path-traversal-relative.json), D1 and D2). A new item from the form got `dummy.png` ([`create-default-picture`](docs/legacy/evidence/create-default-picture.json)).
+- [ADR-0015](#adr-0015-async-first-catalog-service): the service creates an item from `CatalogItemFields`, without an ID or a picture, and gives it `dummy.png`. [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document): request types with validation attributes are public. [ADR-0009](#adr-0009-configuration) left the request body limit, 4 MB in the legacy `httpRuntime`, to this stage.
+
+### Decision
+
+**1. `POST /api/items`** takes a `CatalogItemRequest` as JSON (`Items/CatalogItemRequest.cs`), and answers 201, with `Location: /api/items/{id}` and the item as `GET` gives it ([ADR-0024](#adr-0024-item-and-type-reads)), read back with its brand and type.
+
+**2. The request has the fields that a client writes:** `Name`, `Description`, `Price`, `CatalogTypeId`, `CatalogBrandId`, `AvailableStock`, `RestockThreshold`, `MaxStockThreshold` and `OnReorder`. A posted `Id` or `PictureFileName` is not part of it, and System.Text.Json ignores members that it does not know, so they change nothing ([BC-013](docs/behavior-changes.md#bc-013-clients-do-not-write-an-items-id-or-picture)).
+
+**3. The rules**, as data annotations on the request's properties, which .NET 10 validates before the handler runs, and which the OpenAPI document shows:
+
+| Field | Rule | Legacy |
+|---|---|---|
+| `Name` | Required, at most 50 characters | Required; a longer one gave a 500 |
+| `Description` | Optional | Optional |
+| `Price` | Required, 0 to 1,000,000 exactly, at most two decimal places (`TwoDecimalPlaces`) | The same, but 1000000.01 to 1000000.50 passed the rounded range |
+| `CatalogTypeId`, `CatalogBrandId` | Required, and must exist | Required; an unknown one gave a 500 |
+| `AvailableStock`, `RestockThreshold`, `MaxStockThreshold` | Required, 0 to 10,000,000 | The same |
+| `OnReorder` | Required | Bound if posted; `false` otherwise |
+
+- A value type is nullable in the request only so that a missing value is a 400, and not a 0. `OnReorder` is required too: a replacement that left it out would reset it to `false`, as every legacy edit did (D2, [ADR-0026](#adr-0026-updating-and-deleting-items)).
+- The price is read from JSON, as a number or as a string, always without a culture, so the legacy format rules (no sign, no comma) have nothing left to check, and the rules do not depend on a culture.
+- The handler checks the brand and the type after the annotations pass, and answers an unknown one with the same 400, naming the field. Both are reference data that nothing deletes, so the check cannot race a delete.
+- [BC-014](docs/behavior-changes.md#bc-014-invalid-items-are-a-400) records the differences.
+
+**4. Errors.** A broken rule is a 400 problem with `errors` under each field's name ([ADR-0021](#adr-0021-error-contract-problem-details)). A body that is not JSON is a 400, another media type a 415, and a body over the limit a 413.
+
+**5. The body limit.** Kestrel's `MaxRequestBodySize` is 4 MiB (4,194,304 bytes), the legacy `httpRuntime` default, for every request. Kestrel's own default is 30,000,000 bytes.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `ItemWriteEndpointsTests.Created_item_gets_a_new_ID_the_default_picture_and_its_location` | 201, `Location`, the body as `GET` gives it with its type, and a picture at `PictureUri`. |
+| `ItemWriteEndpointsTests.Posted_ID_and_picture_name_are_ignored` | A posted `Id` of 1 and a `PictureFileName`: a new ID, item 1 unchanged, and the default picture. |
+| `ItemWriteEndpointsTests.Field_that_breaks_its_rule_is_a_400_problem_that_names_it` (21 cases) | Each annotation of the table, broken alone, 1000000.50 included. A missing field is reported as required. |
+| `ItemWriteEndpointsTests.Value_at_the_edge_of_its_rule_is_accepted` (7 cases) | A 50-character name, prices 0, 1000000, 1000000.00 and 8.5, no description, and a maximum stock of 10,000,000. |
+| `ItemWriteEndpointsTests.Unknown_brand_or_type_is_a_400_problem_that_names_it` (2 cases) | Brand or type 999. |
+| `ItemWriteEndpointsTests.Body_that_is_not_JSON_is_a_400_problem` | `{`. |
+| `ItemWriteEndpointsTests.Request_body_is_limited_to_the_legacy_4_MB` | The Kestrel setting. The test server does not apply it. |
+
+A host was also run by hand on Kestrel: a 5 MB body got 413, and an XML body 415.
+
+Each of these deliberate breaks failed the intended tests:
+
+- no length on `Name`: its 51-character case
+- the legacy `[Range(0, 1000000)]` on the price: 1000000.01, 1000000.50 and -0.01, which it rounds into the range
+- no `TwoDecimalPlaces`: 1.005
+- no check of the brand and the type: both cases of `Unknown_brand_or_type_is_a_400_problem_that_names_it`
+- an internal request type, which .NET 10 does not validate: all 21 cases of `Field_that_breaks_its_rule_is_a_400_problem_that_names_it`
+- no body limit: `Request_body_is_limited_to_the_legacy_4_MB`
+- a price that is not nullable: the missing-price case
+
+### Alternatives considered
+
+- **The legacy range, rounded.** It accepted prices up to 1000000.50, which the rule meant to refuse.
+- **FluentValidation.** One more dependency, and rules that the OpenAPI document cannot see ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)).
+- **Letting the database refuse an unknown brand or type.** The EF Core and in-memory services fail differently ([ADR-0015](#adr-0015-async-first-catalog-service)), and the client would get a 500.
+- **A 400 for a posted `Id` or `PictureFileName`.** The legacy create ignored a posted ID, so a client that sends a whole item back would break for no gain.
+
+### Consequences
+
+- A client that sends a price with more than two decimals, or above 1,000,000, gets a 400, where the legacy form rounded or accepted it.
+- The brand and type are checked only once the other rules pass, so a body with both kinds of error reports the annotations first.
+- Stage 7.7 replaces items with the same request and rules.
+
+---
+
+## ADR-0026: Updating and deleting items
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.7
+
+### Context
+
+- The legacy edit attached the posted item with `EntityState.Modified`, so every column was written. A field that the form did not post got its default: every normal edit reset `OnReorder` to `false`, and a partial post nulled `Description`, zeroed the stock fields and reset the picture to `dummy.png` ([`edit-overwrites-unposted-fields`](docs/legacy/evidence/edit-overwrites-unposted-fields.json), audit D2).
+- An edit or a delete of an unknown item gave a 500 ([`unknown-item-writes`](docs/legacy/evidence/unknown-item-writes.json), D11). A delete removed the row, and the picture route answered 404 afterwards ([`delete-item`](docs/legacy/evidence/delete-item.json)).
+- [ADR-0015](#adr-0015-async-first-catalog-service): the service's update writes the nine fields of `CatalogItemFields`, never the ID or the picture, and both update and delete return `false` for an unknown ID. It left to this stage which fields a request must carry. [ADR-0025](#adr-0025-creating-items): the request and its rules.
+
+### Decision
+
+**1. `PUT /api/items/{id}`** replaces the item's fields with a `CatalogItemRequest`, with the rules of [ADR-0025](#adr-0025-creating-items), and answers 204.
+
+- Every field but `Description` is required, so a partial body is a 400 and changes nothing. `Description` is written as sent: a body without it clears it, as a replacement does.
+- The ID and the picture never change.
+- An unknown brand or type is a 400 that names the field.
+- An unknown item is a 404.
+
+**2. `DELETE /api/items/{id}`** removes the item, as the legacy delete did, and answers 204, or 404 for an unknown item. Its picture route answers 404 afterwards.
+
+**3. IDs.** `{id}` has no route constraint: an ID that is not an integer is a 400, as on the other item routes ([ADR-0024](#adr-0024-item-and-type-reads)).
+
+The deltas are [BC-015](docs/behavior-changes.md#bc-015-an-update-writes-what-the-request-sends) and [BC-016](docs/behavior-changes.md#bc-016-writes-to-an-unknown-item-are-a-404).
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `ItemWriteEndpointsTests.Update_writes_every_field_and_keeps_the_ID_and_the_picture` | 204, and all nine fields changed, `OnReorder` and a cleared description included. A posted `Id` of 1 and a `PictureFileName` of `../Global.asax` change nothing: the item keeps its ID, and its picture route still serves `dummy.png`. |
+| `ItemWriteEndpointsTests.Update_without_a_required_field_is_a_400_and_changes_nothing` | A body without `AvailableStock`: 400 naming it, and the item as before. |
+| `ItemWriteEndpointsTests.Update_with_an_unknown_brand_is_a_400_problem_that_names_it` | Brand 999. |
+| `ItemWriteEndpointsTests.Delete_removes_the_item_and_its_picture` | 204, then 404 for the item and for its picture. |
+| `ItemWriteEndpointsTests.Write_to_an_unknown_item_is_a_404_and_to_an_ID_that_is_not_an_integer_a_400` (4 cases) | `PUT` and `DELETE` of 999 and of `abc`. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- no check of the brand and the type on `PUT`: `Update_with_an_unknown_brand_is_a_400_problem_that_names_it`
+- 204 whatever the update returns: the `PUT` of 999
+- 204 whatever the delete returns: the `DELETE` of 999
+- an `{id:int}` constraint on `PUT`: the `PUT` of `abc`, which became a 404
+
+### Alternatives considered
+
+- **`PATCH` with the fields that a client sends.** A partial update needs a way to tell a missing field from a `null` one, which the request type does not have. It would be a new capability, for a version 2.
+- **200 with the item after an update.** A client that wants it calls `GET`. The plan gives the create a 201 with the item, because the client does not know the new ID.
+- **Keeping the description when a body leaves it out.** It would make `PUT` a partial update for one field.
+
+### Consequences
+
+- A client has to send the whole item to change one field. `GET` gives it in the request's shape, apart from the ID, `PictureUri` and the brand and type objects, which the request ignores.
+- Stage 12 puts these two endpoints, with the create, behind the `catalog:write` policy ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)).
