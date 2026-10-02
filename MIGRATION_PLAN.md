@@ -203,7 +203,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - `DELETE /api/brands/{id}` as a no-op
 
   Tests compare against the golden exchanges, and the deliberate deltas are asserted explicitly and recorded.
-- [ ] 7.3 Retire `/api/files` with a `410 Gone` ProblemDetails response that points to `/api/brands`. ADR and test.
+- [x] 7.3 Retire `/api/files` with a `410 Gone` ProblemDetails response that points to `/api/brands`. ADR and test.
 - [ ] 7.4 Picture endpoint `GET /items/{catalogItemId:int}/pic`, keeping the legacy route name:
   - root directory from `Catalog:PicturesPath`, resolved at startup
   - traversal-safe lookup through `PhysicalFileProvider`

@@ -49,7 +49,13 @@ public sealed partial class LegacyContractTests(CatalogApiFactory factory, MockM
         Assert.All(LegacyContract.Deltas, delta =>
         {
             Assert.True(LegacyContract.Exchanges.ContainsKey(delta.Key), delta.Key);
-            Assert.True(LegacyContract.Exchanges.ContainsKey(delta.Value.AnswerOf), delta.Value.AnswerOf);
+            Assert.True((delta.Value.AnswerOf is null) != (delta.Value.Status is null), $"{delta.Key} needs an exchange or a status.");
+            Assert.True(delta.Value.AnswerOf is null || LegacyContract.Exchanges.ContainsKey(delta.Value.AnswerOf), delta.Value.AnswerOf);
+            // Only the status of such an error is compared, so it must be an error other than a 405, whose Allow header
+            // counts too, and other than the recorded status, which needs no delta.
+            Assert.True(
+                delta.Value.Status is null or (>= 400 and not 405) && delta.Value.Status != LegacyContract.Exchanges[delta.Key].Status,
+                $"{delta.Key}: a delta's own status is an error other than 405 and other than the recorded status.");
             Assert.True(entries.TryGetValue(delta.Value.Id, out var entry), $"{delta.Value.Id} is not an entry of the register.");
             Assert.Contains($"`{delta.Key}`", entry, StringComparison.Ordinal);
         });

@@ -110,6 +110,7 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 | `GET /api/brands` | Every brand, in ID order: `[{"Id":1,"Brand":"Azure"}, ...]`. |
 | `GET /api/brands/{id}` | One brand, or 404. An ID that is not an integer is a 400. |
 | `DELETE /api/brands/{id}` | Deletes nothing, as in the legacy app: 200 for a brand that exists, 404 otherwise. |
+| `GET /api/files` | Retired: `410 Gone`, with a problem that points to `GET /api/brands`. The legacy app returned the brands there as a BinaryFormatter payload ([ADR-0022](DECISIONS.md#adr-0022-get-apifiles-retired-with-410-gone)). |
 
 The brand endpoints are drop-in compatible with the legacy Web API ([ADR-0002](DECISIONS.md#adr-0002-wire-contract-policy)). The few deliberate differences, such as no XML, are in the [behavior-change register](docs/behavior-changes.md).
 

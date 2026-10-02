@@ -31,6 +31,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0019](#adr-0019-request-logging-and-application-log-events) | Request logging and application log events | Accepted | 6.2 |
 | [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) | Minimal API endpoints and the OpenAPI document | Accepted | 7.1 |
 | [ADR-0021](#adr-0021-error-contract-problem-details) | Error contract: problem details | Accepted | 7.1 |
+| [ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone) | `GET /api/files` retired with 410 Gone | Accepted | 7.3 |
 
 ## Template
 
@@ -2096,3 +2097,75 @@ Each of these deliberate breaks failed the intended tests:
 - The request event of an aborted request has status 499.
 - Of D18, exceptions are now logged, once each, except one thrown after the response has started (decision 5). Of D19, responses no longer carry stack traces or a `Server` header.
 - Any later middleware that writes an error body of its own has to write a problem too. One that sets only the status, as authentication's challenge does (Stage 12), gets a problem body from the status code pages if it runs inside them.
+
+---
+
+## ADR-0022: `GET /api/files` retired with 410 Gone
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.3
+
+### Context
+
+- The legacy `FilesController.Get()` reads every brand and returns them as a BinaryFormatter stream of `List<BrandDTO>`, which `eShopLegacy.Utilities` writes ([audit: endpoint inventory](docs/legacy-audit.md#4-endpoint-inventory), [eShopLegacy.Utilities](docs/legacy-audit.md#34-eshoplegacyutilities)). The response has no content type of its own, so ASP.NET labels it `text/html`.
+- The golden exchanges show the same 721 bytes without an `Accept` header and with `Accept: application/json`, since the action writes the stream itself and bypasses content negotiation, and for `/api/files/1`: the route `api/{controller}/{id}` takes an ID that the action does not use ([`files.json`](docs/legacy/contract/files.json): `files-get`, `files-get--accept-json`, `files-get-by-id`).
+- Audit D4: a client that deserializes the payload is exposed to BinaryFormatter's known risks, since BinaryFormatter can run code chosen by whoever controls the bytes. `DeserializeBinary` exists, unused ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)).
+- BinaryFormatter throws on .NET 9 and later, so the endpoint cannot be ported as it is.
+- The payload holds every brand's ID and name, which `GET /api/brands` already returns as JSON (Stage 7.2).
+- [ADR-0001](#adr-0001-migration-scope) retires the endpoint: it answers `410 Gone` and points to `/api/brands`. [ADR-0003](#adr-0003-non-goals): nothing brings BinaryFormatter back, and a bulk export would be a new JSON or CSV endpoint.
+- [ADR-0021](#adr-0021-error-contract-problem-details): an endpoint that has more to say than its status returns `TypedResults.Problem` with a `detail`.
+
+### Decision
+
+**1. 410 Gone.** `GET /api/files` and `GET /api/files/{id}`, for any ID, answer `410 Gone` with a problem:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.11",
+  "title": "Gone",
+  "status": 410,
+  "detail": "GET /api/files has been retired. It returned the brands as a BinaryFormatter payload, which is unsafe to deserialize. GET /api/brands returns them as JSON.",
+  "traceId": "00-…"
+}
+```
+
+As every problem, it is the same for any `Accept` header ([ADR-0021](#adr-0021-error-contract-problem-details)). The route takes `GET` only, as the legacy controller did; another method gets the 405 of routing, with `Allow: GET`.
+
+**2. Where it lives.** `FileEndpoints.MapFileEndpoints` (`Files/FileEndpoints.cs`), mapped from `Program.cs` like the other resources ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)).
+
+**3. Not in the OpenAPI document.** The route group is excluded from it (`ExcludeFromDescription`), an exception to [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 5, under which the document lists every route handler. The document lists what a client can call, and a client generated from it should not know a route that only says it is gone.
+
+**4. No BinaryFormatter in the new API**, and no reference to `eShopLegacy.Utilities`. Stage 11.3 deletes that project with the legacy app.
+
+**5. No log event of its own.** The request event of each call, at Information with status 410, holds the path and the user agent ([ADR-0019](#adr-0019-request-logging-and-application-log-events)). Operators find the clients that still call the endpoint by those events.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `FileEndpointsTests.Get_is_410_Gone_with_a_problem_that_points_to_the_brands` (5 cases) | `/api/files` with no `Accept` header, with JSON and with `application/octet-stream`, `/api/files/1` and `/API/FILES/abc`: 410, `application/problem+json`, the type and title of 410, and a `detail` that names `GET /api/brands`. |
+| `FileEndpointsTests.Retired_endpoint_is_not_in_the_OpenAPI_document` | No path of the document starts with `/api/files`. |
+| `LegacyContractTests` (`files.json`, [BC-006](docs/behavior-changes.md#bc-006-get-apifiles-is-gone)) | `files-get`, `files-get--accept-json` and `files-get-by-id` answer 410, in database mode and in mock mode (comparison rule 12). |
+
+Each of these deliberate breaks failed the intended tests:
+
+- 200 without a body, or 404 with the same problem: all 5 cases of `Get_is_410_Gone_with_a_problem_that_points_to_the_brands`, and the 6 cases of the three exchanges in `LegacyContractTests`
+- no `/{id}` route: the `/api/files/1` and `/API/FILES/abc` cases, and both cases of `files-get-by-id`
+- the group left in the OpenAPI document: `Retired_endpoint_is_not_in_the_OpenAPI_document` and `Document_matches_the_committed_snapshot`
+- the delta recorded under an ID that the register does not have: `Deltas_are_recorded_in_the_register`
+
+### Alternatives considered
+
+- **Port it with BinaryFormatter**, through the unsupported compatibility package that brings it back on .NET 9 and later. It keeps the risk of D4 that the retirement removes, and ADR-0003 rules it out.
+- **The same route with JSON.** A client that reads the BinaryFormatter payload fails anyway, with an error that does not say why, and the JSON already has a route, `GET /api/brands`.
+- **404, or no route.** It cannot be told from a typo or a broken deployment. 410 says that the resource is gone on purpose and for good.
+- **A redirect to `/api/brands`** (301 or 308). The client would follow it and get JSON that it cannot read as BinaryFormatter, and a redirect says that the same resource has moved, which it has not.
+- **`Deprecation` and `Sunset` headers on a working endpoint first.** The endpoint cannot work on .NET 10 without the compatibility package that ADR-0003 rules out.
+- **In the OpenAPI document, marked deprecated.** Deprecated means that it still works.
+
+### Consequences
+
+- A client of `/api/files` has to call `GET /api/brands` and read JSON with the same IDs and names. [BC-006](docs/behavior-changes.md#bc-006-get-apifiles-is-gone) records the delta.
+- The new API has no BinaryFormatter. `eShopLegacy.Utilities`, whose only consumer this was, is deleted in Stage 11.3.
+- The route stays mapped to answer 410 until a version 2 of the API decides to drop it.

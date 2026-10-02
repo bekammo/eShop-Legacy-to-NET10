@@ -203,7 +203,7 @@ When a create attempt breaks more than one rule, which message the form shows is
     - `api-root*`, `pic-get--non-integer`, `pic-get--overflow`, `pic-post`: ASP.NET "resource cannot be found" pages.
 
     Their status code is still the contract. A difference forced by the platform (Kestrel instead of IIS) is recorded as a delta.
-12. `files-*` exchanges describe the retired endpoint. The new API answers `410 Gone` (Stage 7.3), and the tests assert that against this delta.
+12. `files-*` exchanges describe the retired endpoint. The new API answers `410 Gone` (Stage 7.3), and the tests assert that against [BC-006](../behavior-changes.md#bc-006-get-apifiles-is-gone).
 
 ### Schema (`schema.json`), used from Stage 4.1
 

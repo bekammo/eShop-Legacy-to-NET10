@@ -7,7 +7,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Contract;
 // docs/legacy/README.md (ADR-0002). LegacyContractTests replays them.
 internal static class LegacyContract
 {
-    // The contract files of the ported endpoints. A file joins when its endpoint is ported.
+    // The contract files of the ported and retired endpoints. A file joins when its endpoint is ported or retired.
     public static readonly IReadOnlyList<string> Files =
     [
         "api-root.json",
@@ -15,13 +15,15 @@ internal static class LegacyContract
         "brands-get-by-id.json",
         "brands-delete.json",
         "brands-other-verbs.json",
+        "files.json",
     ];
 
     public static readonly IReadOnlyDictionary<string, GoldenExchange> Exchanges = GoldenExchange.Load(Files);
 
     // The exchanges that the new API answers differently on purpose, by the delta that records it in
     // docs/behavior-changes.md (rule 3). The request is replayed as recorded, and the response is compared with the
-    // recorded response of the exchange named in AnswerOf.
+    // recorded response of the exchange named in AnswerOf, or, for a delta that answers with an error of its own, with
+    // the Status alone (rules 7 and 12).
     public static readonly IReadOnlyDictionary<string, Delta> Deltas = new Dictionary<string, Delta>
     {
         // No XML: the JSON of the matching JSON exchange (rule 8).
@@ -39,6 +41,11 @@ internal static class LegacyContract
 
         // The query string does not choose the endpoint: the list.
         ["brands-get-by-id--query-string"] = new("BC-005", AnswerOf: "brands-get-all--accept-json"),
+
+        // Retired: 410 Gone, whatever the Accept header and the ID.
+        ["files-get"] = new("BC-006", Status: 410),
+        ["files-get--accept-json"] = new("BC-006", Status: 410),
+        ["files-get-by-id"] = new("BC-006", Status: 410),
     };
 
     // The delta of an exchange that has none.
@@ -59,16 +66,23 @@ internal static class LegacyContract
         }
     }
 
-    // Replays the exchange, and checks the response against the recorded one, or against the one that its delta names.
+    // Replays the exchange, and checks the response against the recorded one, or against the exchange or the status that
+    // its delta names.
     public static async Task ReplayAsync(HttpClient client, string name, string deltaId, CancellationToken cancellationToken)
     {
         var delta = Deltas.GetValueOrDefault(name);
         Assert.Equal(deltaId, delta?.Id ?? NoDelta);
-        var expected = delta is null ? Exchanges[name] : Exchanges[delta.AnswerOf];
         using var request = Exchanges[name].CreateRequest();
 
         using var response = await client.SendAsync(request, cancellationToken);
 
+        if (delta is { Status: { } status })
+        {
+            Assert.True(status == (int)response.StatusCode, $"{name} ({delta.Id}): status {(int)response.StatusCode}, expected {status}.");
+            return;
+        }
+
+        var expected = delta is null ? Exchanges[name] : Exchanges[delta.AnswerOf!];
         var because = delta is null ? name : $"{name}, answered as {delta.AnswerOf} ({delta.Id})";
         Assert.True(expected.Status == (int)response.StatusCode, $"{because}: status {(int)response.StatusCode}, expected {expected.Status}.");
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -116,5 +130,6 @@ internal static class LegacyContract
     private static SortedSet<string> Methods(IEnumerable<string> methods) =>
         new(methods.Select(static method => method.Trim().ToUpperInvariant()), StringComparer.Ordinal);
 
-    public sealed record Delta(string Id, string AnswerOf);
+    // A delta names either the exchange whose answer the new API gives, or the status of its error.
+    public sealed record Delta(string Id, string? AnswerOf = null, int? Status = null);
 }

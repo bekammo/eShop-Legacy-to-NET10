@@ -87,13 +87,23 @@ The register has two parts:
 - **Test:** `LegacyContractTests` replays `brands-get-by-id--query-string` and compares the response with that of `brands-get-all--accept-json`.
 - **Decision:** [ADR-0002](../DECISIONS.md#adr-0002-wire-contract-policy), decision 5.
 
+### BC-006: `GET /api/files` is gone
+
+- **Kind:** Contract delta
+- **Forced by:** Security
+- **Stage / commit:** 7.3, "Retire GET /api/files with 410 Gone (Stage 7.3)"
+- **Legacy behaviour:** 200, with every brand in a 721-byte BinaryFormatter payload labelled `text/html`, whatever the `Accept` header, at `/api/files` and at `/api/files/{id}` for any ID ([`files.json`](legacy/contract/files.json): `files-get`, `files-get--accept-json`, `files-get-by-id`).
+- **New behaviour:** `410 Gone`, with a problem whose `detail` says that the endpoint has been retired and points to `GET /api/brands`. The route is not in the OpenAPI document.
+- **Client impact:** A client that read the payload has to call `GET /api/brands` and read JSON, with the same IDs and names: `[{"Id":1,"Brand":"Azure"}, ...]`. A client that deserialized the payload no longer runs BinaryFormatter on it, which was the risk (audit D4).
+- **Test:** `LegacyContractTests` replays the three exchanges, in database mode and in mock mode, and expects 410. `FileEndpointsTests` checks the problem.
+- **Decision:** [ADR-0022](../DECISIONS.md#adr-0022-get-apifiles-retired-with-410-gone), and [ADR-0001](../DECISIONS.md#adr-0001-migration-scope).
+
 ## Known upcoming deltas
 
 The Stage 1 audit and characterization already show where the new API will differ. The list below records them so that none is forgotten. Each becomes an entry, with a number and a test, in the commit that implements it. The list is not an entry itself, and it does not pre-empt the decisions of later stages.
 
 | Legacy behaviour (evidence) | Expected change | Forced by | Stage |
 |---|---|---|---|
-| `GET /api/files` returns 200 with a BinaryFormatter stream labelled `text/html` ([`files.json`](legacy/contract/files.json): `files-get`) | `410 Gone` with a ProblemDetails body that points to `/api/brands`. | Security | 7.3 |
 | A missing picture file returns 500 ([`pic-missing-file`](legacy/evidence/pic-missing-file.json)) | 404. | Security | 7.4 |
 | `PictureFileName` can point outside `Pics` ([`pic-path-traversal-relative`](legacy/evidence/pic-path-traversal-relative.json), [`-absolute`](legacy/evidence/pic-path-traversal-absolute.json)) | Only files inside the pictures root are served. | Security | 7.4 |
 | An upper-case extension is served as `application/octet-stream` ([`pic-extension-case`](legacy/evidence/pic-extension-case.json)) | The content type comes from a case-insensitive lookup. | Security | 7.4 |

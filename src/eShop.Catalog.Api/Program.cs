@@ -1,5 +1,6 @@
 using eShop.Catalog.Api.Brands;
 using eShop.Catalog.Api.Catalog;
+using eShop.Catalog.Api.Files;
 using eShop.Catalog.Api.Health;
 using eShop.Catalog.Api.Http;
 using eShop.Catalog.Api.Logging;
@@ -31,5 +32,6 @@ app.UseCatalogErrorHandling();
 app.MapOpenApi();
 app.MapHealthCheckEndpoints();
 app.MapBrandEndpoints();
+app.MapFileEndpoints();
 
 await app.RunAsync();
