@@ -19,8 +19,14 @@ internal static class HttpServiceCollectionExtensions
         services.AddSingleton<IProblemDetailsWriter, ProblemJsonWriter>();
         services.AddProblemDetails();
 
-        // The Server header names the stack (audit D19).
-        services.Configure<KestrelServerOptions>(static options => options.AddServerHeader = false);
+        services.Configure<KestrelServerOptions>(static options =>
+        {
+            // The Server header names the stack (audit D19).
+            options.AddServerHeader = false;
+
+            // The legacy app's limit, httpRuntime's default of 4 MB, where Kestrel's is 30,000,000 bytes (ADR-0025).
+            options.Limits.MaxRequestBodySize = 4 * 1024 * 1024;
+        });
 
         services.AddValidation();
         services.AddOpenApi();

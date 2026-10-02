@@ -13,6 +13,7 @@ internal static class ItemEndpoints
         var items = endpoints.MapGroup("/api/items");
         items.MapGet("", GetItemsAsync);
         items.MapGet("/{id}", GetItemAsync);
+        items.MapPost("", CreateItemAsync);
         return endpoints;
     }
 
@@ -37,6 +38,42 @@ internal static class ItemEndpoints
         await service.FindCatalogItemAsync(id, cancellationToken) is { } item
             ? TypedResults.Ok(Response(item, links, httpContext))
             : TypedResults.NotFound();
+
+    // Creates an item with a new ID and the default picture, and answers 201 with its location and the item as GET gives
+    // it (ADR-0025). The body is validated first: a field that breaks its rule is a 400 that names it. So is an unknown
+    // brand or type, where the legacy app answered 500 (audit D10).
+    private static async Task<Results<Created<CatalogItemResponse>, ValidationProblem>> CreateItemAsync(
+        CatalogItemRequest request, ICatalogService service, LinkGenerator links, HttpContext httpContext, CancellationToken cancellationToken)
+    {
+        if (await UnknownBrandOrTypeAsync(request, service, cancellationToken) is { } errors)
+        {
+            return TypedResults.ValidationProblem(errors);
+        }
+
+        var created = await service.CreateCatalogItemAsync(request.ToFields(), cancellationToken);
+
+        // Read back with its brand and type, which the service does not return with a new item.
+        var item = (await service.FindCatalogItemAsync(created.Id, cancellationToken))!;
+        return TypedResults.Created($"/api/items/{item.Id}", Response(item, links, httpContext));
+    }
+
+    // The brand and the type are reference data, which nothing deletes, so checking them first is enough.
+    private static async Task<Dictionary<string, string[]>?> UnknownBrandOrTypeAsync(
+        CatalogItemRequest request, ICatalogService service, CancellationToken cancellationToken)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (await service.FindCatalogBrandAsync(request.CatalogBrandId!.Value, cancellationToken) is null)
+        {
+            errors[nameof(CatalogItemRequest.CatalogBrandId)] = ["No catalog brand has this ID."];
+        }
+
+        if (!(await service.GetCatalogTypesAsync(cancellationToken)).Any(type => type.Id == request.CatalogTypeId))
+        {
+            errors[nameof(CatalogItemRequest.CatalogTypeId)] = ["No catalog type has this ID."];
+        }
+
+        return errors.Count == 0 ? null : errors;
+    }
 
     // The item, with the absolute URL of its picture from the picture route's name, as the legacy controller built it.
     private static CatalogItemResponse Response(CatalogItem item, LinkGenerator links, HttpContext httpContext) =>

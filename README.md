@@ -114,6 +114,7 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 | `GET /items/{id}/pic` | The picture of an item, from the folder that `Catalog:PicturesPath` names: 400 for an ID below 1, 404 for an unknown item or a picture that is not in the folder. A `Range` request gets the part it asks for (206) ([ADR-0023](DECISIONS.md#adr-0023-security-fixes-made-during-the-migration)). |
 | `GET /api/items?pageSize=10&pageIndex=0` | One page of items, in ID order: `ActualPage`, `ItemsPerPage`, `TotalItems`, `TotalPages` and `Data`. `pageSize` is 1–100 and `pageIndex` 0 or more; anything else is a 400 ([ADR-0024](DECISIONS.md#adr-0024-item-and-type-reads)). |
 | `GET /api/items/{id}` | One item, with its brand, its type and the URL of its picture, or 404. An ID that is not an integer is a 400. |
+| `POST /api/items` | Creates an item from a JSON body: 201, with its location and the item. A field that breaks its rule, or an unknown brand or type, is a 400 that names it ([ADR-0025](DECISIONS.md#adr-0025-creating-items)). Request bodies are limited to 4 MB. |
 | `GET /api/types` | Every item type, in ID order. |
 
 The brand endpoints are drop-in compatible with the legacy Web API ([ADR-0002](DECISIONS.md#adr-0002-wire-contract-policy)). The few deliberate differences, such as no XML, are in the [behavior-change register](docs/behavior-changes.md).

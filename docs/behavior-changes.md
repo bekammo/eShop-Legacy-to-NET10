@@ -164,15 +164,35 @@ The register has two parts:
 - **Test:** `ItemEndpointsTests.Paging_outside_its_bounds_is_a_400_problem`, `Page_of_100_items_is_allowed` and `Page_holds_the_items_of_its_index_and_a_page_after_the_last_is_empty`.
 - **Decision:** [ADR-0024](../DECISIONS.md#adr-0024-item-and-type-reads), and [ADR-0015](../DECISIONS.md#adr-0015-async-first-catalog-service).
 
+### BC-013: Clients do not write an item's ID or picture
+
+- **Kind:** Business-rule change
+- **Forced by:** Security
+- **Stage / commit:** 7.6, "Create items with the legacy rules and a 4 MB body limit (Stage 7.6)"
+- **Legacy behaviour:** The create form bound a posted `Id`, which HiLo then replaced, and a posted `PictureFileName`, which was stored and served, even when it pointed outside the pictures folder ([`create-ignores-posted-id`](legacy/evidence/create-ignores-posted-id.json), [`pic-path-traversal-relative`](legacy/evidence/pic-path-traversal-relative.json), audit D1 and D2).
+- **New behaviour:** `POST /api/items` has neither field. A posted `Id` or `PictureFileName` is ignored, and the item gets a new ID and `dummy.png`, as from the legacy form.
+- **Client impact:** A client can no longer set a picture name. Nothing in the legacy UI offered it.
+- **Test:** `ItemWriteEndpointsTests.Posted_ID_and_picture_name_are_ignored` and `Created_item_gets_a_new_ID_the_default_picture_and_its_location`.
+- **Decision:** [ADR-0025](../DECISIONS.md#adr-0025-creating-items), and [ADR-0015](../DECISIONS.md#adr-0015-async-first-catalog-service).
+
+### BC-014: Invalid items are a 400
+
+- **Kind:** Business-rule change
+- **Forced by:** Security
+- **Stage / commit:** 7.6, "Create items with the legacy rules and a 4 MB body limit (Stage 7.6)"
+- **Legacy behaviour:** `[Range(0, 1000000)]` rounded the price to an integer first, so 1000000.01 to 1000000.50 were accepted, and a price above `Int32.MaxValue` gave a 500 (D9). A name over 50 characters, and an unknown brand or type, passed the form's validation and gave a 500 when saved (D10) ([`create-item-validation`](legacy/evidence/create-item-validation.json)). `OnReorder`, which the form did not have, was `false` unless posted.
+- **New behaviour:** The price must be from 0 to 1,000,000 exactly, with at most two decimal places. A longer name, and an unknown brand or type, are a 400 problem that names the field. `OnReorder` is required, like the other fields.
+- **Client impact:** A price above 1,000,000 is refused, and a create without `OnReorder` is a 400. The other cases were 500s.
+- **Test:** `ItemWriteEndpointsTests.Field_that_breaks_its_rule_is_a_400_problem_that_names_it`, `Unknown_brand_or_type_is_a_400_problem_that_names_it` and `Value_at_the_edge_of_its_rule_is_accepted`.
+- **Decision:** [ADR-0025](../DECISIONS.md#adr-0025-creating-items).
+
 ## Known upcoming deltas
 
 The Stage 1 audit and characterization already show where the new API will differ. The list below records them so that none is forgotten. Each becomes an entry, with a number and a test, in the commit that implements it. The list is not an entry itself, and it does not pre-empt the decisions of later stages.
 
 | Legacy behaviour (evidence) | Expected change | Forced by | Stage |
 |---|---|---|---|
-| `PictureFileName` and `Id` are client-writable on create and edit; edit overwrites fields the client did not send ([`edit-overwrites-unposted-fields`](legacy/evidence/edit-overwrites-unposted-fields.json)) | `PictureFileName` is not client-writable, and updates apply explicit fields. | Security | 7.6, 7.7 |
-| `Range(0, 1000000)` rounds the price before comparing, so 1000000.50 is accepted ([`create-item-validation`](legacy/evidence/create-item-validation.json)) | To be decided in 7.6: keep it or apply the range exactly. | Security (input validation) | 7.6 |
-| A name over 50 characters, an unknown brand or an unknown type gives 500 ([`create-item-validation`](legacy/evidence/create-item-validation.json)) | To be decided in 7.6 (a 400 is expected). | Security | 7.6 |
+| `PictureFileName` and `Id` are client-writable on create and edit; edit overwrites fields the client did not send ([`edit-overwrites-unposted-fields`](legacy/evidence/edit-overwrites-unposted-fields.json)) | `PictureFileName` is not client-writable, and updates apply explicit fields. | Security | 7.7 (create: BC-013) |
 | Editing or deleting an unknown item gives 500 ([`unknown-item-writes`](legacy/evidence/unknown-item-writes.json)) | To be decided in 7.7 (a 404 is expected). | Security | 7.7 |
 
 Some response differences are not deltas, because the [comparison rules](legacy/README.md#comparison-rules) treat them as informational:

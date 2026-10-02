@@ -34,6 +34,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone) | `GET /api/files` retired with 410 Gone | Accepted | 7.3 |
 | [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) | Security fixes made during the migration | Accepted | 7.4 |
 | [ADR-0024](#adr-0024-item-and-type-reads) | Item and type reads | Accepted | 7.5 |
+| [ADR-0025](#adr-0025-creating-items) | Creating items | Accepted | 7.6 |
 
 ## Template
 
@@ -2341,3 +2342,84 @@ Each of these deliberate breaks failed the intended tests:
 - Behind a reverse proxy, `PictureUri` has the host and scheme that the API sees. The API reads no forwarded headers, as the legacy app did not, so a deployment behind a proxy has to pass the original host, or configure forwarded headers then.
 - A client that asks for more than 100 items gets a 400, and pages through them.
 - `PictureUri` also follows the `Host` header of the request. No `AllowedHosts` is set, so a deployment sets it to the hosts that it serves.
+
+---
+
+## ADR-0025: Creating items
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.6
+
+### Context
+
+- The legacy app created items only through its Razor form, whose rules the evidence records one at a time ([`create-item-validation`](docs/legacy/evidence/create-item-validation.json), [audit: business rules](docs/legacy-audit.md#44-business-rules-behind-the-ui)):
+  - `Name` is required. The column holds 50 characters, and a longer name gave a 500 from EF6 (D10).
+  - `Price` had a regular expression for at most two decimals without a sign, and `[Range(0, 1000000)]`, which rounds the decimal to an integer first, so 1000000.50 was accepted and 1000000.51 was not (D9). Both depended on the `en-US` culture that `Web.config` pinned ([ADR-0009](#adr-0009-configuration), decision 4).
+  - The stock fields are 0 to 10,000,000. Every value-type field on the form was required. `OnReorder` was not on the form, but `[Bind]` took it when posted, and it was `false` otherwise.
+  - An unknown brand or type gave a 500 from the foreign key (D10).
+  - A posted `Id` was bound and then replaced by HiLo, and a posted `PictureFileName` was stored and served ([`create-ignores-posted-id`](docs/legacy/evidence/create-ignores-posted-id.json), [`pic-path-traversal-relative`](docs/legacy/evidence/pic-path-traversal-relative.json), D1 and D2). A new item from the form got `dummy.png` ([`create-default-picture`](docs/legacy/evidence/create-default-picture.json)).
+- [ADR-0015](#adr-0015-async-first-catalog-service): the service creates an item from `CatalogItemFields`, without an ID or a picture, and gives it `dummy.png`. [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document): request types with validation attributes are public. [ADR-0009](#adr-0009-configuration) left the request body limit, 4 MB in the legacy `httpRuntime`, to this stage.
+
+### Decision
+
+**1. `POST /api/items`** takes a `CatalogItemRequest` as JSON (`Items/CatalogItemRequest.cs`), and answers 201, with `Location: /api/items/{id}` and the item as `GET` gives it ([ADR-0024](#adr-0024-item-and-type-reads)), read back with its brand and type.
+
+**2. The request has the fields that a client writes:** `Name`, `Description`, `Price`, `CatalogTypeId`, `CatalogBrandId`, `AvailableStock`, `RestockThreshold`, `MaxStockThreshold` and `OnReorder`. A posted `Id` or `PictureFileName` is not part of it, and System.Text.Json ignores members that it does not know, so they change nothing ([BC-013](docs/behavior-changes.md#bc-013-clients-do-not-write-an-items-id-or-picture)).
+
+**3. The rules**, as data annotations on the request's properties, which .NET 10 validates before the handler runs, and which the OpenAPI document shows:
+
+| Field | Rule | Legacy |
+|---|---|---|
+| `Name` | Required, at most 50 characters | Required; a longer one gave a 500 |
+| `Description` | Optional | Optional |
+| `Price` | Required, 0 to 1,000,000 exactly, at most two decimal places (`TwoDecimalPlaces`) | The same, but 1000000.01 to 1000000.50 passed the rounded range |
+| `CatalogTypeId`, `CatalogBrandId` | Required, and must exist | Required; an unknown one gave a 500 |
+| `AvailableStock`, `RestockThreshold`, `MaxStockThreshold` | Required, 0 to 10,000,000 | The same |
+| `OnReorder` | Required | Bound if posted; `false` otherwise |
+
+- A value type is nullable in the request only so that a missing value is a 400, and not a 0. `OnReorder` is required too: a replacement that left it out would reset it to `false`, as every legacy edit did (D2, [ADR-0026](#adr-0026-updating-and-deleting-items)).
+- The price is read from JSON, as a number or as a string, always without a culture, so the legacy format rules (no sign, no comma) have nothing left to check, and the rules do not depend on a culture.
+- The handler checks the brand and the type after the annotations pass, and answers an unknown one with the same 400, naming the field. Both are reference data that nothing deletes, so the check cannot race a delete.
+- [BC-014](docs/behavior-changes.md#bc-014-invalid-items-are-a-400) records the differences.
+
+**4. Errors.** A broken rule is a 400 problem with `errors` under each field's name ([ADR-0021](#adr-0021-error-contract-problem-details)). A body that is not JSON is a 400, another media type a 415, and a body over the limit a 413.
+
+**5. The body limit.** Kestrel's `MaxRequestBodySize` is 4 MiB (4,194,304 bytes), the legacy `httpRuntime` default, for every request. Kestrel's own default is 30,000,000 bytes.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `ItemWriteEndpointsTests.Created_item_gets_a_new_ID_the_default_picture_and_its_location` | 201, `Location`, the body as `GET` gives it with its type, and a picture at `PictureUri`. |
+| `ItemWriteEndpointsTests.Posted_ID_and_picture_name_are_ignored` | A posted `Id` of 1 and a `PictureFileName`: a new ID, item 1 unchanged, and the default picture. |
+| `ItemWriteEndpointsTests.Field_that_breaks_its_rule_is_a_400_problem_that_names_it` (21 cases) | Each annotation of the table, broken alone, 1000000.50 included. A missing field is reported as required. |
+| `ItemWriteEndpointsTests.Value_at_the_edge_of_its_rule_is_accepted` (7 cases) | A 50-character name, prices 0, 1000000, 1000000.00 and 8.5, no description, and a maximum stock of 10,000,000. |
+| `ItemWriteEndpointsTests.Unknown_brand_or_type_is_a_400_problem_that_names_it` (2 cases) | Brand or type 999. |
+| `ItemWriteEndpointsTests.Body_that_is_not_JSON_is_a_400_problem` | `{`. |
+| `ItemWriteEndpointsTests.Request_body_is_limited_to_the_legacy_4_MB` | The Kestrel setting. The test server does not apply it. |
+
+A host was also run by hand on Kestrel: a 5 MB body got 413, and an XML body 415.
+
+Each of these deliberate breaks failed the intended tests:
+
+- no length on `Name`: its 51-character case
+- the legacy `[Range(0, 1000000)]` on the price: 1000000.01, 1000000.50 and -0.01, which it rounds into the range
+- no `TwoDecimalPlaces`: 1.005
+- no check of the brand and the type: both cases of `Unknown_brand_or_type_is_a_400_problem_that_names_it`
+- an internal request type, which .NET 10 does not validate: all 21 cases of `Field_that_breaks_its_rule_is_a_400_problem_that_names_it`
+- no body limit: `Request_body_is_limited_to_the_legacy_4_MB`
+- a price that is not nullable: the missing-price case
+
+### Alternatives considered
+
+- **The legacy range, rounded.** It accepted prices up to 1000000.50, which the rule meant to refuse.
+- **FluentValidation.** One more dependency, and rules that the OpenAPI document cannot see ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)).
+- **Letting the database refuse an unknown brand or type.** The EF Core and in-memory services fail differently ([ADR-0015](#adr-0015-async-first-catalog-service)), and the client would get a 500.
+- **A 400 for a posted `Id` or `PictureFileName`.** The legacy create ignored a posted ID, so a client that sends a whole item back would break for no gain.
+
+### Consequences
+
+- A client that sends a price with more than two decimals, or above 1,000,000, gets a 400, where the legacy form rounded or accepted it.
+- The brand and type are checked only once the other rules pass, so a body with both kinds of error reports the annotations first.
+- Stage 7.7 replaces items with the same request and rules.
