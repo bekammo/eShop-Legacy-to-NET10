@@ -17,7 +17,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 4 — Domain & EF Core | Done |
 | 5 — Application services & DI | Done |
 | 6 — Logging | Done |
-| 7 — HTTP endpoints | Not started |
+| 7 — HTTP endpoints | In progress |
 | 8 — Async verification | Not started |
 | 9 — OpenAPI docs & Swagger UI | Not started |
 | 10 — Test consolidation | Not started |
@@ -33,6 +33,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | [docs/legacy-audit.md](docs/legacy-audit.md) | Audit of the legacy code: pipeline, packages, endpoints, schema, configuration, logging, defects and risks, build and tests. |
 | [docs/legacy/README.md](docs/legacy/README.md) | Characterization of the running legacy app: schema, seed data, golden HTTP exchanges, defect evidence, and the rules for comparing the new API against them. |
 | [docs/behavior-changes.md](docs/behavior-changes.md) | Register of every deliberate difference between the new API and the legacy app. |
+| [docs/openapi/v1.json](docs/openapi/v1.json) | The OpenAPI document of the new API, as the API serves it. A test keeps it current, so every change to the contract of an endpoint shows in its diff. |
 
 ## Repository layout
 
@@ -52,6 +53,7 @@ DECISIONS.md
 docs/
   legacy-audit.md
   behavior-changes.md
+  openapi/                   The OpenAPI document of the new API
   legacy/                    Characterization data and the tool that captures it
 src/
   eShop.Catalog.Api/         The new ASP.NET Core API (.NET 10)
@@ -104,6 +106,18 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 |---|---|
 | `GET /health/live` | `200 Healthy` while the process is up. It does not check the database or any other dependency. |
 | `GET /health/ready` | `200 Healthy` when the API can reach its database and the database has every migration, otherwise `503 Unhealthy` ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)). In mock mode it checks nothing and answers `200 Healthy`. |
+| `GET /openapi/v1.json` | The OpenAPI 3.1 document of the API, in every environment ([ADR-0020](DECISIONS.md#adr-0020-minimal-api-endpoints-and-the-openapi-document)). |
+
+The catalog endpoints, which arrive from Stage 7.2, answer with JSON, with property names in PascalCase as the legacy Web API wrote them, whatever the `Accept` header asks for. Every error, except the plain-text answers of the health checks, is a problem details object ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)), as `application/problem+json`, a route that matches nothing included. Its `traceId` holds the trace ID of the request, which finds the request's events in the log ([ADR-0021](DECISIONS.md#adr-0021-error-contract-problem-details)):
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+  "title": "Not Found",
+  "status": 404,
+  "traceId": "00-0af7651916cd43dd8448eb211c80319c-2e19c0fd39ec0d42-01"
+}
+```
 
 To run without any database, turn on mock mode, which serves the catalog from memory, starting with the legacy sample data, and loses every change when the app stops ([ADR-0017](DECISIONS.md#adr-0017-built-in-dependency-injection-and-mock-mode)). In Bash:
 
@@ -271,6 +285,8 @@ Write a TRX report per test project into `TestResults/`:
 ```bash
 dotnet test --solution eShop.Catalog.slnx --report-xunit-trx --results-directory TestResults
 ```
+
+When a change alters the contract of an endpoint, `OpenApiDocumentTests.Document_matches_the_committed_snapshot` fails until [docs/openapi/v1.json](docs/openapi/v1.json) matches the document that the API serves. The test writes that document to `OpenApi/v1.received.json` in the integration tests' output folder, and its failure message gives the path. If the change is intended, copy that file over `docs/openapi/v1.json`, and review the diff with the code ([ADR-0020](DECISIONS.md#adr-0020-minimal-api-endpoints-and-the-openapi-document)).
 
 ## Continuous integration
 

@@ -29,6 +29,8 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode) | Built-in dependency injection and mock mode | Accepted | 5.3 |
 | [ADR-0018](#adr-0018-logging-with-serilog) | Logging with Serilog | Accepted | 6.1 |
 | [ADR-0019](#adr-0019-request-logging-and-application-log-events) | Request logging and application log events | Accepted | 6.2 |
+| [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) | Minimal API endpoints and the OpenAPI document | Accepted | 7.1 |
+| [ADR-0021](#adr-0021-error-contract-problem-details) | Error contract: problem details | Accepted | 7.1 |
 
 ## Template
 
@@ -1865,3 +1867,232 @@ A host was also run by hand in Production, with a connection string to a server 
 - Authentication and authorization middleware that `WebApplication` adds by itself runs before the app's middleware, so a request it rejects would not be logged. Stage 12 calls `UseAuthentication` and `UseAuthorization` itself, after the request logging. Plan 12.1 now says so.
 - New application events are `[LoggerMessage]` methods.
 - Mock mode now registers one hosted service, beside the in-memory catalog service ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)).
+
+---
+
+## ADR-0020: Minimal API endpoints and the OpenAPI document
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.1
+
+### Context
+
+- The legacy HTTP surface is two kinds of controller ([audit: endpoint inventory](docs/legacy-audit.md#4-endpoint-inventory)):
+  - Web API 2 `ApiController`s, routed by the convention `api/{controller}/{id}`, with the action chosen by its name and its parameters. They negotiate JSON, which Newtonsoft writes with its defaults, in PascalCase, or XML.
+  - MVC controllers behind the Razor UI, and the attribute-routed `PicController`.
+- Plan decision 2 chooses Minimal APIs over controllers: endpoint groups per resource, `TypedResults`, and .NET 10's built-in validation. XML content negotiation is the one controller feature that this gives up, and [ADR-0003](#adr-0003-non-goals) makes XML a non-goal.
+- Plan decision 7 chooses the built-in `Microsoft.AspNetCore.OpenApi` for the OpenAPI document, which arrives with a committed snapshot test, so that every endpoint commit shows its contract diff. Swagger UI is Stage 9's.
+- [ADR-0002](#adr-0002-wire-contract-policy) fixes what the ported endpoints keep: routes that ignore case and a trailing slash, PascalCase JSON on every endpoint, and the status codes, such as 400 for a brand ID that is not an integer ([`brands-get-by-id--non-integer`](docs/legacy/contract/brands-get-by-id.json)).
+- The endpoints take `ICatalogService` as a parameter ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)), and pass the caller's `CancellationToken` on ([ADR-0015](#adr-0015-async-first-catalog-service)).
+- A probe app on ASP.NET Core 10.0.12, with a route group and handlers like the brand endpoints, showed:
+  - Routing ignores case and a trailing slash: `/API/BRANDS` and `/api/brands/` reached `/api/brands`.
+  - An `{id}` without a constraint, bound to an `int id` parameter, answered 400 for `abc`, `1.5` and `2147483648`, and 200 for `01`, in Production. In Development, ASP.NET Core throws for a parameter that does not bind (`RouteHandlerOptions.ThrowOnBadRequest`), and an exception handler turned that into a 500.
+  - A method that the route does not have, `HEAD` and `OPTIONS` included, got 405 with an `Allow` header.
+  - Validation attributes on a handler's parameters were checked, whatever assembly the handler is in. Those on the members of a type that a handler binds were checked only when the type is public and in the assembly that calls `AddValidation`. An internal record or class with the same attributes was not checked, and nothing warned about it.
+  - The document is OpenAPI 3.1.1. Its `servers` entry is the URL of the request that fetched it. The schemas show `[Range]` and `[StringLength]` as `minimum`, `maximum` and `maxLength`.
+
+### Decision
+
+**1. Endpoints.** Each resource has a static class `<Resource>Endpoints` in its feature folder ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)), such as `Brands/BrandEndpoints.cs` from Stage 7.2. Its `Map<Resource>Endpoints` extension method on `IEndpointRouteBuilder`, which `Program.cs` calls, creates the resource's route group and maps the handlers into it.
+
+- **Handlers are static methods**, named for what they do, such as `GetBrandAsync`. A lambda would put the handler's code inside the mapping call, without a name.
+- **They return `TypedResults`**, declared as `Results<...>` when there is more than one outcome, such as `Results<Ok<CatalogBrandResponse>, NotFound>`. The statuses and the body types are then endpoint metadata, which the OpenAPI document shows.
+- **They take their services and a `CancellationToken` as parameters.** ASP.NET Core binds the token to the request's `RequestAborted`, and the handler passes it to the service.
+- **A collection's route is the group's own**, mapped with `MapGet("", ...)`, so its template, and its path in the document, has no trailing slash. A request with one still matches.
+
+**2. Route parameters.** A parameter gets a route constraint only where the legacy route had one: `{catalogItemId:int}` on the picture route (Stage 7.4). Elsewhere a template has `{id}`, bound to an `int id` parameter. A value that is not an int then matches the route and fails to bind, which is a 400, as Web API 2 answered. With a constraint it would match no route, which is a 404.
+
+**3. JSON.** System.Text.Json with ASP.NET Core's web defaults, except the naming policy, which `ConfigureHttpJsonOptions` removes:
+
+- Property names are the C# names, in PascalCase, as Web API 2 wrote them ([ADR-0002](#adr-0002-wire-contract-policy), decision 2).
+- The other web defaults stay. A number can be read from a JSON string, as Newtonsoft read it, so the document gives integer properties the type `["integer", "string"]`.
+- A result is JSON whatever the request's `Accept` header says. There is no content negotiation, so a client that asks for XML gets JSON. Stage 7.2 records this delta with the first endpoint that answers.
+- Response bodies are records in the resource's feature folder, mapped from the entities, which hold only stored data ([ADR-0010](#adr-0010-data-model)). The record's name is the name of its schema in the document.
+- System.Text.Json escapes non-ASCII characters, and the characters that HTML treats specially, such as `<`, `>`, `&`, `'` and `+`, as `\uXXXX`, where Newtonsoft wrote them as they are, so `Cup<T> White Mug` is written `Cup\u003CT\u003E White Mug`. The value is the same, and the [comparison rules](docs/legacy/README.md#comparison-rules) compare values, not text.
+
+**4. Binding and validation.** `AddValidation` turns on .NET 10's validation of a handler's parameters, and of the members of the types they bind, from data annotations such as `[Range]`. A value that breaks one is a 400 problem with the messages in `errors` ([ADR-0021](#adr-0021-error-contract-problem-details)).
+
+- A parameter that does not bind is a 400 in every environment. `RouteHandlerOptions.ThrowOnBadRequest` is off in Development too, so the answer does not depend on the environment.
+- A request type with validation attributes on its members is `public`, an exception to ADR-0006's rule that types are internal, because the validation generator skips internal types without a warning. Each such type gets a test that an invalid value is refused, so a type that loses `public` fails a test. The first one is the item of Stage 7.6.
+
+**5. The OpenAPI document.** `Microsoft.AspNetCore.OpenApi` 10.0.12, the version of the ASP.NET Core runtime, registered with `AddOpenApi` and mapped with `MapOpenApi`:
+
+- `GET /openapi/v1.json` serves an OpenAPI 3.1 document in every environment. It describes the public contract and holds nothing secret, and a client can generate code from it against any environment. Swagger UI, a tool for developers, is Development only (Stage 9.1).
+- It lists the route handlers. The health checks are not route handlers, so they are not in it, and neither is the document itself.
+- Summaries, tags and the documented error responses are Stage 9.2's. Until then the document shows a 404, for example, without the problem body that ADR-0021 gives it.
+
+**6. The snapshot.** `docs/openapi/v1.json` is the document as the API serves it, without `servers`, which holds the URL of the request.
+
+- `OpenApiDocumentTests.Document_matches_the_committed_snapshot` fetches the document from the test host and compares it with the snapshot as JSON trees, so formatting does not count.
+- On a difference it writes the served document beside its copy of the snapshot, as `OpenApi/v1.received.json` in the test output, and its failure message names that file. An intended change is accepted by copying the file over the snapshot.
+- A commit that changes the contract of an endpoint therefore changes `docs/openapi/v1.json`, and its diff shows the change. In this stage the document has no paths.
+
+**7. Shared registration.** `AddCatalogHttp` (`Http/HttpServiceCollectionExtensions.cs`) registers what every endpoint shares: the JSON options, the binding option, validation, the OpenAPI document, and the problem details and Kestrel's `AddServerHeader` setting of [ADR-0021](#adr-0021-error-contract-problem-details). `Program.cs` calls it, adds the error handling, and maps the document.
+
+The OpenAPI tests are in the integration tests' `Http` folder, beside the other tests of what `AddCatalogHttp` registers: the API has no `OpenApi` folder for them to mirror ([ADR-0007](#adr-0007-test-strategy)).
+
+**Tests**
+
+The conventions are tested on endpoints of the test's own, in a host that has `AddCatalogHttp` and `UseCatalogErrorHandling` and nothing else (`HttpConventionsTests`), because the API's first endpoints arrive in Stage 7.2. From then on the golden exchanges check the real ones.
+
+| Test | What it pins |
+|---|---|
+| `HttpConventionsTests.Results_are_PascalCase_JSON_whatever_the_Accept_header` (7 `Accept` headers) | `{"Id":1,"Brand":"Azure"}` as `application/json; charset=utf-8`, for no `Accept` header, JSON, `*/*`, a browser's, XML, HTML and PNG. |
+| `HttpConventionsTests.Parameter_that_does_not_bind_is_a_400_problem_in_every_environment` (Development, Production) | `abc` for an `int` is a 400, not a 500, in Development too. |
+| `HttpConventionsTests.Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors` | `[Range(1, 100)]` refuses 0, with the message under the parameter's name. |
+| `OpenApiDocumentTests.Document_matches_the_committed_snapshot` | The served document, without `servers`, equals `docs/openapi/v1.json`. |
+| `OpenApiDocumentTests.Document_is_served_in_every_environment` (Development, Production) | `GET /openapi/v1.json` answers 200. The snapshot test covers Testing. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- the naming policy left at camelCase: all 7 cases of `Results_are_PascalCase_JSON_whatever_the_Accept_header`
+- `ThrowOnBadRequest` left at its default: the Development case of `Parameter_that_does_not_bind_is_a_400_problem_in_every_environment`
+- no `AddValidation`: `Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors`
+- the document mapped in Development only: the Production case of `Document_is_served_in_every_environment`, and `Document_matches_the_committed_snapshot`
+- an empty object, `{}`, as the snapshot: `Document_matches_the_committed_snapshot`, which wrote the served document to `v1.received.json`. That file became the snapshot.
+
+### Alternatives considered
+
+- **Controllers with `[ApiController]`.** They would keep XML through a formatter, and their model binding would look like Web API 2's. Plan decision 2 chose Minimal APIs, [ADR-0003](#adr-0003-non-goals) drops XML, and about ten endpoints need no filters, conventions or model binders.
+- **Lambdas in the `Map` calls.** Shorter for a one-line handler, but the mapping then holds the handler's code, and the handler has no name.
+- **A third-party endpoint library**, such as Carter or FastEndpoints. One more dependency, for about ten endpoints that ASP.NET Core maps without one.
+- **A route constraint on every ID** (`{id:int}`). A brand ID such as `abc` would then be a 404, where the legacy app answered 400.
+- **camelCase, ASP.NET Core's default.** [ADR-0002](#adr-0002-wire-contract-policy) keeps PascalCase on every endpoint until a v2.
+- **FluentValidation, or checks written in each handler.** One more dependency, or rules that the document cannot see. Data annotations are .NET 10's own, and the document shows them as schema constraints.
+- **The document in Development only**, as the project template maps it. The snapshot test runs in Testing, and a client could not fetch the contract of a deployed API.
+- **Swashbuckle or NSwag for the document.** Plan decision 7 chose the built-in generator, which ships with ASP.NET Core 10 and writes OpenAPI 3.1. Stage 9.1 chooses the UI.
+- **The document written at build time** (`Microsoft.Extensions.ApiDescription.Server`) and committed, with a check that it is current. The test also proves that the endpoint serves the document, and needs no build step.
+
+### Consequences
+
+- A client that asks for XML gets JSON. Stage 7.2 records the delta with the first endpoint.
+- Every endpoint commit updates `docs/openapi/v1.json`, and the snapshot test fails until it does.
+- Request types with validation attributes are public, against the default of ADR-0006.
+- The document is served to anyone who can reach the API, like the API itself, which stays away from untrusted clients until Stage 12 ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)).
+
+---
+
+## ADR-0021: Error contract: problem details
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.1
+
+### Context
+
+- The legacy error bodies are whatever the framework that failed writes, and they differ by client ([audit: error handling](docs/legacy-audit.md#25-error-handling)):
+  - Web API 2 writes `{"Message", "MessageDetail"}` for a binding error or an unknown controller ([`brands-get-by-id--non-integer`](docs/legacy/contract/brands-get-by-id.json), [`api-unknown-controller`](docs/legacy/contract/api-root.json)), and `{"Message"}` for a method that the route does not have ([`brands-post`](docs/legacy/contract/brands-other-verbs.json)), as XML for an XML `Accept` header (`brands-get-by-id--non-integer-xml`). Remote clients get `Message` only. An unhandled exception gives local clients its message, type and stack trace.
+  - The 404s that the code returns have no body (`brands-get-by-id--not-found`).
+  - IIS and ASP.NET answer the rest with HTML pages (`api-root`, `brands-get-by-id--dot-in-segment`, [`pic-get--not-found`](docs/legacy/contract/pictures.json)).
+- No code path logs an exception (D18). Local clients get stack traces, and the `Server`, `X-Powered-By`, `X-AspNet-Version` and `X-AspNetMvc-Version` headers name the stack (D19) ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)).
+- [ADR-0002](#adr-0002-wire-contract-policy), decision 4: status codes are contract, and error payloads are not. The new format is chosen in this stage and recorded as a delta. The [comparison rules](docs/legacy/README.md#comparison-rules) compare only the status of an error, and the `Allow` header of a 405.
+- [ADR-0019](#adr-0019-request-logging-and-application-log-events) left the place of the exception handler to this stage. Inside the request logging, the handler logs the exception, and the request event sees a 500 without one. Outside it, both log the exception.
+- ASP.NET Core writes problem details ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)) through `IProblemDetailsService`, which `AddProblemDetails` registers. The exception handler, the status code pages middleware and `TypedResults.Problem` use it. The probe of [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) showed:
+  - Its writer writes only for a request whose `Accept` header allows JSON: none, `*/*`, `application/json` or `application/problem+json`. For `application/xml`, `text/html` or `image/png`, which golden exchanges send, the status code pages wrote `Status Code: 404; Not Found` as `text/plain`, the exception handler answered 500 without a body, a validation failure came as `application/json` without `type`, `status` or `traceId`, and `TypedResults.Problem` wrote its problem without `traceId`.
+  - Its `traceId` is the W3C ID of the request's activity.
+  - Kestrel adds `Server: Kestrel` to every response.
+  - A request that the client aborted ended in the exception handler, which logged "The request was aborted by the client." at Debug and set the status to 499.
+
+### Decision
+
+**1. Every error is a problem.** Every error response that the app writes, 4xx or 5xx, is a problem details object with the media type `application/problem+json`, whatever the `Accept` header says, as every result is JSON ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)). Its members:
+
+| Member | Value |
+|---|---|
+| `type` | The section of RFC 9110 that defines the status, as ASP.NET Core links it, such as `https://tools.ietf.org/html/rfc9110#section-15.5.5` for 404. |
+| `title` | The name of the status, such as `Not Found`. A validation failure has `One or more validation errors occurred.`, and an exception `An error occurred while processing your request.` |
+| `status` | The status code. |
+| `detail` | Only when an endpoint has more to say, as `/api/files` will (Stage 7.3). |
+| `errors` | Only for a validation failure: the messages, under the name of each parameter or property that failed. |
+| `traceId` | The W3C ID of the request's activity, `00-{trace ID}-{span ID}-{flags}`. Its trace ID is the `@tr` of the request's log events ([ADR-0018](#adr-0018-logging-with-serilog)), and a caller's `traceparent` header sets it. |
+
+The member names are RFC 9457's, in lower case, and ASP.NET Core's `traceId` extension. They are the one exception to PascalCase ([ADR-0002](#adr-0002-wire-contract-policy), decision 2): error payloads are not contract, and these names are the standard's and the framework's.
+
+The health checks are not part of this contract. They keep their plain-text answers, `Unhealthy` with a 503 included ([ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness)): the status code pages leave a response that has a body alone.
+
+**2. Where the problems come from.** `UseCatalogErrorHandling` (`Http/HttpApplicationBuilderExtensions.cs`) adds two middlewares, and routing after them:
+
+| Middleware | Answers |
+|---|---|
+| `UseExceptionHandler()` | An unhandled exception, with a 500. |
+| `UseStatusCodePages()`, inside it | An error status without a body: a route that matches nothing (404), a method that the route does not have (405, whose `Allow` header stays), a parameter that does not bind (400), and an endpoint's own status, such as `TypedResults.NotFound()`. |
+
+An endpoint returns an error as its status alone, such as `TypedResults.NotFound()`, and leaves the body to the status code pages. One that has more to say returns `TypedResults.Problem` with a `detail`. A validation failure is a 400 problem with `errors` ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 4).
+
+`UseCatalogErrorHandling` ends with `UseRouting()`, so routing runs inside the error handling and the request logging. `WebApplication` would otherwise run routing before all of the app's middleware, and an exception in routing, such as the one for a request that two endpoints match, would reach neither: the client got a 500 without a body, only Kestrel logged the exception, and no request event was written. This amends [ADR-0019](#adr-0019-request-logging-and-application-log-events), decision 1, which has routing before the request logging. The request event still knows the matched endpoint, and so its level, because it is written when the request completes.
+
+**3. The writer.** `ProblemJsonWriter` (`Http/ProblemJsonWriter.cs`) writes every problem. `AddCatalogHttp` registers it before `AddProblemDetails`, so `IProblemDetailsService` asks it first, and ASP.NET Core's writer, which comes after it, is never used. It writes for any `Accept` header, and does what ASP.NET Core's writer does:
+
+- It fills in the status of the response, and the type and title that `TypedResults.Problem` gives that status.
+- It sets `traceId`, replacing any that the problem has, so that a problem that an endpoint returns twice does not keep the ID of the first request.
+- It applies `ProblemDetailsOptions.CustomizeProblemDetails`, should a later change set it.
+- It serializes with the API's JSON options, without the request's token. With the token, a client that had gone away made the writing throw, and the exception handler then logged the exception that it was handling a second time, as a failure of its own handler.
+
+**4. Nothing about the exception.** No response carries an exception's type, message or stack trace, in any environment (D19). The exception is in the log instead (decision 5).
+
+- In Development, `WebApplication` puts the developer exception page in front of the app's middleware. The exception handler answers before the page sees the exception, so Development gives the same 500 as Production.
+- Kestrel sends no `Server` header (`KestrelServerOptions.AddServerHeader`). The other headers that named the legacy stack came from IIS and ASP.NET, which the new API does not run on.
+
+**5. Logging.** `Program.cs` adds the error handling right after the request logging, so it runs inside it:
+
+- **An exception** is logged once, at Error, by the exception handler: "An unhandled exception has occurred while executing the request.", from `Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware`, with the request's trace ID. The request event then sees the 500, which makes it an Error ([ADR-0019](#adr-0019-request-logging-and-application-log-events), decision 2), without the exception.
+- **An exception after the response has started.** The handler can no longer answer. It logs the exception and a warning that the response has started, and lets the exception go on. The request event logs it too, as a request that threw, and so does Kestrel ([ADR-0019](#adr-0019-request-logging-and-application-log-events)). The client gets a response that breaks off.
+- **A request that the client aborted.** The handler logs "The request was aborted by the client." at Debug and sets the status to 499, which the client never sees. The request event, with status 499, is Information, or the level of its endpoint.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `HttpConventionsTests.Route_that_matches_nothing_is_a_404_problem_whatever_the_Accept_header` (7 `Accept` headers) | 404 as `application/problem+json`, with the type, title, status and a trace ID, for XML, HTML and PNG too. |
+| `HttpConventionsTests.Error_status_that_an_endpoint_returns_without_a_body_becomes_a_problem` | `TypedResults.NotFound()` becomes a 404 problem. |
+| `HttpConventionsTests.Method_that_the_route_does_not_allow_is_a_405_problem_with_the_Allow_header` | `DELETE` on a `GET` route: a 405 problem with `Allow: GET`. |
+| `HttpConventionsTests.Parameter_that_does_not_bind_is_a_400_problem_in_every_environment` (Development, Production) | A 400 problem, in Development too ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document)). |
+| `HttpConventionsTests.Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors` | With `Accept: application/xml`: a 400 problem with `errors`. |
+| `HttpConventionsTests.Exception_is_a_500_problem_that_does_not_show_the_exception` (Development, Production) | With `Accept: text/html`: a 500 problem with exactly `type`, `title`, `status` and `traceId`. |
+| `HttpConventionsTests.Exception_in_routing_is_a_500_problem` | Two endpoints that match one route: routing throws, and the answer is a 500 problem. |
+| `HttpConventionsTests.Problem_that_an_endpoint_returns_keeps_its_detail_and_gets_the_trace_id` (7 `Accept` headers) | A 410 from `TypedResults.Problem` keeps its `detail`, and gets the title `Gone`, its RFC 9110 type and a trace ID. |
+| `ProblemJsonWriterTests.Problem_gets_the_status_type_and_title_of_the_response_and_the_trace_id` (unit) | A problem with nothing set gets 404, its type and title, the activity's ID and `application/problem+json`. |
+| `ProblemJsonWriterTests.Problem_written_before_gets_the_trace_id_of_the_current_request` (unit) | One problem written for two requests carries the second one's ID. |
+| `ProblemJsonWriterTests.Request_that_the_client_aborted_does_not_make_the_writer_throw` (unit) | Writing with `RequestAborted` cancelled completes. |
+| `ProblemJsonWriterTests.Customization_of_the_problem_details_options_applies` (unit) | `CustomizeProblemDetails` is applied. |
+| `HttpServiceCollectionExtensionsTests.Problem_json_writer_comes_before_ASP_NET_Core_s_writer` (unit) | `ProblemJsonWriter` is the first of the two registered writers. Every other test passes with it second, because ASP.NET Core's writer then writes the problems for clients that accept JSON, and the same body. |
+| `ErrorHandlingTests.Route_that_matches_nothing_is_a_404_problem_with_the_trace_id_of_the_request` | In the app that `Program.cs` builds: the problem's `traceId` holds the trace ID of the caller's `traceparent`. |
+| `ErrorHandlingTests.Exception_is_a_500_problem_that_does_not_show_the_exception` | In the app that `Program.cs` builds, for an exception thrown after the endpoints. |
+| `ErrorHandlingTests.Kestrel_sends_no_Server_header` | `AddServerHeader` is off. The test server sends no `Server` header either way, so the setting is checked. |
+| `RequestLoggingTests.Request_that_throws_is_logged_at_Error_and_its_exception_once` | Replaces ADR-0019's `Request_that_throws_is_logged_at_Error_with_the_exception`. The client gets a 500. The request event is an Error with status 500 and no exception, and the one event of the trace that has the exception is the handler's, at Error. |
+| `RequestLoggingTests.Request_that_throws_after_the_response_started_is_logged_with_its_exception` | The request event carries the exception that the handler could not answer. |
+
+The test host of `HttpConventionsTests` logs nothing, so ASP.NET Core starts no activity for its requests, and their `traceId` is the request's `TraceIdentifier`. `ErrorHandlingTests` checks the W3C form in the app that `Program.cs` builds.
+
+Each of these deliberate breaks failed the intended tests:
+
+- no `ProblemJsonWriter`: the XML, HTML and PNG cases of `Route_that_matches_nothing_is_a_404_problem_whatever_the_Accept_header` and of `Problem_that_an_endpoint_returns_keeps_its_detail_and_gets_the_trace_id`, `Parameter_that_breaks_a_validation_attribute_is_a_400_problem_with_its_errors`, and both cases of `HttpConventionsTests.Exception_is_a_500_problem_that_does_not_show_the_exception`
+- no status code pages: every case of `Route_that_matches_nothing_is_a_404_problem_whatever_the_Accept_header` and of `Parameter_that_does_not_bind_is_a_400_problem_in_every_environment`, `Error_status_that_an_endpoint_returns_without_a_body_becomes_a_problem`, `Method_that_the_route_does_not_allow_is_a_405_problem_with_the_Allow_header`, and `ErrorHandlingTests.Route_that_matches_nothing_is_a_404_problem_with_the_trace_id_of_the_request`
+- no exception handler: both `Exception_is_a_500_problem_that_does_not_show_the_exception` tests, three cases in all, and `Request_that_throws_is_logged_at_Error_and_its_exception_once`
+- the error handling before the request logging in `Program.cs`: `Request_that_throws_is_logged_at_Error_and_its_exception_once`, whose request event then had the exception too
+- the `Server` header left on: `Kestrel_sends_no_Server_header`
+- no `UseRouting()` in `UseCatalogErrorHandling`: `Exception_in_routing_is_a_500_problem`
+- the request's token passed to the serializer: `Request_that_the_client_aborted_does_not_make_the_writer_throw`
+- `traceId` added only when missing: `Problem_written_before_gets_the_trace_id_of_the_current_request`
+- no `CustomizeProblemDetails`: `Customization_of_the_problem_details_options_applies`
+- `ProblemJsonWriter` registered after `AddProblemDetails`: `Problem_json_writer_comes_before_ASP_NET_Core_s_writer`
+
+### Alternatives considered
+
+- **ASP.NET Core's writer as it is.** A client that does not accept JSON would get `text/plain`, an empty 500, or a problem without `traceId`, depending on which middleware answers, although every result it gets is JSON.
+- **A 406 for an `Accept` header without JSON.** The legacy app answered `Accept: image/png` with JSON ([`brands-get-all--accept-unsupported`](docs/legacy/contract/brands-list.json)), and statuses are contract.
+- **Web API 2's `{"Message", "MessageDetail"}`, emulated.** Custom code to keep a format that no standard describes, and that differed between local and remote clients anyway. Error payloads are not contract ([ADR-0002](#adr-0002-wire-contract-policy), decision 4).
+- **Problems written by each endpoint, without the status code pages.** The 404s and 405s of routing and the 400s of binding happen before any endpoint runs, and would keep empty bodies.
+- **The developer exception page in Development.** Stack traces in responses, and a contract that changes with the environment (D19).
+- **The exception handler outside the request logging.** Both would log the exception.
+- **The bare 32-character trace ID as `traceId`.** The W3C ID holds it, and it is the form that ASP.NET Core's own writer uses.
+
+### Consequences
+
+- A client that read `Message` or `MessageDetail` reads `title`, `detail` or `errors` instead. The statuses do not change. [BC-001](docs/behavior-changes.md#bc-001-error-responses-are-problem-details) records the delta.
+- A client can quote a problem's `traceId`, and its trace ID finds the request's events in the log.
+- The OpenAPI document shows error responses without their problem body until Stage 9.2.
+- The request event of an aborted request has status 499.
+- Of D18, exceptions are now logged, once each, except one thrown after the response has started (decision 5). Of D19, responses no longer carry stack traces or a `Server` header.
+- Any later middleware that writes an error body of its own has to write a problem too. One that sets only the status, as authentication's challenge does (Stage 12), gets a problem body from the status code pages if it runs inside them.

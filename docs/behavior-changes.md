@@ -29,7 +29,16 @@ The register has two parts:
 
 ## Entries
 
-No entries yet. Nothing has changed: the new API does not exist until Stage 2, and the first delta lands with the first ported endpoint in Stage 7.
+### BC-001: Error responses are problem details
+
+- **Kind:** Contract delta
+- **Forced by:** Platform
+- **Stage / commit:** 7.1, "Add Minimal API conventions, problem details and OpenAPI (Stage 7.1)"
+- **Legacy behaviour:** The error body came from the framework that failed. Web API 2 wrote `{"Message", "MessageDetail"}` ([`brands-get-by-id--non-integer`](legacy/contract/brands-get-by-id.json)), or XML for an XML `Accept` header (`brands-get-by-id--non-integer-xml`). The 404s that the code returned had no body (`brands-get-by-id--not-found`). IIS and ASP.NET answered the rest with HTML pages ([`api-root`](legacy/contract/api-root.json), `brands-get-by-id--dot-in-segment`). Local clients got an exception's message, type and stack trace.
+- **New behaviour:** Every error is a problem details object (RFC 9457), `application/problem+json`, whatever the `Accept` header says. It has `type`, `title`, `status` and `traceId`, plus `detail` when the endpoint gives one and `errors` for a validation failure. No response shows an exception, in any environment. The status codes do not change.
+- **Client impact:** A client that reads `Message` or `MessageDetail` reads `title`, `detail` or `errors` instead. A client that expects an empty 404 body gets a body. A client that looks only at the status sees no change.
+- **Test:** `HttpConventionsTests` (a problem from each source of errors, for each `Accept` header of the golden exchanges) and `ErrorHandlingTests` (the app that `Program.cs` builds). From Stage 7.2 the golden exchanges check the statuses.
+- **Decision:** [ADR-0021](../DECISIONS.md#adr-0021-error-contract-problem-details), and [ADR-0002](../DECISIONS.md#adr-0002-wire-contract-policy), decision 4.
 
 ## Known upcoming deltas
 
@@ -37,8 +46,7 @@ The Stage 1 audit and characterization already show where the new API will diffe
 
 | Legacy behaviour (evidence) | Expected change | Forced by | Stage |
 |---|---|---|---|
-| XML for `Accept: application/xml`, `text/xml` or a browser `Accept` ([`brands-list.json`](legacy/contract/brands-list.json): `brands-get-all--accept-xml` and the related exchanges) | JSON regardless of `Accept`. | Platform (Minimal APIs) | 7.1, 7.2 |
-| Web API 2 error bodies `{"Message", "MessageDetail"}`, empty 404 bodies, IIS/ASP.NET HTML error pages | The error format chosen in 7.1 (ProblemDetails is planned). | Platform | 7.1 |
+| XML for `Accept: application/xml`, `text/xml` or a browser `Accept` ([`brands-list.json`](legacy/contract/brands-list.json): `brands-get-all--accept-xml` and the related exchanges) | JSON regardless of `Accept`. | Platform (Minimal APIs) | 7.2 |
 | `GET /api/files` returns 200 with a BinaryFormatter stream labelled `text/html` ([`files.json`](legacy/contract/files.json): `files-get`) | `410 Gone` with a ProblemDetails body that points to `/api/brands`. | Security | 7.3 |
 | `OPTIONS /api/brands` answered by IIS with 200 ([`brands-other-verbs.json`](legacy/contract/brands-other-verbs.json): `brands-options`) | Whatever Kestrel routing answers (no CORS is configured). | Platform | 7.2 |
 | `GET /api/brands/1.5` rejected by the IIS static file handler with 404 ([`brands-get-by-id.json`](legacy/contract/brands-get-by-id.json): `brands-get-by-id--dot-in-segment`) | Handled by the app like any other non-integer ID. | Platform | 7.2 |

@@ -9,4 +9,9 @@
     <ProjectReference Include="..\..\src\eShop.Catalog.Api\eShop.Catalog.Api.csproj" />
   </ItemGroup>
 
+  <!-- The committed OpenAPI document, which OpenApiDocumentTests compares with the one the API serves (ADR-0020). -->
+  <ItemGroup>
+    <None Include="..\..\docs\openapi\v1.json" Link="OpenApi\v1.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

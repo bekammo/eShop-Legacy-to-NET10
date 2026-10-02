@@ -1,9 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +14,8 @@ namespace eShop.Catalog.Api.IntegrationTests.Logging;
 public sealed class RequestLoggingTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
     private const string RequestLoggingMiddleware = "Serilog.AspNetCore.RequestLoggingMiddleware";
+
+    private const string ExceptionHandlerMiddleware = "Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware";
 
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
@@ -45,21 +45,47 @@ public sealed class RequestLoggingTests(CatalogApiFactory factory) : IClassFixtu
             .Select(static other => LogFile.String(other, "SourceContext")));
     }
 
+    // The exception handler, inside the request logging, logs the exception and answers 500 (ADR-0021). The request
+    // event has that status, so it is an Error too, but not the exception a second time.
     [Fact]
-    public async Task Request_that_throws_is_logged_at_Error_with_the_exception()
+    public async Task Request_that_throws_is_logged_at_Error_and_its_exception_once()
     {
         var logFile = LogFilePath();
         await using var host = factory.WithWebHostBuilder(builder =>
             CatalogApiFactory.UseLogFile(builder, logFile)
-                .ConfigureTestServices(static services => services.AddTransient<IStartupFilter, ThrowAfterEndpoints>()));
+                .ConfigureTestServices(static services => services.AddSingleton<IStartupFilter>(new ThrowAfterEndpoints(afterResponseStarted: false))));
         using var client = host.CreateClient();
         var traceId = ActivityTraceId.CreateRandom().ToHexString();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendAsync(Request("/throw", traceId), CancellationToken));
+        using var response = await client.SendAsync(Request("/throw", traceId), CancellationToken);
 
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         var logEvent = await RequestEventAsync(logFile, traceId);
         Assert.Equal("Error", LogFile.String(logEvent, "@l"));
         Assert.Equal(500, logEvent.GetProperty("StatusCode").GetInt32());
+        Assert.Null(LogFile.String(logEvent, "@x"));
+        var exceptionEvent = Assert.Single(LogFile.Events(logFile), other => LogFile.String(other, "@tr") == traceId && LogFile.String(other, "@x") is not null);
+        Assert.Equal(ExceptionHandlerMiddleware, LogFile.String(exceptionEvent, "SourceContext"));
+        Assert.Equal("Error", LogFile.String(exceptionEvent, "@l"));
+        Assert.StartsWith($"System.InvalidOperationException: {ThrowAfterEndpoints.Message}", LogFile.String(exceptionEvent, "@x"), StringComparison.Ordinal);
+    }
+
+    // Once the response has started, the exception handler cannot answer with a problem: it logs the exception and
+    // lets it go on, and the request event logs it too, as a request that threw (ADR-0019).
+    [Fact]
+    public async Task Request_that_throws_after_the_response_started_is_logged_with_its_exception()
+    {
+        var logFile = LogFilePath();
+        await using var host = factory.WithWebHostBuilder(builder =>
+            CatalogApiFactory.UseLogFile(builder, logFile)
+                .ConfigureTestServices(static services => services.AddSingleton<IStartupFilter>(new ThrowAfterEndpoints(afterResponseStarted: true))));
+        using var client = host.CreateClient();
+        var traceId = ActivityTraceId.CreateRandom().ToHexString();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => client.SendAsync(Request("/throw", traceId), CancellationToken));
+
+        var logEvent = await RequestEventAsync(logFile, traceId);
+        Assert.Equal("Error", LogFile.String(logEvent, "@l"));
         Assert.StartsWith($"System.InvalidOperationException: {ThrowAfterEndpoints.Message}", LogFile.String(logEvent, "@x"), StringComparison.Ordinal);
     }
 
@@ -100,18 +126,4 @@ public sealed class RequestLoggingTests(CatalogApiFactory factory) : IClassFixtu
     // A file beside the factory's own, which the factory deletes with its directory.
     private string LogFilePath() =>
         Path.Combine(Path.GetDirectoryName(factory.LogFilePath)!, $"{Guid.NewGuid():N}.log");
-
-    // Throws for every request that no endpoint takes, inside the request logging: the filter runs the app's own
-    // pipeline first, and adds this middleware after it.
-    private sealed class ThrowAfterEndpoints : IStartupFilter
-    {
-        public const string Message = "Thrown by the request logging test.";
-
-        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) =>
-            app =>
-            {
-                next(app);
-                app.Run(static _ => throw new InvalidOperationException(Message));
-            };
-    }
 }

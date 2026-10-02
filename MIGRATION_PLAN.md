@@ -66,7 +66,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
    - Sample items are seeded through `UseSeeding`/`UseAsyncSeeding`.
    - The new app uses its own database. Adopting an existing legacy database is a separate, tested baseline procedure.
 6. **Async-first port.** No synchronous EF Core code is written only to be converted later. Async analyzers are errors from the first commit, and Stage 8 verifies the result.
-7. **OpenAPI via the built-in `Microsoft.AspNetCore.OpenApi`.** The document and a committed snapshot test arrive with the first endpoint, so every endpoint commit shows its contract diff. Swagger UI comes in Stage 9.
+7. **OpenAPI via the built-in `Microsoft.AspNetCore.OpenApi`.** The document and a committed snapshot test arrive in Stage 7.1, before the first endpoint, so every endpoint commit shows its contract diff. Swagger UI comes in Stage 9.
 8. **Tests:**
    - xUnit v3 on Microsoft.Testing.Platform, and `WebApplicationFactory` through a shared factory.
    - Testcontainers SQL Server with one container per test assembly and one database per test class.
@@ -189,7 +189,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 6.2 Add request logging, which replaces `Application_BeginRequest` and the `requestinfo`/`activityid` properties, and source-generated `LoggerMessage` methods. Test: the request event is captured with a trace ID.
 
 ### Stage 7 — HTTP endpoints (Minimal APIs)
-- [ ] 7.1 API conventions:
+- [x] 7.1 API conventions:
   - endpoint groups and `TypedResults`
   - PascalCase JSON
   - ProblemDetails and an exception handler
