@@ -107,8 +107,13 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 | `GET /health/live` | `200 Healthy` while the process is up. It does not check the database or any other dependency. |
 | `GET /health/ready` | `200 Healthy` when the API can reach its database and the database has every migration, otherwise `503 Unhealthy` ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)). In mock mode it checks nothing and answers `200 Healthy`. |
 | `GET /openapi/v1.json` | The OpenAPI 3.1 document of the API, in every environment ([ADR-0020](DECISIONS.md#adr-0020-minimal-api-endpoints-and-the-openapi-document)). |
+| `GET /api/brands` | Every brand, in ID order: `[{"Id":1,"Brand":"Azure"}, ...]`. |
+| `GET /api/brands/{id}` | One brand, or 404. An ID that is not an integer is a 400. |
+| `DELETE /api/brands/{id}` | Deletes nothing, as in the legacy app: 200 for a brand that exists, 404 otherwise. |
 
-The catalog endpoints, which arrive from Stage 7.2, answer with JSON, with property names in PascalCase as the legacy Web API wrote them, whatever the `Accept` header asks for. Every error, except the plain-text answers of the health checks, is a problem details object ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)), as `application/problem+json`, a route that matches nothing included. Its `traceId` holds the trace ID of the request, which finds the request's events in the log ([ADR-0021](DECISIONS.md#adr-0021-error-contract-problem-details)):
+The brand endpoints are drop-in compatible with the legacy Web API ([ADR-0002](DECISIONS.md#adr-0002-wire-contract-policy)). The few deliberate differences, such as no XML, are in the [behavior-change register](docs/behavior-changes.md).
+
+The catalog endpoints answer with JSON, with property names in PascalCase as the legacy Web API wrote them, whatever the `Accept` header asks for. Every error, except the plain-text answers of the health checks, is a problem details object ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)), as `application/problem+json`, a route that matches nothing included. Its `traceId` holds the trace ID of the request, which finds the request's events in the log ([ADR-0021](DECISIONS.md#adr-0021-error-contract-problem-details)):
 
 ```json
 {

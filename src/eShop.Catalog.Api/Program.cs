@@ -1,3 +1,4 @@
+using eShop.Catalog.Api.Brands;
 using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Health;
 using eShop.Catalog.Api.Http;
@@ -29,5 +30,6 @@ app.UseCatalogErrorHandling();
 // The OpenAPI document, /openapi/v1.json, in every environment (ADR-0020).
 app.MapOpenApi();
 app.MapHealthCheckEndpoints();
+app.MapBrandEndpoints();
 
 await app.RunAsync();

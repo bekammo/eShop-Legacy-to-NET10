@@ -14,4 +14,13 @@
     <None Include="..\..\docs\openapi\v1.json" Link="OpenApi\v1.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!--
+    The golden exchanges of the legacy app, which LegacyContractTests replays (ADR-0002), and the register of the
+    deltas, in which that test finds each delta that it applies.
+  -->
+  <ItemGroup>
+    <None Include="..\..\docs\legacy\contract\*.json" LinkBase="Legacy\contract" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\behavior-changes.md" Link="Contract\behavior-changes.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

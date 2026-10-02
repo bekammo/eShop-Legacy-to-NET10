@@ -197,7 +197,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - OpenAPI document plus a committed snapshot test
 
   ADRs: Minimal APIs vs controllers; error contract.
-- [ ] 7.2 Brands, drop-in compatible:
+- [x] 7.2 Brands, drop-in compatible:
   - `GET /api/brands`, ordered by Id
   - `GET /api/brands/{id}`, where a non-integer ID still gets 400
   - `DELETE /api/brands/{id}` as a no-op
