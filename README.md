@@ -111,6 +111,7 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 | `GET /api/brands/{id}` | One brand, or 404. An ID that is not an integer is a 400. |
 | `DELETE /api/brands/{id}` | Deletes nothing, as in the legacy app: 200 for a brand that exists, 404 otherwise. |
 | `GET /api/files` | Retired: `410 Gone`, with a problem that points to `GET /api/brands`. The legacy app returned the brands there as a BinaryFormatter payload ([ADR-0022](DECISIONS.md#adr-0022-get-apifiles-retired-with-410-gone)). |
+| `GET /items/{id}/pic` | The picture of an item, from the folder that `Catalog:PicturesPath` names: 400 for an ID below 1, 404 for an unknown item or a picture that is not in the folder. A `Range` request gets the part it asks for (206) ([ADR-0023](DECISIONS.md#adr-0023-security-fixes-made-during-the-migration)). |
 
 The brand endpoints are drop-in compatible with the legacy Web API ([ADR-0002](DECISIONS.md#adr-0002-wire-contract-policy)). The few deliberate differences, such as no XML, are in the [behavior-change register](docs/behavior-changes.md).
 
@@ -148,6 +149,7 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 | `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`), unless user secrets override it (see [Local database](#local-database)) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
 | `Database:MigrateOnStartup` | `true`: the migrations are applied, and a new database seeded, before the app accepts requests | `false`. The host refuses to start with `true` outside Development. |
 | `Catalog:UseMockData` | `false` (`appsettings.json`). `true` serves the catalog from memory, and the two settings above are not read. | `false`, as in Development |
+| `Catalog:PicturesPath` | `../eShopLegacyMVC/Pics`, the legacy app's pictures, relative to the content root (`appsettings.json`) | The same, until Stage 11.2 moves the pictures into the API. A published app needs it set, for example as `Catalog__PicturesPath`. The host does not start when the folder does not exist. |
 
 The host does not start with an invalid setting, or without a connection string unless mock mode is on. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 

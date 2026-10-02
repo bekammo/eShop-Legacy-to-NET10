@@ -98,17 +98,67 @@ The register has two parts:
 - **Test:** `LegacyContractTests` replays the three exchanges, in database mode and in mock mode, and expects 410. `FileEndpointsTests` checks the problem.
 - **Decision:** [ADR-0022](../DECISIONS.md#adr-0022-get-apifiles-retired-with-410-gone), and [ADR-0001](../DECISIONS.md#adr-0001-migration-scope).
 
+### BC-007: A missing picture file is a 404
+
+- **Kind:** Contract delta
+- **Forced by:** Security
+- **Stage / commit:** 7.4, "Serve the item pictures from a confined folder (Stage 7.4)"
+- **Legacy behaviour:** An item whose picture file did not exist got a 500, an error page with the `FileNotFoundException` and its path ([`pic-missing-file`](legacy/evidence/pic-missing-file.json), audit D7).
+- **New behaviour:** 404, a problem without the path. The API logs `PictureNotFound` at Warning, with the item's ID and the picture's name.
+- **Client impact:** 404 instead of 500 for such an item.
+- **Test:** `PictureEndpointsTests.Missing_picture_file_is_a_404_and_a_warning`, `CatalogPicturesTests.Name_without_a_file_finds_nothing`.
+- **Decision:** [ADR-0023](../DECISIONS.md#adr-0023-security-fixes-made-during-the-migration).
+
+### BC-008: Picture names outside the pictures folder are not served
+
+- **Kind:** Contract delta
+- **Forced by:** Security
+- **Stage / commit:** 7.4, "Serve the item pictures from a confined folder (Stage 7.4)"
+- **Legacy behaviour:** The endpoint served whatever file the item's picture name pointed at: `..\Global.asax` served the app's `Global.asax`, and `C:\Windows\win.ini` served that file ([`pic-path-traversal-relative`](legacy/evidence/pic-path-traversal-relative.json), [`pic-path-traversal-absolute`](legacy/evidence/pic-path-traversal-absolute.json), audit D1).
+- **New behaviour:** Only files inside the pictures folder are served. A name that leaves the folder, or a rooted one, gets a 404 and the `PictureNotFound` warning. Clients can no longer write a picture name at all ([ADR-0015](../DECISIONS.md#adr-0015-async-first-catalog-service)), but a database adopted from the legacy app may hold such names.
+- **Client impact:** None for the pictures of the folder.
+- **Test:** `PictureEndpointsTests.Picture_name_that_leaves_the_folder_is_a_404`, `CatalogPicturesTests.Name_that_leaves_the_folder_finds_nothing` and `Rooted_name_finds_nothing`.
+- **Decision:** [ADR-0023](../DECISIONS.md#adr-0023-security-fixes-made-during-the-migration).
+
+### BC-009: The content type of a picture ignores the case of its extension
+
+- **Kind:** Contract delta
+- **Forced by:** Security
+- **Stage / commit:** 7.4, "Serve the item pictures from a confined folder (Stage 7.4)"
+- **Legacy behaviour:** A case-sensitive switch on the extension chose the content type, so `1.PNG` was sent as `application/octet-stream` ([`pic-extension-case`](legacy/evidence/pic-extension-case.json), audit D8). It sent `.wmf` as `image/wmf` and `.jp2` as `image/jp2`.
+- **New behaviour:** ASP.NET Core's table of extensions gives the type, whatever the case: `1.PNG` is `image/png`. It sends `.wmf` as `application/x-msmetafile`, and `.jp2`, which it does not know, as `application/octet-stream`, the type for any unknown extension, as before.
+- **Client impact:** None for the pictures of the folder, which are all `.png`.
+- **Test:** `CatalogPicturesTests.Extension_case_does_not_change_the_content_type`.
+- **Decision:** [ADR-0023](../DECISIONS.md#adr-0023-security-fixes-made-during-the-migration).
+
+### BC-010: Range requests are honoured
+
+- **Kind:** Contract delta
+- **Forced by:** Platform, in the sense of [ADR-0002](../DECISIONS.md#adr-0002-wire-contract-policy), decision 5: the legacy file result could not serve ranges, and ASP.NET Core's can. Turning it on is the plan's decision (Stage 7.4), not a necessity.
+- **Stage / commit:** 7.4, "Serve the item pictures from a confined folder (Stage 7.4)"
+- **Legacy behaviour:** `Range: bytes=0-99` was ignored: 200 with the whole picture ([`pictures.json`](legacy/contract/pictures.json): `pic-get--range`). No picture had `Last-Modified`.
+- **New behaviour:** 206, with `Content-Range: bytes 0-99/151640` and those 100 bytes. Every picture has `Accept-Ranges: bytes` and `Last-Modified`, and `If-Modified-Since` gets 304 when the file has not changed.
+- **Client impact:** A client that sends `Range` gets the part that it asks for. A client that sends `If-Modified-Since` can get a 304 without a body.
+- **Test:** `LegacyContractTests` replays `pic-get--range`, in database mode and in mock mode, and compares the 100 bytes with the start of the recorded picture. `PictureEndpointsTests.Picture_has_its_last_modified_time_and_a_conditional_request_gets_304`.
+- **Decision:** [ADR-0023](../DECISIONS.md#adr-0023-security-fixes-made-during-the-migration).
+
+### BC-011: Methods other than GET on the picture route are a 405
+
+- **Kind:** Contract delta
+- **Forced by:** Platform
+- **Stage / commit:** 7.4, "Serve the item pictures from a confined folder (Stage 7.4)"
+- **Legacy behaviour:** MVC answered `HEAD` and `POST` on the picture route with 404 ([`pictures.json`](legacy/contract/pictures.json): `pic-head`, `pic-post`).
+- **New behaviour:** ASP.NET Core's routing answers a method that the route does not have with 405 and `Allow: GET`, as Web API 2 answered on the brand routes.
+- **Client impact:** 405 instead of 404. A client that probed pictures with `HEAD` has to use `GET`.
+- **Test:** `LegacyContractTests` replays `pic-head` and `pic-post`, and compares the responses with those of `brands-head` and `brands-post`: 405 with `Allow: GET`.
+- **Decision:** [ADR-0023](../DECISIONS.md#adr-0023-security-fixes-made-during-the-migration), which leaves `HEAD` support to a version 2.
+
 ## Known upcoming deltas
 
 The Stage 1 audit and characterization already show where the new API will differ. The list below records them so that none is forgotten. Each becomes an entry, with a number and a test, in the commit that implements it. The list is not an entry itself, and it does not pre-empt the decisions of later stages.
 
 | Legacy behaviour (evidence) | Expected change | Forced by | Stage |
 |---|---|---|---|
-| A missing picture file returns 500 ([`pic-missing-file`](legacy/evidence/pic-missing-file.json)) | 404. | Security | 7.4 |
-| `PictureFileName` can point outside `Pics` ([`pic-path-traversal-relative`](legacy/evidence/pic-path-traversal-relative.json), [`-absolute`](legacy/evidence/pic-path-traversal-absolute.json)) | Only files inside the pictures root are served. | Security | 7.4 |
-| An upper-case extension is served as `application/octet-stream` ([`pic-extension-case`](legacy/evidence/pic-extension-case.json)) | The content type comes from a case-insensitive lookup. | Security | 7.4 |
-| `Range` is ignored: 200 with the full body ([`pictures.json`](legacy/contract/pictures.json): `pic-get--range`) | Range requests are honoured (206). | Platform | 7.4 |
-| `HEAD /items/1/pic` returns 404 ([`pictures.json`](legacy/contract/pictures.json): `pic-head`) | To be decided in 7.4. | Platform | 7.4 |
 | Paging accepts `pageSize=0`, negative values and unbounded sizes, and the bad ones give 500 ([`catalog-reads`](legacy/evidence/catalog-reads.json)) | `pageSize` must be 1–100 and `pageIndex` must be 0 or more; anything else is a 400. | Security (unbounded reads) | 7.5 |
 | `PictureFileName` and `Id` are client-writable on create and edit; edit overwrites fields the client did not send ([`edit-overwrites-unposted-fields`](legacy/evidence/edit-overwrites-unposted-fields.json)) | `PictureFileName` is not client-writable, and updates apply explicit fields. | Security | 7.6, 7.7 |
 | `Range(0, 1000000)` rounds the price before comparing, so 1000000.50 is accepted ([`create-item-validation`](legacy/evidence/create-item-validation.json)) | To be decided in 7.6: keep it or apply the range exactly. | Security (input validation) | 7.6 |

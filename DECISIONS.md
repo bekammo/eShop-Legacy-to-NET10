@@ -32,6 +32,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) | Minimal API endpoints and the OpenAPI document | Accepted | 7.1 |
 | [ADR-0021](#adr-0021-error-contract-problem-details) | Error contract: problem details | Accepted | 7.1 |
 | [ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone) | `GET /api/files` retired with 410 Gone | Accepted | 7.3 |
+| [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) | Security fixes made during the migration | Accepted | 7.4 |
 
 ## Template
 
@@ -2169,3 +2170,94 @@ Each of these deliberate breaks failed the intended tests:
 - A client of `/api/files` has to call `GET /api/brands` and read JSON with the same IDs and names. [BC-006](docs/behavior-changes.md#bc-006-get-apifiles-is-gone) records the delta.
 - The new API has no BinaryFormatter. `eShopLegacy.Utilities`, whose only consumer this was, is deleted in Stage 11.3.
 - The route stays mapped to answer 410 until a version 2 of the API decides to drop it.
+
+---
+
+## ADR-0023: Security fixes made during the migration
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.4
+
+### Context
+
+- The legacy code is frozen, so its defects are fixed only in the new API ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover)). [ADR-0002](#adr-0002-wire-contract-policy), decision 3, allows a delta that security forces, with an entry in the register and a test.
+- The audit lists the defects ([audit: defects](docs/legacy-audit.md#7-defects-and-risks)). The worst is in the picture endpoint, `GET /items/{catalogItemId:int}/pic`:
+  - **D1 (High).** `PicController` reads `Path.Combine(Server.MapPath("~/Pics"), item.PictureFileName)`. `PictureFileName` was client-writable through the MVC forms, so a client could store `..\Global.asax` or `C:\Windows\win.ini`, and the endpoint served that file to anyone ([`pic-path-traversal-relative`](docs/legacy/evidence/pic-path-traversal-relative.json), [`pic-path-traversal-absolute`](docs/legacy/evidence/pic-path-traversal-absolute.json)).
+  - **D7.** A missing file gives a 500 with the `FileNotFoundException` ([`pic-missing-file`](docs/legacy/evidence/pic-missing-file.json)).
+  - **D8.** The MIME switch is case-sensitive, so `1.PNG` is sent as `application/octet-stream` ([`pic-extension-case`](docs/legacy/evidence/pic-extension-case.json)).
+- [ADR-0015](#adr-0015-async-first-catalog-service) already took the picture out of what a client writes: a new item gets `dummy.png`. A database adopted from the legacy app ([ADR-0012](#adr-0012-adopting-a-legacy-database)) can still hold the names above.
+- Until Stage 11.2 the new API serves the pictures from the legacy `Pics` folder, through `Catalog:PicturesPath` ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover)). [ADR-0009](#adr-0009-configuration): a typed option, validated when the host starts.
+- A probe on Windows showed that `PhysicalFileProvider` finds nothing for `..\Global.asax`, `../Global.asax` or `C:\Windows\win.ini`, and that `FileExtensionContentTypeProvider` gives `image/png` for `.PNG`. For two extensions of the legacy switch it gives another type: `.wmf` is `application/x-msmetafile` (legacy: `image/wmf`), and it has none for `.jp2` (legacy: `image/jp2`).
+
+### Decision
+
+**1. Where each security defect is fixed.** Each is fixed in the new API, not ported, or accepted as a risk, and each fix that a client can see is a delta with a test:
+
+| Defect | Fixed in | Record |
+|---|---|---|
+| D1, file read through the picture endpoint | Stage 5.1 (no client-written picture) and 7.4 (decision 2) | [ADR-0015](#adr-0015-async-first-catalog-service), [BC-008](docs/behavior-changes.md#bc-008-picture-names-outside-the-pictures-folder-are-not-served) |
+| D2, overposting | Stage 5.1 (explicit fields), and the request contracts of 7.6 and 7.7 | [ADR-0015](#adr-0015-async-first-catalog-service) |
+| D3, no authentication | Stage 12; until then an accepted risk | [ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover) |
+| D4, BinaryFormatter | Stage 7.3 | [ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone) |
+| D5, vulnerable Newtonsoft.Json and log4net | Stages 6.1 and 7.1: the new API uses neither. The legacy app keeps them until Stage 11.3. | |
+| D6, unbounded paging | Stage 5.1 (guards) and 7.5 (1–100) | [ADR-0015](#adr-0015-async-first-catalog-service) |
+| D7, missing file gives 500 | Stage 7.4 | [BC-007](docs/behavior-changes.md#bc-007-a-missing-picture-file-is-a-404) |
+| D8, case-sensitive MIME types | Stage 7.4 | [BC-009](docs/behavior-changes.md#bc-009-the-content-type-of-a-picture-ignores-the-case-of-its-extension) |
+| D9, D10, input validation | Stage 7.6 | |
+| D11, writes to unknown items give 500 | Stage 5.1 (`false` for an unknown ID) and 7.7 | [ADR-0015](#adr-0015-async-first-catalog-service) |
+| D15, mock mode not thread-safe | Stage 5.2 | [ADR-0016](#adr-0016-in-memory-catalog-service) |
+| D18, logging | Stages 6.1, 6.2 and 7.1 | [ADR-0018](#adr-0018-logging-with-serilog), [ADR-0019](#adr-0019-request-logging-and-application-log-events), [ADR-0021](#adr-0021-error-contract-problem-details) |
+| D19, information disclosure | Stage 7.1 | [ADR-0021](#adr-0021-error-contract-problem-details) |
+| D20, static files of the site root | Stage 7.4: the API serves no static files, only the pictures of items | |
+
+**2. The picture endpoint.** `Pictures/PictureEndpoints.cs` maps `GET /items/{catalogItemId:int}/pic` under the legacy route name `GetPicRouteTemplate`, with which Stage 7.5 builds each item's `PictureUri`. It keeps the legacy answers: 400 for an ID below 1, 404 for an unknown item, and a 404 from routing for an ID that is not an int. It changes these:
+
+- **The folder.** `Catalog:PicturesPath` names it. `appsettings.json` has `../eShopLegacyMVC/Pics`, which is resolved against the content root, as the log file is ([ADR-0018](#adr-0018-logging-with-serilog)). The setting is required, and the host does not start when the folder does not exist (an options check in `AddCatalogPictures`), because every picture would then be a 404. `CatalogPictures`, one for the app, resolves the folder once.
+- **The lookup (D1).** `CatalogPictures` looks the item's `PictureFileName` up through a `PhysicalFileProvider` over the folder. It finds only files inside the folder: a name that leaves it, or a rooted one, finds nothing. By default the provider also hides files whose names start with a dot, and hidden or system files.
+- **No file, no picture (D7).** When the lookup finds nothing, for any reason, the answer is a 404, and `CatalogPictures` logs `PictureNotFound` at Warning, with the item's ID and the name. A missing file, a misconfigured folder and a stored name that tries to leave the folder all need an operator.
+- **The content type (D8).** `FileExtensionContentTypeProvider` gives it, whatever the extension's case. An unknown extension is `application/octet-stream`, as in the legacy app.
+- **Ranges.** The picture is a physical file result with range processing on: a `Range` request gets 206 with the part that it asks for, every picture says `Accept-Ranges: bytes`, and the file result also sends `Last-Modified` and answers `If-Modified-Since` with 304. The legacy app sent the whole file every time.
+- **Other methods.** `HEAD`, `POST` and the rest get the 405 of routing, with `Allow: GET`, as on the brand routes. MVC answered them with 404. Answering `HEAD` with the picture's headers would be the HTTP default, but it is a new capability, and this ADR leaves it to a version 2, as [ADR-0002](#adr-0002-wire-contract-policy), decision 6, leaves idiomatic changes.
+
+The OpenAPI document lists the route, without its 200 response: a file result has no metadata to describe it. Stage 9.2 documents it.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `LegacyContractTests` (`pictures.json`, 23 exchanges) | Items 1–12, by length and SHA-256 (comparison rule 9), with the path in upper case, a trailing slash or `Accept: application/json`; 400 for 0 and -1; 404 for 13, `abc` and 2147483648; `pic-get--range` as 206 with the first 100 bytes ([BC-010](docs/behavior-changes.md#bc-010-range-requests-are-honoured)); `pic-head` and `pic-post` as 405 ([BC-011](docs/behavior-changes.md#bc-011-methods-other-than-get-on-the-picture-route-are-a-405)). In database mode and in mock mode. |
+| `PictureEndpointsTests.Picture_name_that_leaves_the_folder_is_a_404` (3 cases) | `../secret.txt`, `..\secret.txt` and the absolute path of a file beside the folder: 404, and the file's content is not in the response. |
+| `PictureEndpointsTests.Missing_picture_file_is_a_404_and_a_warning` | 404, and `PictureNotFound` at Warning with the item's ID and the name. |
+| `PictureEndpointsTests.Picture_has_its_last_modified_time_and_a_conditional_request_gets_304` | `Last-Modified` and `Accept-Ranges: bytes`, and 304 for `If-Modified-Since`. |
+| `PictureEndpointsTests.Legacy_route_name_builds_the_picture_path` | `GetPicRouteTemplate` builds `/items/7/pic`. |
+| `PictureEndpointsTests.Host_does_not_start_without_its_pictures_folder` (2 cases) | An empty setting, and a folder that does not exist, stop the host with a message that names the setting. |
+| `CatalogPicturesTests` (unit, 11 cases) | The lookup on a temporary folder: a relative and an absolute folder, names that leave the folder or are rooted, a missing file, a folder and an empty name, the case of the extension, and an unknown extension. |
+| `ConfigurationTests.Committed_settings_serve_the_pictures_from_the_legacy_Pics_folder` | `appsettings.json` names `../eShopLegacyMVC/Pics`. The replay of the 12 seeded pictures shows that it holds them. |
+
+`LoggingTests.Relative_log_file_path_is_resolved_against_the_content_root` runs a host whose content root is a temporary directory, so it now gives that host the pictures folder as an absolute path.
+
+Each of these deliberate breaks failed the intended tests:
+
+- the lookup through `Path.Combine`, as in the legacy app: the traversal cases of `CatalogPicturesTests` and of `Picture_name_that_leaves_the_folder_is_a_404`
+- a content type for lower-case `.png` only: `Extension_case_does_not_change_the_content_type`
+- range processing off: `pic-get--range` in both modes, and `Picture_has_its_last_modified_time_and_a_conditional_request_gets_304`
+- no check of the folder at startup: the missing-folder case of `Host_does_not_start_without_its_pictures_folder`
+- no check of the ID: `pic-get--zero` and `pic-get--negative` in both modes
+- no route name: `Legacy_route_name_builds_the_picture_path`
+
+### Alternatives considered
+
+- **`Path.Combine` with a check that the result starts with the folder's path.** It is the legacy code plus a hand-written guard, which has to get prefixes, case, separators and `..` right on two operating systems. `PhysicalFileProvider` is the framework's confinement to a folder, and the static files middleware uses it.
+- **An allowlist of picture names** (`^\w+\.png$`). It would refuse names that the legacy app stored and served legitimately, and the lookup has to be confined anyway.
+- **The static files middleware over the folder** (`/Pics/1.png`). It is another route, which no client of the API uses, and it would serve every file of the folder, not the picture of an item.
+- **500 for a missing file**, as the legacy app answered. The client cannot fix a missing file, and the old error page showed the path.
+- **Range processing off**, as the legacy app had it. Turning it on is the plan's choice (Stage 7.4). A client that sends `Range` asks for a part, and gets it.
+- **`HEAD` answered with the picture's headers.** See decision 2: a new capability, for a version 2.
+
+### Consequences
+
+- An item whose picture name leaves the folder, or whose file is missing, has no picture: 404, and a warning in the log.
+- A deployment has to set `Catalog:PicturesPath`, or keep the repository's layout, until Stage 11.2 moves the pictures into the API project. Without the folder the host does not start.
+- The deltas are [BC-007](docs/behavior-changes.md#bc-007-a-missing-picture-file-is-a-404) to [BC-011](docs/behavior-changes.md#bc-011-methods-other-than-get-on-the-picture-route-are-a-405).
+- The replay of the golden exchanges compares binary bodies from this stage (rule 9), and checks the 206 answer to a `Range` request against a slice of the recorded body.

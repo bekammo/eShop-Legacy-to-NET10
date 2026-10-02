@@ -4,6 +4,7 @@ using eShop.Catalog.Api.Files;
 using eShop.Catalog.Api.Health;
 using eShop.Catalog.Api.Http;
 using eShop.Catalog.Api.Logging;
+using eShop.Catalog.Api.Pictures;
 using Serilog.Debugging;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +23,7 @@ builder.Services.AddCatalogLogging();
 builder.Services.AddCatalogHttp();
 builder.Services.AddHealthChecks();
 builder.Services.AddCatalogServices(builder.Configuration);
+builder.Services.AddCatalogPictures();
 
 var app = builder.Build();
 
@@ -33,5 +35,6 @@ app.MapOpenApi();
 app.MapHealthCheckEndpoints();
 app.MapBrandEndpoints();
 app.MapFileEndpoints();
+app.MapPictureEndpoints();
 
 await app.RunAsync();

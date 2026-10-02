@@ -18,6 +18,11 @@ internal sealed class GoldenExchange(string name, JsonObject exchange)
 
     public JsonNode? Json => Response["body"]!["json"];
 
+    // A binary body is recorded as its length and its SHA-256 (rule 9).
+    public long BodyLength => Response["body"]!["length"]!.GetValue<long>();
+
+    public string BodySha256 => Response["body"]!["sha256"]!.GetValue<string>();
+
     private JsonObject Request => exchange["request"]!.AsObject();
 
     private JsonObject Response => exchange["response"]!.AsObject();
@@ -28,10 +33,13 @@ internal sealed class GoldenExchange(string name, JsonObject exchange)
             .SelectMany(static file => LegacyFiles.ReadJson(Path.Combine("contract", file))["exchanges"]!.AsObject())
             .ToDictionary(static exchange => exchange.Key, static exchange => new GoldenExchange(exchange.Key, exchange.Value!.AsObject()));
 
+    public string? RequestHeader(string header) => Request["headers"]![header]?.GetValue<string>();
+
     public string? ResponseHeader(string header) => Response["headers"]![header]?.GetValue<string>();
 
     // The request as it was recorded: the method, the path as it is, exactly the recorded headers, and the body (rule 2).
-    public HttpRequestMessage CreateRequest()
+    // Without the header named, if one is.
+    public HttpRequestMessage CreateRequest(string? without = null)
     {
         var request = new HttpRequestMessage(new HttpMethod(Request["method"]!.GetValue<string>()), Request["path"]!.GetValue<string>());
         if (Request["body"] is { } body)
@@ -41,7 +49,7 @@ internal sealed class GoldenExchange(string name, JsonObject exchange)
             request.Content.Headers.ContentType = null;
         }
 
-        foreach (var (header, value) in Request["headers"]!.AsObject())
+        foreach (var (header, value) in Request["headers"]!.AsObject().Where(header => header.Key != without))
         {
             if (header == "Content-Type")
             {

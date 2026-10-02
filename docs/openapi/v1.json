@@ -5,6 +5,34 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/items/{catalogItemId}/pic": {
+      "get": {
+        "tags": [
+          "PictureEndpoints"
+        ],
+        "operationId": "GetPicRouteTemplate",
+        "parameters": [
+          {
+            "name": "catalogItemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "Bad Request"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/brands": {
       "get": {
         "tags": [
@@ -118,6 +146,9 @@
     }
   },
   "tags": [
+    {
+      "name": "PictureEndpoints"
+    },
     {
       "name": "BrandEndpoints"
     }
