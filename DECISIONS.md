@@ -33,6 +33,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0021](#adr-0021-error-contract-problem-details) | Error contract: problem details | Accepted | 7.1 |
 | [ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone) | `GET /api/files` retired with 410 Gone | Accepted | 7.3 |
 | [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) | Security fixes made during the migration | Accepted | 7.4 |
+| [ADR-0024](#adr-0024-item-and-type-reads) | Item and type reads | Accepted | 7.5 |
 
 ## Template
 
@@ -1911,7 +1912,7 @@ A host was also run by hand in Production, with a connection string to a server 
 - The other web defaults stay. A number can be read from a JSON string, as Newtonsoft read it, so the document gives integer properties the type `["integer", "string"]`.
 - A result is JSON whatever the request's `Accept` header says. There is no content negotiation, so a client that asks for XML gets JSON. Stage 7.2 records this delta with the first endpoint that answers.
 - Response bodies are records in the resource's feature folder, mapped from the entities, which hold only stored data ([ADR-0010](#adr-0010-data-model)). The record's name is the name of its schema in the document.
-- System.Text.Json escapes non-ASCII characters, and the characters that HTML treats specially, such as `<`, `>`, `&`, `'` and `+`, as `\uXXXX`, where Newtonsoft wrote them as they are, so `Cup<T> White Mug` is written `Cup\u003CT\u003E White Mug`. The value is the same, and the [comparison rules](docs/legacy/README.md#comparison-rules) compare values, not text.
+- ASP.NET Core's JSON options escape only what JSON requires, as Newtonsoft did, so `Cup<T> White Mug` and `.NET Black & White Mug` are written as they are. (System.Text.Json's own default escapes `<`, `>` and `&` as `\uXXXX`, but ASP.NET Core does not use it.) The [comparison rules](docs/legacy/README.md#comparison-rules) compare values, not text, either way.
 
 **4. Binding and validation.** `AddValidation` turns on .NET 10's validation of a handler's parameters, and of the members of the types they bind, from data annotations such as `[Range]`. A value that breaks one is a 400 problem with the messages in `errors` ([ADR-0021](#adr-0021-error-contract-problem-details)).
 
@@ -2261,3 +2262,82 @@ Each of these deliberate breaks failed the intended tests:
 - A deployment has to set `Catalog:PicturesPath`, or keep the repository's layout, until Stage 11.2 moves the pictures into the API project. Without the folder the host does not start.
 - The deltas are [BC-007](docs/behavior-changes.md#bc-007-a-missing-picture-file-is-a-404) to [BC-011](docs/behavior-changes.md#bc-011-methods-other-than-get-on-the-picture-route-are-a-405).
 - The replay of the golden exchanges compares binary bodies from this stage (rule 9), and checks the 206 answer to a `Range` request against a slice of the recorded body.
+
+---
+
+## ADR-0024: Item and type reads
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.5
+
+### Context
+
+- The legacy app showed its items and types only through Razor pages, so these endpoints have no legacy wire contract ([ADR-0001](#adr-0001-migration-scope)). Their rules come from the MVC actions ([audit: business rules](docs/legacy-audit.md#44-business-rules-behind-the-ui), [`catalog-reads`](docs/legacy/evidence/catalog-reads.json)):
+  - `Index(int pageSize = 10, int pageIndex = 0)` showed one page of items in ID order. A `pageSize` of 0 divided by zero, a negative value reached `Skip`/`Take`, and `pageSize * pageIndex` overflowed: all 500s. `pageSize=100000` read the whole table, and `pageSize=abc` fell back to the default (audit D6).
+  - `Details(int? id)`: 400 without an ID or with `abc`, 404 for an unknown item.
+  - Each item's `PictureUri` was `Url.RouteUrl("GetPicRouteTemplate", ..., scheme)`, the absolute URL of its picture.
+  - The types filled a dropdown.
+- [ADR-0002](#adr-0002-wire-contract-policy), decision 2: PascalCase on every endpoint. [ADR-0015](#adr-0015-async-first-catalog-service) kept the property names of `PaginatedItemsViewModel` in `PaginatedItems<T>` for this endpoint, and left the limit of 100 to it. [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document): validation attributes on handler parameters.
+
+### Decision
+
+**1. Routes.** `Items/ItemEndpoints.cs` maps `GET /api/items` and `GET /api/items/{id}`, and `Types/TypeEndpoints.cs` maps `GET /api/types`.
+
+**2. An item** is a `CatalogItemResponse`: the legacy `CatalogItem` model's properties, with its brand and type as objects, as the model's navigation properties held them:
+
+```json
+{
+  "Id": 1, "Name": ".NET Bot Black Hoodie", "Description": ".NET Bot Black Hoodie", "Price": 19.50,
+  "PictureUri": "http://localhost:5043/items/1/pic",
+  "CatalogTypeId": 2, "CatalogType": { "Id": 2, "Type": "T-Shirt" },
+  "CatalogBrandId": 2, "CatalogBrand": { "Id": 2, "Brand": ".NET" },
+  "AvailableStock": 100, "RestockThreshold": 0, "MaxStockThreshold": 0, "OnReorder": false
+}
+```
+
+- `PictureUri` is the absolute URL of the item's picture, which `LinkGenerator` builds from the picture route's name ([ADR-0023](#adr-0023-security-fixes-made-during-the-migration)) and the request's scheme and host, as the legacy controller built it.
+- The picture's file name is not in it. It is a detail of the storage, which clients can no longer write ([ADR-0015](#adr-0015-async-first-catalog-service)), and `PictureUri` is how a client gets the picture.
+
+**3. A page** is a `PaginatedItems<CatalogItemResponse>`: `ActualPage`, `ItemsPerPage`, `TotalItems`, `TotalPages` and `Data`, the names of the legacy view model.
+
+**4. Paging rules.** `pageSize` and `pageIndex` come from the query string, with the legacy defaults, 10 and 0. `[Range(1, 100)]` on `pageSize` and `[Range(0, int.MaxValue)]` on `pageIndex` make a value out of range a 400 problem with the parameter in `errors` ([ADR-0021](#adr-0021-error-contract-problem-details)). A value that is not an integer is a 400 problem too. A page after the last one is empty, with the totals. [BC-012](docs/behavior-changes.md#bc-012-paging-is-validated) records the change.
+
+**5. One item.** `{id}` has no route constraint, so `abc` is a 400, as the legacy `Details` answered. An ID that no item has, 0 and negative IDs included, is a 404.
+
+**6. Types.** Every type, in ID order: `[{"Id": 1, "Type": "Mug"}, ...]`.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `ItemEndpointsTests.First_page_of_ten_items_in_ID_order_is_the_default` | Page 0 of 10, 12 items in 2 pages, IDs 1–10. |
+| `ItemEndpointsTests.Page_holds_the_items_of_its_index_and_a_page_after_the_last_is_empty` | `pageSize=5&pageIndex=2` holds 11 and 12, and page 100 is empty with the totals. |
+| `ItemEndpointsTests.Paging_outside_its_bounds_is_a_400_problem` (6 cases) | `pageSize` 0, -1, 101 and `abc`, and `pageIndex` -1 and `abc`. Out of range, the parameter is in `errors`. |
+| `ItemEndpointsTests.Page_of_100_items_is_allowed` | The upper bound. |
+| `ItemEndpointsTests.Item_has_the_legacy_model_s_properties_and_the_URL_of_its_picture` | Item 1, every property. |
+| `ItemEndpointsTests.Picture_URL_leads_to_the_picture` | `PictureUri` serves the picture. |
+| `ItemEndpointsTests.Item_that_does_not_exist_is_a_404_and_an_ID_that_is_not_an_integer_a_400` (3 cases) | 999 and 0, and `abc`. |
+| `ItemEndpointsTests.Mock_mode_answers_as_the_database_does` (3 cases) | A page, an item and the types are the same in both modes. |
+| `TypeEndpointsTests.Types_are_listed_in_ID_order` | The four types. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- no `[Range]` on `pageSize`: its 0, -1 and 101 cases of `Paging_outside_its_bounds_is_a_400_problem`
+- no `[Range]` on `pageIndex`: its -1 case
+- an `{id:int}` constraint: the `abc` case of `Item_that_does_not_exist_is_a_404_and_an_ID_that_is_not_an_integer_a_400`, which became a 404
+- a relative `PictureUri`: `Item_has_the_legacy_model_s_properties_and_the_URL_of_its_picture`
+- a default page size of 20: `First_page_of_ten_items_in_ID_order_is_the_default`
+
+### Alternatives considered
+
+- **A flat item**, with the names of the brand and the type instead of objects. The legacy model held objects, and a client that also needs an ID has both.
+- **The picture's file name in the response**, as the legacy model had it. Nothing needs it beside `PictureUri`.
+- **A relative `PictureUri`.** The legacy one was absolute.
+- **A page size above 100 cut down to 100.** A client would get fewer items than it asked for without being told.
+
+### Consequences
+
+- Behind a reverse proxy, `PictureUri` has the host and scheme that the API sees. The API reads no forwarded headers, as the legacy app did not, so a deployment behind a proxy has to pass the original host, or configure forwarded headers then.
+- A client that asks for more than 100 items gets a 400, and pages through them.
+- `PictureUri` also follows the `Host` header of the request. No `AllowedHosts` is set, so a deployment sets it to the hosts that it serves.

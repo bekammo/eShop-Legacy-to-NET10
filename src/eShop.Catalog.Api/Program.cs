@@ -3,8 +3,10 @@ using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Files;
 using eShop.Catalog.Api.Health;
 using eShop.Catalog.Api.Http;
+using eShop.Catalog.Api.Items;
 using eShop.Catalog.Api.Logging;
 using eShop.Catalog.Api.Pictures;
+using eShop.Catalog.Api.Types;
 using Serilog.Debugging;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,5 +38,7 @@ app.MapHealthCheckEndpoints();
 app.MapBrandEndpoints();
 app.MapFileEndpoints();
 app.MapPictureEndpoints();
+app.MapItemEndpoints();
+app.MapTypeEndpoints();
 
 await app.RunAsync();

@@ -153,13 +153,23 @@ The register has two parts:
 - **Test:** `LegacyContractTests` replays `pic-head` and `pic-post`, and compares the responses with those of `brands-head` and `brands-post`: 405 with `Allow: GET`.
 - **Decision:** [ADR-0023](../DECISIONS.md#adr-0023-security-fixes-made-during-the-migration), which leaves `HEAD` support to a version 2.
 
+### BC-012: Paging is validated
+
+- **Kind:** Business-rule change
+- **Forced by:** Security
+- **Stage / commit:** 7.5, "Expose the catalog reads: items, one item and types (Stage 7.5)"
+- **Legacy behaviour:** The item list accepted any page size and index. A page size of 0 divided by zero, a negative size or index, and a size times index that overflowed an `int`, each gave a 500. A page size of 100000 read the whole table, and `pageSize=abc` fell back to the default ([`catalog-reads`](legacy/evidence/catalog-reads.json), audit D6).
+- **New behaviour:** `GET /api/items` takes `pageSize` from 1 to 100, default 10, and `pageIndex` from 0, default 0. A value out of its range is a 400 problem that names the parameter in `errors`, and a value that is not an integer, such as `abc`, is a 400 problem too. A page after the last one is empty, with the totals.
+- **Client impact:** A client that asks for more than 100 items pages through them. A malformed value is a 400 instead of the default page.
+- **Test:** `ItemEndpointsTests.Paging_outside_its_bounds_is_a_400_problem`, `Page_of_100_items_is_allowed` and `Page_holds_the_items_of_its_index_and_a_page_after_the_last_is_empty`.
+- **Decision:** [ADR-0024](../DECISIONS.md#adr-0024-item-and-type-reads), and [ADR-0015](../DECISIONS.md#adr-0015-async-first-catalog-service).
+
 ## Known upcoming deltas
 
 The Stage 1 audit and characterization already show where the new API will differ. The list below records them so that none is forgotten. Each becomes an entry, with a number and a test, in the commit that implements it. The list is not an entry itself, and it does not pre-empt the decisions of later stages.
 
 | Legacy behaviour (evidence) | Expected change | Forced by | Stage |
 |---|---|---|---|
-| Paging accepts `pageSize=0`, negative values and unbounded sizes, and the bad ones give 500 ([`catalog-reads`](legacy/evidence/catalog-reads.json)) | `pageSize` must be 1–100 and `pageIndex` must be 0 or more; anything else is a 400. | Security (unbounded reads) | 7.5 |
 | `PictureFileName` and `Id` are client-writable on create and edit; edit overwrites fields the client did not send ([`edit-overwrites-unposted-fields`](legacy/evidence/edit-overwrites-unposted-fields.json)) | `PictureFileName` is not client-writable, and updates apply explicit fields. | Security | 7.6, 7.7 |
 | `Range(0, 1000000)` rounds the price before comparing, so 1000000.50 is accepted ([`create-item-validation`](legacy/evidence/create-item-validation.json)) | To be decided in 7.6: keep it or apply the range exactly. | Security (input validation) | 7.6 |
 | A name over 50 characters, an unknown brand or an unknown type gives 500 ([`create-item-validation`](legacy/evidence/create-item-validation.json)) | To be decided in 7.6 (a 400 is expected). | Security | 7.6 |

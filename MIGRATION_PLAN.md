@@ -212,7 +212,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - 404 for a missing file (legacy returned 500)
 
   ADR: security fixes made during the migration.
-- [ ] 7.5 Catalog reads, with `PictureUri` built by `LinkGenerator`:
+- [x] 7.5 Catalog reads, with `PictureUri` built by `LinkGenerator`:
   - `GET /api/items` (validated `pageSize` 1–100 and `pageIndex` ≥ 0)
   - `GET /api/items/{id}`
   - `GET /api/types`
