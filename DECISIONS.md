@@ -35,6 +35,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) | Security fixes made during the migration | Accepted | 7.4 |
 | [ADR-0024](#adr-0024-item-and-type-reads) | Item and type reads | Accepted | 7.5 |
 | [ADR-0025](#adr-0025-creating-items) | Creating items | Accepted | 7.6 |
+| [ADR-0026](#adr-0026-updating-and-deleting-items) | Updating and deleting items | Accepted | 7.7 |
 
 ## Template
 
@@ -2423,3 +2424,60 @@ Each of these deliberate breaks failed the intended tests:
 - A client that sends a price with more than two decimals, or above 1,000,000, gets a 400, where the legacy form rounded or accepted it.
 - The brand and type are checked only once the other rules pass, so a body with both kinds of error reports the annotations first.
 - Stage 7.7 replaces items with the same request and rules.
+
+---
+
+## ADR-0026: Updating and deleting items
+
+- **Status:** Accepted
+- **Date:** 2026-10-02
+- **Plan stage:** 7.7
+
+### Context
+
+- The legacy edit attached the posted item with `EntityState.Modified`, so every column was written. A field that the form did not post got its default: every normal edit reset `OnReorder` to `false`, and a partial post nulled `Description`, zeroed the stock fields and reset the picture to `dummy.png` ([`edit-overwrites-unposted-fields`](docs/legacy/evidence/edit-overwrites-unposted-fields.json), audit D2).
+- An edit or a delete of an unknown item gave a 500 ([`unknown-item-writes`](docs/legacy/evidence/unknown-item-writes.json), D11). A delete removed the row, and the picture route answered 404 afterwards ([`delete-item`](docs/legacy/evidence/delete-item.json)).
+- [ADR-0015](#adr-0015-async-first-catalog-service): the service's update writes the nine fields of `CatalogItemFields`, never the ID or the picture, and both update and delete return `false` for an unknown ID. It left to this stage which fields a request must carry. [ADR-0025](#adr-0025-creating-items): the request and its rules.
+
+### Decision
+
+**1. `PUT /api/items/{id}`** replaces the item's fields with a `CatalogItemRequest`, with the rules of [ADR-0025](#adr-0025-creating-items), and answers 204.
+
+- Every field but `Description` is required, so a partial body is a 400 and changes nothing. `Description` is written as sent: a body without it clears it, as a replacement does.
+- The ID and the picture never change.
+- An unknown brand or type is a 400 that names the field.
+- An unknown item is a 404.
+
+**2. `DELETE /api/items/{id}`** removes the item, as the legacy delete did, and answers 204, or 404 for an unknown item. Its picture route answers 404 afterwards.
+
+**3. IDs.** `{id}` has no route constraint: an ID that is not an integer is a 400, as on the other item routes ([ADR-0024](#adr-0024-item-and-type-reads)).
+
+The deltas are [BC-015](docs/behavior-changes.md#bc-015-an-update-writes-what-the-request-sends) and [BC-016](docs/behavior-changes.md#bc-016-writes-to-an-unknown-item-are-a-404).
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `ItemWriteEndpointsTests.Update_writes_every_field_and_keeps_the_ID_and_the_picture` | 204, and all nine fields changed, `OnReorder` and a cleared description included. A posted `Id` of 1 and a `PictureFileName` of `../Global.asax` change nothing: the item keeps its ID, and its picture route still serves `dummy.png`. |
+| `ItemWriteEndpointsTests.Update_without_a_required_field_is_a_400_and_changes_nothing` | A body without `AvailableStock`: 400 naming it, and the item as before. |
+| `ItemWriteEndpointsTests.Update_with_an_unknown_brand_is_a_400_problem_that_names_it` | Brand 999. |
+| `ItemWriteEndpointsTests.Delete_removes_the_item_and_its_picture` | 204, then 404 for the item and for its picture. |
+| `ItemWriteEndpointsTests.Write_to_an_unknown_item_is_a_404_and_to_an_ID_that_is_not_an_integer_a_400` (4 cases) | `PUT` and `DELETE` of 999 and of `abc`. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- no check of the brand and the type on `PUT`: `Update_with_an_unknown_brand_is_a_400_problem_that_names_it`
+- 204 whatever the update returns: the `PUT` of 999
+- 204 whatever the delete returns: the `DELETE` of 999
+- an `{id:int}` constraint on `PUT`: the `PUT` of `abc`, which became a 404
+
+### Alternatives considered
+
+- **`PATCH` with the fields that a client sends.** A partial update needs a way to tell a missing field from a `null` one, which the request type does not have. It would be a new capability, for a version 2.
+- **200 with the item after an update.** A client that wants it calls `GET`. The plan gives the create a 201 with the item, because the client does not know the new ID.
+- **Keeping the description when a body leaves it out.** It would make `PUT` a partial update for one field.
+
+### Consequences
+
+- A client has to send the whole item to change one field. `GET` gives it in the request's shape, apart from the ID, `PictureUri` and the brand and type objects, which the request ignores.
+- Stage 12 puts these two endpoints, with the create, behind the `catalog:write` policy ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)).

@@ -186,14 +186,31 @@ The register has two parts:
 - **Test:** `ItemWriteEndpointsTests.Field_that_breaks_its_rule_is_a_400_problem_that_names_it`, `Unknown_brand_or_type_is_a_400_problem_that_names_it` and `Value_at_the_edge_of_its_rule_is_accepted`.
 - **Decision:** [ADR-0025](../DECISIONS.md#adr-0025-creating-items).
 
+### BC-015: An update writes what the request sends
+
+- **Kind:** Business-rule change
+- **Forced by:** Security
+- **Stage / commit:** 7.7, "Update and delete items, with 404 for unknown ones (Stage 7.7)"
+- **Legacy behaviour:** The edit wrote every column of the posted item. A field that the post left out got its default: a normal edit reset `OnReorder` to `false`, and a partial post nulled `Description`, zeroed the stock fields and reset the picture to `dummy.png`. A posted `Id` and `PictureFileName` were bound ([`edit-overwrites-unposted-fields`](legacy/evidence/edit-overwrites-unposted-fields.json), audit D2).
+- **New behaviour:** `PUT /api/items/{id}` requires every field but `Description`, so a partial body is a 400 and changes nothing. `OnReorder` is written as sent. The ID and the picture never change.
+- **Client impact:** A client sends the whole item. A body without `Description` clears it, as before.
+- **Test:** `ItemWriteEndpointsTests.Update_writes_every_field_and_keeps_the_ID_and_the_picture` and `Update_without_a_required_field_is_a_400_and_changes_nothing`.
+- **Decision:** [ADR-0026](../DECISIONS.md#adr-0026-updating-and-deleting-items), and [ADR-0015](../DECISIONS.md#adr-0015-async-first-catalog-service).
+
+### BC-016: Writes to an unknown item are a 404
+
+- **Kind:** Business-rule change
+- **Forced by:** Security
+- **Stage / commit:** 7.7, "Update and delete items, with 404 for unknown ones (Stage 7.7)"
+- **Legacy behaviour:** Editing item 999 gave a 500 (`DbUpdateConcurrencyException`), and deleting it a 500 (`ArgumentNullException`) ([`unknown-item-writes`](legacy/evidence/unknown-item-writes.json), audit D11).
+- **New behaviour:** 404 for both.
+- **Client impact:** 404 instead of 500.
+- **Test:** `ItemWriteEndpointsTests.Write_to_an_unknown_item_is_a_404_and_to_an_ID_that_is_not_an_integer_a_400`.
+- **Decision:** [ADR-0026](../DECISIONS.md#adr-0026-updating-and-deleting-items).
+
 ## Known upcoming deltas
 
-The Stage 1 audit and characterization already show where the new API will differ. The list below records them so that none is forgotten. Each becomes an entry, with a number and a test, in the commit that implements it. The list is not an entry itself, and it does not pre-empt the decisions of later stages.
-
-| Legacy behaviour (evidence) | Expected change | Forced by | Stage |
-|---|---|---|---|
-| `PictureFileName` and `Id` are client-writable on create and edit; edit overwrites fields the client did not send ([`edit-overwrites-unposted-fields`](legacy/evidence/edit-overwrites-unposted-fields.json)) | `PictureFileName` is not client-writable, and updates apply explicit fields. | Security | 7.7 (create: BC-013) |
-| Editing or deleting an unknown item gives 500 ([`unknown-item-writes`](legacy/evidence/unknown-item-writes.json)) | To be decided in 7.7 (a 404 is expected). | Security | 7.7 |
+Every delta that the Stage 1 audit and characterization foresaw is now an entry above, with its test (Stage 7).
 
 Some response differences are not deltas, because the [comparison rules](legacy/README.md#comparison-rules) treat them as informational:
 

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace eShop.Catalog.Api.IntegrationTests.Items;
 
-// Creating items (ADR-0025), on a database of the class's own, which the writes change.
+// Creating, updating and deleting items (ADR-0025, ADR-0026), on a database of the class's own, which the writes change.
 public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
@@ -133,6 +133,112 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     public void Request_body_is_limited_to_the_legacy_4_MB()
     {
         Assert.Equal(4 * 1024 * 1024, factory.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value.Limits.MaxRequestBodySize);
+    }
+
+    // A full replacement: every field is the request's, OnReorder included, and a posted ID and picture name change
+    // nothing: the item keeps its ID and its picture (ADR-0026).
+    [Fact]
+    public async Task Update_writes_every_field_and_keeps_the_ID_and_the_picture()
+    {
+        using var client = factory.CreateClient();
+        var id = await CreateAsync(client);
+        var changed = ValidBody();
+        changed["Name"] = "Changed mug";
+        changed["Description"] = null;
+        changed["Price"] = 12.5m;
+        changed["CatalogTypeId"] = 3;
+        changed["CatalogBrandId"] = 5;
+        changed["AvailableStock"] = 20;
+        changed["RestockThreshold"] = 5;
+        changed["MaxStockThreshold"] = 60;
+        changed["OnReorder"] = true;
+        changed["Id"] = 1;
+        changed["PictureFileName"] = "../Global.asax";
+
+        using var response = await client.PutAsJsonAsync($"/api/items/{id}", changed, CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var item = JsonNode.Parse(await client.GetStringAsync($"/api/items/{id}", CancellationToken))!;
+        Assert.Equal("Changed mug", (string)item["Name"]!);
+        Assert.Null(item["Description"]);
+        Assert.Equal(12.5m, (decimal)item["Price"]!);
+        Assert.Equal(id, (int)item["Id"]!);
+        Assert.Equal("Sheet", (string)item["CatalogType"]!["Type"]!);
+        Assert.Equal("Other", (string)item["CatalogBrand"]!["Brand"]!);
+        Assert.Equal(20, (int)item["AvailableStock"]!);
+        Assert.Equal(5, (int)item["RestockThreshold"]!);
+        Assert.Equal(60, (int)item["MaxStockThreshold"]!);
+        Assert.True((bool)item["OnReorder"]!);
+        using var picture = await client.GetAsync($"/items/{id}/pic", CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
+    }
+
+    // Audit D2: the legacy edit wrote defaults over the fields that a post left out. A missing field is a 400, and the
+    // item does not change.
+    [Fact]
+    public async Task Update_without_a_required_field_is_a_400_and_changes_nothing()
+    {
+        using var client = factory.CreateClient();
+        var id = await CreateAsync(client);
+        var before = await client.GetStringAsync($"/api/items/{id}", CancellationToken);
+
+        using var response = await client.PutAsJsonAsync($"/api/items/{id}", ValidBody("AvailableStock", null), CancellationToken);
+
+        await AssertValidationProblemAsync(response, "AvailableStock");
+        Assert.Equal(before, await client.GetStringAsync($"/api/items/{id}", CancellationToken));
+    }
+
+    [Fact]
+    public async Task Update_with_an_unknown_brand_is_a_400_problem_that_names_it()
+    {
+        using var client = factory.CreateClient();
+        var id = await CreateAsync(client);
+
+        using var response = await client.PutAsJsonAsync($"/api/items/{id}", ValidBody("CatalogBrandId", "999"), CancellationToken);
+
+        await AssertValidationProblemAsync(response, "CatalogBrandId");
+    }
+
+    // The legacy delete removed the row, and its picture route answered 404 afterwards (delete-item).
+    [Fact]
+    public async Task Delete_removes_the_item_and_its_picture()
+    {
+        using var client = factory.CreateClient();
+        var id = await CreateAsync(client);
+
+        using var response = await client.DeleteAsync($"/api/items/{id}", CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        using var item = await client.GetAsync($"/api/items/{id}", CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, item.StatusCode);
+        using var picture = await client.GetAsync($"/items/{id}/pic", CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, picture.StatusCode);
+    }
+
+    // Audit D11 (unknown-item-writes): the legacy edit and delete of item 999 answered 500.
+    [Theory]
+    [InlineData("PUT", "999", HttpStatusCode.NotFound)]
+    [InlineData("DELETE", "999", HttpStatusCode.NotFound)]
+    [InlineData("PUT", "abc", HttpStatusCode.BadRequest)]
+    [InlineData("DELETE", "abc", HttpStatusCode.BadRequest)]
+    public async Task Write_to_an_unknown_item_is_a_404_and_to_an_ID_that_is_not_an_integer_a_400(string method, string id, HttpStatusCode status)
+    {
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(new HttpMethod(method), $"/api/items/{id}")
+        {
+            Content = method == "PUT" ? JsonContent.Create(ValidBody()) : null,
+        };
+
+        using var response = await client.SendAsync(request, CancellationToken);
+
+        Assert.Equal(status, response.StatusCode);
+    }
+
+    private static async Task<int> CreateAsync(HttpClient client)
+    {
+        using var response = await client.PostAsJsonAsync("/api/items", ValidBody(), CancellationToken);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return (int)JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!["Id"]!;
     }
 
     // A valid item, with one field changed, or removed when the value is null.

@@ -217,7 +217,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
   - `GET /api/items/{id}`
   - `GET /api/types`
 - [x] 7.6 `POST /api/items` → 201 + Location. It enforces the legacy validation rules (culture-invariant price check), and `PictureFileName` is not client-writable: a new item gets the legacy default picture `dummy.png`. As the first endpoint that reads a request body, it also sets the body size limit (legacy: 4 MB, from `httpRuntime`; see ADR-0009).
-- [ ] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
+- [x] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
 
 ### Stage 8 — Async verification
 - [ ] 8.1 Sweep for sync-over-async and synchronous I/O on request paths, the log sinks included (ADR-0018). Verify that cancellation flows from `RequestAborted` to EF Core. Add cancellation tests and update the async ADR.

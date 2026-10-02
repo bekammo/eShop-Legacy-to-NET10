@@ -17,7 +17,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 4 — Domain & EF Core | Done |
 | 5 — Application services & DI | Done |
 | 6 — Logging | Done |
-| 7 — HTTP endpoints | In progress |
+| 7 — HTTP endpoints | Done |
 | 8 — Async verification | Not started |
 | 9 — OpenAPI docs & Swagger UI | Not started |
 | 10 — Test consolidation | Not started |
@@ -115,9 +115,11 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 | `GET /api/items?pageSize=10&pageIndex=0` | One page of items, in ID order: `ActualPage`, `ItemsPerPage`, `TotalItems`, `TotalPages` and `Data`. `pageSize` is 1–100 and `pageIndex` 0 or more; anything else is a 400 ([ADR-0024](DECISIONS.md#adr-0024-item-and-type-reads)). |
 | `GET /api/items/{id}` | One item, with its brand, its type and the URL of its picture, or 404. An ID that is not an integer is a 400. |
 | `POST /api/items` | Creates an item from a JSON body: 201, with its location and the item. A field that breaks its rule, or an unknown brand or type, is a 400 that names it ([ADR-0025](DECISIONS.md#adr-0025-creating-items)). Request bodies are limited to 4 MB. |
+| `PUT /api/items/{id}` | Replaces the item's fields, with the rules of the create: 204, 404 for an unknown item ([ADR-0026](DECISIONS.md#adr-0026-updating-and-deleting-items)). |
+| `DELETE /api/items/{id}` | Deletes the item: 204, or 404 for an unknown item. |
 | `GET /api/types` | Every item type, in ID order. |
 
-The brand endpoints are drop-in compatible with the legacy Web API ([ADR-0002](DECISIONS.md#adr-0002-wire-contract-policy)). The few deliberate differences, such as no XML, are in the [behavior-change register](docs/behavior-changes.md).
+The brand and picture endpoints are drop-in compatible with the legacy app ([ADR-0002](DECISIONS.md#adr-0002-wire-contract-policy)). Their few deliberate differences, such as no XML, and the changes to the legacy item rules are in the [behavior-change register](docs/behavior-changes.md).
 
 The catalog endpoints answer with JSON, with property names in PascalCase as the legacy Web API wrote them, whatever the `Accept` header asks for. Every error, except the plain-text answers of the health checks, is a problem details object ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)), as `application/problem+json`, a route that matches nothing included. Its `traceId` holds the trace ID of the request, which finds the request's events in the log ([ADR-0021](DECISIONS.md#adr-0021-error-contract-problem-details)):
 

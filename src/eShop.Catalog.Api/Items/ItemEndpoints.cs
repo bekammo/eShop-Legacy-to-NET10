@@ -14,6 +14,8 @@ internal static class ItemEndpoints
         items.MapGet("", GetItemsAsync);
         items.MapGet("/{id}", GetItemAsync);
         items.MapPost("", CreateItemAsync);
+        items.MapPut("/{id}", UpdateItemAsync);
+        items.MapDelete("/{id}", DeleteItemAsync);
         return endpoints;
     }
 
@@ -56,6 +58,24 @@ internal static class ItemEndpoints
         var item = (await service.FindCatalogItemAsync(created.Id, cancellationToken))!;
         return TypedResults.Created($"/api/items/{item.Id}", Response(item, links, httpContext));
     }
+
+    // Replaces the item's fields with the request's, which has the rules of a new item (ADR-0026). Its ID and picture
+    // stay. 204, or 404 for an unknown item, where the legacy edit answered 500 (audit D11).
+    private static async Task<Results<NoContent, NotFound, ValidationProblem>> UpdateItemAsync(
+        int id, CatalogItemRequest request, ICatalogService service, CancellationToken cancellationToken)
+    {
+        if (await UnknownBrandOrTypeAsync(request, service, cancellationToken) is { } errors)
+        {
+            return TypedResults.ValidationProblem(errors);
+        }
+
+        return await service.UpdateCatalogItemAsync(id, request.ToFields(), cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();
+    }
+
+    // Deletes the item, as the legacy delete did: 204, or 404 for an unknown item, where the legacy app answered 500
+    // (audit D11).
+    private static async Task<Results<NoContent, NotFound>> DeleteItemAsync(int id, ICatalogService service, CancellationToken cancellationToken) =>
+        await service.RemoveCatalogItemAsync(id, cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();
 
     // The brand and the type are reference data, which nothing deletes, so checking them first is enough.
     private static async Task<Dictionary<string, string[]>?> UnknownBrandOrTypeAsync(
