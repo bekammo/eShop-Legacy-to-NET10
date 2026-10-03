@@ -25,10 +25,12 @@
 
   <!--
     Logging (ADR-0018). Serilog.AspNetCore brings Serilog, its hosting and configuration packages, and the
-    console and file sinks and the compact JSON formatter that the Serilog settings name.
+    console and file sinks and the compact JSON formatter that the Serilog settings name. Serilog.Sinks.Async
+    writes the console on a background thread (ADR-0027).
   -->
   <ItemGroup>
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Async" Version="2.1.0" />
   </ItemGroup>
 
   <!-- The OpenAPI document (ADR-0020). It shares the ASP.NET Core version of the runtime it runs on. -->

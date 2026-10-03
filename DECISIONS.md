@@ -36,6 +36,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0024](#adr-0024-item-and-type-reads) | Item and type reads | Accepted | 7.5 |
 | [ADR-0025](#adr-0025-creating-items) | Creating items | Accepted | 7.6 |
 | [ADR-0026](#adr-0026-updating-and-deleting-items) | Updating and deleting items | Accepted | 7.7 |
+| [ADR-0027](#adr-0027-asynchronous-request-paths-and-cancellation) | Asynchronous request paths and cancellation | Accepted | 8.1 |
 
 ## Template
 
@@ -2481,3 +2482,92 @@ Each of these deliberate breaks failed the intended tests:
 
 - A client has to send the whole item to change one field. `GET` gives it in the request's shape, apart from the ID, `PictureUri` and the brand and type objects, which the request ignores.
 - Stage 12 puts these two endpoints, with the create, behind the `catalog:write` policy ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)).
+
+---
+
+## ADR-0027: Asynchronous request paths and cancellation
+
+- **Status:** Accepted
+- **Date:** 2026-10-03
+- **Plan stage:** 8.1
+
+### Context
+
+- Plan decision 6: the port is asynchronous from the start, with the async analyzers CA2016, CA1849 and CA2012 as errors ([ADR-0006](#adr-0006-solution-structure-and-build-conventions)), and Stage 8 verifies the result. [ADR-0015](#adr-0015-async-first-catalog-service) left to this stage the check that the request's `RequestAborted` reaches EF Core.
+- No test showed that check. CA2016 accepts a handler that passes `CancellationToken.None`, because a token is passed ([ADR-0015](#adr-0015-async-first-catalog-service), deliberate breaks). `Cancelled_operations_change_nothing` gives the service tokens that are already cancelled, without HTTP.
+- [ADR-0018](#adr-0018-logging-with-serilog) left the log sinks to this stage: the console and file sinks write on the calling thread, and this stage decides whether they move behind a background queue.
+- [ADR-0019](#adr-0019-request-logging-and-application-log-events), decision 2, and [ADR-0021](#adr-0021-error-contract-problem-details), decision 5: a request that the client aborted is not the server's error. The exception handler ends it as a 499 and logs it only at Debug.
+
+### Decision
+
+**1. The sweep.** Every request path was read: the app's code, and the framework code that it relies on, at the versions that the app restores (ASP.NET Core 10.0, EF Core 10.0, Microsoft.Data.SqlClient 6.1.6, Serilog 4.3 and its sinks).
+
+| Looked for | Found | Outcome |
+|---|---|---|
+| Sync-over-async: `.Result`, `.Wait()`, `GetAwaiter().GetResult()`, `Task.Run` | Nowhere | Nothing to change |
+| Synchronous EF Core calls | Only in `SampleItemSeeder.Seed`, which `dotnet ef database update` calls ([ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness)). Requests and the app's startup use the asynchronous overloads, with the token. | Nothing to change |
+| Synchronous reads and writes of request and response bodies | Nowhere. Body binding, JSON results, problems, the OpenAPI document and pictures are read or written asynchronously. Kestrel and the test server both refuse synchronous body I/O (`AllowSynchronousIO` is false by default, and nothing here turns it on), so the integration tests would fail on any. | Nothing to change |
+| Locks | `InMemoryCatalogService` holds its lock over in-memory work only ([ADR-0016](#adr-0016-in-memory-catalog-service)). | Nothing to change |
+| File system calls on the picture route | `CatalogPictures.Find` checks that the file exists, and `PhysicalFile` checks again, which also reads its length and date, looks for a link target, and opens it: three metadata calls and an open per picture, synchronous because .NET has no asynchronous API for them. The content is copied asynchronously. The first picture request of a process also checks the folder, twice. | Accepted |
+| Log events | Every event of a request, the request event included, is written by the console and the file sinks on the request's thread, each under its lock. | Decision 2 |
+
+**2. The log sinks.**
+
+- **The console moves behind `Serilog.Sinks.Async` 2.1.0**, with `blockWhenFull: true` and the default queue of 10,000 events. Serilog's console sink writes and flushes the standard output on the calling thread, under one lock for the whole process, and its README recommends the Async sink against that. Until Stage 6 the host wrote the console through ASP.NET Core's console provider, which queues the messages for a background thread (2,500 of them, then the logging thread waits), so Stage 6 had put the console's writes on the request thread. With `blockWhenFull: true` a full queue makes the logging thread wait, as that provider did. The default drops the event instead, and reports each drop through `SelfLog`, which writes to the standard error output on that same thread.
+- **The file stays synchronous.** Each event is flushed to the operating system, not to the disk, and the file rolls once per 10 MiB. log4net's appender also wrote on the calling thread. A queue would lose the last events before a crash, which the file is there to keep, and would move the documented setting `Serilog:WriteTo:File:Args:path` ([ADR-0018](#adr-0018-logging-with-serilog)).
+- The console's entry keeps its key, so `Serilog:WriteTo:Console` is still the console: its `Name` is `Async`, and the console sink, with its template, is under `Args:configure:Console`. The host disposes its logger when it is disposed (`AddSerilog`), which drains the queue.
+
+This amends [ADR-0018](#adr-0018-logging-with-serilog), decision 1, which had one package, and decision 3, whose `Using` row now also names `Serilog.Sinks.Async` and whose console row is now behind the Async sink.
+
+**3. Cancellation reaches EF Core.** The token of every endpoint that reaches the database is the request's `RequestAborted`:
+
+- Minimal APIs bind a `CancellationToken` parameter to `RequestAborted`. Each handler passes it to the service, and the service to every EF Core call ([ADR-0015](#adr-0015-async-first-catalog-service)). EF Core passes it unchanged to SqlClient, the HiLo sequence read included. The readiness check gets it from the health check middleware.
+- What is written without a token, such as the JSON results and `ProblemJsonWriter`'s problems ([ADR-0021](#adr-0021-error-contract-problem-details)), is still written with `RequestAborted`: ASP.NET Core uses it when it is given none, and ignores its cancellation.
+
+**4. A client that goes away during a database command.** SqlClient cancels the command on the server, and reports it as a `SqlException`, "Operation cancelled by user." (number 0), not as an `OperationCanceledException`. That was checked with SqlClient 6.1.6 against the tests' SQL Server image, with the token cancelled as soon as the command had started, and a second into it. EF Core passes the exception on, and `SaveChanges` wraps it in a `DbUpdateException`. The exception handler ends an aborted request as a 499 only for an `OperationCanceledException` or an `IOException`. It took the `SqlException` for the server's error: a 500, the exception logged at Error, and an Error request event. The health check service took it for a failed check, logged at Error. So:
+
+- `AbortedRequestExceptionHandler` (`Http/AbortedRequestExceptionHandler.cs`), an `IExceptionHandler` that `AddCatalogHttp` registers, answers a `DbException` or a `DbUpdateException` of a request whose `RequestAborted` is cancelled with a 499. The exception handler does not log an exception that a handler has handled (the .NET 10 default of `ExceptionHandlerOptions.SuppressDiagnosticsCallback`). EF Core logs the cancellation at Debug, and its event for the command is under the `Microsoft.EntityFrameworkCore.Database.Command` override, at Warning, so the request event with its 499 is what records the abort. Any other exception is still the server's error, also after the client has gone.
+- `CatalogDatabaseHealthCheck` turns a `DbException` that comes while its token is cancelled into an `OperationCanceledException`. The health check service passes that on, and the exception handler ends the request as a 499.
+
+The request event of such a request has status 499, and is Information, or Debug for a probe, as for any aborted request. The client is gone and sees none of this, so [docs/behavior-changes.md](docs/behavior-changes.md) gets no entry. This amends [ADR-0021](#adr-0021-error-contract-problem-details), decisions 2 and 5: a database exception of an aborted request is a 499 from `AbortedRequestExceptionHandler`, and the exception handler logs nothing for it.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `RequestCancellationTests.Client_that_goes_away_cancels_the_database_command_and_the_request_is_not_an_Error` (11 cases) | Every endpoint that reaches the database: the three brand routes, the five item routes, the picture, the types and readiness. An interceptor puts a `WAITFOR` before the request's first command and hands the test the token that EF Core gives the command. Once SQL Server runs the `WAITFOR` on the command's session (`sys.dm_exec_requests`), the test cancels the request. The token is cancelled, the client gets an `OperationCanceledException`, the request event has status 499, and nothing is logged at Error. Only the first command of each endpoint is held: that the later calls of `GET /api/items`, `POST` and `PUT` pass the same token rests on the sweep. |
+| `AbortedRequestExceptionHandlerTests.Database_exception_of_an_aborted_request_is_a_499` (2 cases, unit) | A `DbException`, and one that `SaveChanges` wrapped in a `DbUpdateException`. |
+| `AbortedRequestExceptionHandlerTests.Database_error_while_the_client_waits_is_left_to_the_exception_handler` (unit) | `false`, and the status untouched. |
+| `AbortedRequestExceptionHandlerTests.Other_error_after_the_client_has_gone_is_left_to_the_exception_handler` (unit) | The same for an `InvalidOperationException` of an aborted request. |
+| `LoggingTests.Committed_settings_log_from_Information_to_the_console_and_to_the_log4net_file` (amended) | The console behind `Async`, with `blockWhenFull` and the default queue. |
+
+Each of these deliberate breaks failed the intended tests:
+
+- without `AbortedRequestExceptionHandler`: the 10 API cases of `Client_that_goes_away_cancels_the_database_command_and_the_request_is_not_an_Error`, each a 500 logged at Error
+- the readiness check without its catch: the readiness case, a failed check logged at Error
+- `GET /api/brands` passing `CancellationToken.None` to the service: its case
+- the readiness check calling `CanConnectAsync` with `CancellationToken.None`: the readiness case
+- `DELETE /api/items/{id}` passing `CancellationToken.None` to the service: its case
+- the console sink without the Async sink: `Committed_settings_log_from_Information_to_the_console_and_to_the_log4net_file`
+- the handler without `DbUpdateException`: the wrapped case of `Database_exception_of_an_aborted_request_is_a_499`
+
+### Alternatives considered
+
+- **Both sinks behind the Async sink.** The file would lose its last events in a crash, its documented setting would move, and the tests that read the file right after writing to it would have to wait for it.
+- **Both sinks synchronous.** The console would stay on the request thread, where Stage 6 put it, against the advice of Serilog's console README and of ASP.NET Core's logging guidance, which queues writes to a slow store for a background thread.
+- **`buffered: true` for the file.** Fewer writes to the operating system, but an event would stay in memory until the buffer fills, which at a low rate of requests can take any time.
+- **Taking any exception of an aborted request for the abort**, as EF Core's own check of a cancelled command does. It would also hide a genuine error that happens to come after the client has gone.
+- **Turning the `SqlException` into an `OperationCanceledException` in `CatalogService`.** Every method would need the same catch, where the exception handler sees every request in one place. The readiness check needs its own, because the health check service catches every exception but a cancellation before the exception handler can see it.
+- **Recording the `SqlException` path and leaving it.** A client's going away would still be logged as the server's error, with a stack trace, and a probe that gives up during a slow check as a failed check.
+- **A test that holds the command in the interceptor until its token is cancelled, without running it.** The interceptor's own `OperationCanceledException` would end the command, so the test would never meet the `SqlException`.
+- **A test that cancels as soon as the interceptor has the command**, without waiting for SQL Server to run it. SqlClient was then often still sending the command, which then ran to its end (see the consequences), so most cases passed even without the exception handler.
+
+### Consequences
+
+- Each host runs one background thread for the console. Console events that are still queued are lost when the process is killed, as they were before Stage 6, and the file has them. A console that stops taking output, such as a stalled pipe, makes the logging threads wait once 10,000 events are queued, and disposing the logger waits for the queue to drain.
+- The picture route keeps its synchronous metadata calls and its synchronous open.
+- SqlClient cancels a command on the server only once it has sent it. A token that is cancelled while SqlClient is still sending the command lets the command run to its end, which the first version of the test showed. A write may then be applied although its request ends as a 499, as it may be when the client goes away just after the database has answered.
+- A database error that comes while the client is gone, such as a deadlock, is also taken for the abort: a 499, not logged at Error. Errors outside the database are still Errors.
+- SqlClient can also report a cancelled command as an `InvalidOperationException`, "Operation cancelled by user.", when the cancellation comes after the command has started but before SqlClient has a session for it, a short window. Such a request is still a 500 logged at Error. Matching the exception's message to catch it would be fragile.
+- If SqlClient comes to report a cancelled command as an `OperationCanceledException`, the exception handler's own path takes it, and the tests still pass.
+- This completes the verification that plan decision 6 and [ADR-0015](#adr-0015-async-first-catalog-service) left to Stage 8. ADR-0015 itself is unchanged.
