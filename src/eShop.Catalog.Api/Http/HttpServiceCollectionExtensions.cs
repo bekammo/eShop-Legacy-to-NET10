@@ -4,8 +4,8 @@ namespace eShop.Catalog.Api.Http;
 
 internal static class HttpServiceCollectionExtensions
 {
-    // What every endpoint shares: JSON, validation and the OpenAPI document (ADR-0020), and errors as problem details
-    // (ADR-0021).
+    // What every endpoint shares: JSON, validation and the OpenAPI document (ADR-0020), errors as problem details
+    // (ADR-0021), and a 499 for a request that its client aborted during a database command (ADR-0027).
     internal static IServiceCollection AddCatalogHttp(this IServiceCollection services)
     {
         // PascalCase, as Web API 2 wrote it with Newtonsoft's defaults (ADR-0002). The other web defaults stay.
@@ -18,6 +18,7 @@ internal static class HttpServiceCollectionExtensions
         // Before AddProblemDetails, so that it comes before ASP.NET Core's own writer, which is then never used.
         services.AddSingleton<IProblemDetailsWriter, ProblemJsonWriter>();
         services.AddProblemDetails();
+        services.AddExceptionHandler<AbortedRequestExceptionHandler>();
 
         services.Configure<KestrelServerOptions>(static options =>
         {

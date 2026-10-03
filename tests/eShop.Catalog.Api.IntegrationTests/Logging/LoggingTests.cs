@@ -33,7 +33,12 @@ public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixt
         // command at Information, and the legacy app logged no SQL.
         Assert.Equal([("Microsoft.AspNetCore", "Warning"), ("Microsoft.EntityFrameworkCore.Database.Command", "Warning")],
             serilog.GetSection("MinimumLevel:Override").GetChildren().Select(static level => (level.Key, level.Value)));
-        Assert.Equal("Console", serilog["WriteTo:Console:Name"]);
+        // The console is written on a background thread, which makes the logging thread wait rather than drop the event
+        // when 10,000 events are queued (ADR-0027). The file is written on the logging thread.
+        Assert.Equal("Async", serilog["WriteTo:Console:Name"]);
+        Assert.True(serilog.GetValue<bool>("WriteTo:Console:Args:blockWhenFull"));
+        Assert.Null(serilog["WriteTo:Console:Args:bufferSize"]);
+        Assert.Equal("Console", serilog["WriteTo:Console:Args:configure:Console:Name"]);
         Assert.Equal("File", serilog["WriteTo:File:Name"]);
         Assert.Equal("FromLogContext", Assert.Single(serilog.GetSection("Enrich").GetChildren()).Value);
         // log4net's file and limits: logFiles\myapp.log, rollingStyle Size, maximumFileSize 10MB,

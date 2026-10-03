@@ -220,7 +220,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 7.7 `PUT /api/items/{id}` and `DELETE /api/items/{id}`.
 
 ### Stage 8 — Async verification
-- [ ] 8.1 Sweep for sync-over-async and synchronous I/O on request paths, the log sinks included (ADR-0018). Verify that cancellation flows from `RequestAborted` to EF Core. Add cancellation tests and update the async ADR.
+- [x] 8.1 Sweep for sync-over-async and synchronous I/O on request paths, the log sinks included (ADR-0018). Verify that cancellation flows from `RequestAborted` to EF Core. Add cancellation tests and update the async ADR.
 
 ### Stage 9 — OpenAPI docs & Swagger UI
 - [ ] 9.1 Swagger UI at `/swagger` over `/openapi/v1.json` (Development only). ADR: OpenAPI tooling.
