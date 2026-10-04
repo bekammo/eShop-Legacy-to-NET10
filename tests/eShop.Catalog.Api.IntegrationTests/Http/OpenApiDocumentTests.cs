@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace eShop.Catalog.Api.IntegrationTests.Http;
 
@@ -46,8 +48,50 @@ public sealed class OpenApiDocumentTests(CatalogApiFactory factory) : IClassFixt
         }
     }
 
+    // Every operation says what it does, and what its parameters, its body and its responses are (ADR-0029). The
+    // generator takes that from the handler's XML comments, and skips the comments of a private handler without a
+    // warning. A response that nothing describes has the name of its status, such as "Not Found".
+    [Fact]
+    public async Task Every_operation_is_described()
+    {
+        var document = await ServedDocumentAsync();
+
+        Assert.All(Operations(document), operation =>
+        {
+            var (name, value) = operation;
+            Assert.False(string.IsNullOrEmpty((string?)value["summary"]), $"{name} has no summary.");
+            Assert.All(value["parameters"]?.AsArray() ?? [], parameter =>
+                Assert.False(string.IsNullOrEmpty((string?)parameter!["description"]), $"{name}: {parameter["name"]} has no description."));
+            Assert.False(value["requestBody"] is { } body && string.IsNullOrEmpty((string?)body["description"]), $"{name}: the body has no description.");
+            Assert.All(value["responses"]!.AsObject(), response =>
+                Assert.NotEqual(ReasonPhrases.GetReasonPhrase(int.Parse(response.Key, CultureInfo.InvariantCulture)), (string?)response.Value!["description"]));
+        });
+    }
+
+    // Every error is a problem (ADR-0021), and the document says so: application/problem+json, with the schema of a
+    // problem, or of a validation problem, which have the traceId that ProblemJsonWriter adds (ADR-0029).
+    [Fact]
+    public async Task Every_error_response_is_documented_as_a_problem()
+    {
+        var document = await ServedDocumentAsync();
+        string[] problems = ["ProblemDetails", "HttpValidationProblemDetails"];
+
+        var errors = Operations(document).SelectMany(operation => operation.Operation["responses"]!.AsObject()
+            .Where(response => int.Parse(response.Key, CultureInfo.InvariantCulture) >= 400)
+            .Select(response => (Name: $"{operation.Name} {response.Key}", Content: response.Value!["content"]?.AsObject())));
+
+        Assert.All(errors, error =>
+        {
+            var mediaType = Assert.Single(error.Content ?? []);
+            Assert.Equal("application/problem+json", mediaType.Key);
+            Assert.Contains((string?)mediaType.Value!["schema"]!["$ref"], problems.Select(problem => $"#/components/schemas/{problem}"));
+        });
+        Assert.All(problems, problem =>
+            Assert.Equal("string", (string?)document["components"]!["schemas"]![problem]!["properties"]!["traceId"]!["type"]));
+    }
+
     // The document describes the contract, which is public, so it is not a Development-only feature. Swagger UI is
-    // (Stage 9.1).
+    // (ADR-0028).
     [Theory]
     [InlineData("Development")]
     [InlineData("Production")]
@@ -60,4 +104,15 @@ public sealed class OpenApiDocumentTests(CatalogApiFactory factory) : IClassFixt
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
+
+    private async Task<JsonObject> ServedDocumentAsync()
+    {
+        using var client = factory.CreateClient();
+        return JsonNode.Parse(await client.GetStringAsync("/openapi/v1.json", CancellationToken))!.AsObject();
+    }
+
+    // Each operation of the document, named by its method and path, such as "GET /api/brands/{id}".
+    private static IEnumerable<(string Name, JsonObject Operation)> Operations(JsonObject document) =>
+        document["paths"]!.AsObject().SelectMany(path => path.Value!.AsObject().Select(operation =>
+            ($"{operation.Key.ToUpperInvariant()} {path.Key}", operation.Value!.AsObject())));
 }

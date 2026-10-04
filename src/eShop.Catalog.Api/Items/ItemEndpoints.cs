@@ -10,18 +10,29 @@ internal static class ItemEndpoints
 {
     internal static IEndpointRouteBuilder MapItemEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var items = endpoints.MapGroup("/api/items");
-        items.MapGet("", GetItemsAsync);
-        items.MapGet("/{id}", GetItemAsync);
+        var items = endpoints.MapGroup("/api/items").WithTags("Items");
+        items.MapGet("", GetItemsAsync)
+            .ProducesValidationProblem();
+        items.MapGet("/{id}", GetItemAsync)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
         items.MapPost("", CreateItemAsync);
-        items.MapPut("/{id}", UpdateItemAsync);
-        items.MapDelete("/{id}", DeleteItemAsync);
+        items.MapPut("/{id}", UpdateItemAsync)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+        items.MapDelete("/{id}", DeleteItemAsync)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
         return endpoints;
     }
 
-    // One page of items, in ID order, with the legacy Index action's defaults: page 0 of 10 items. A page size outside
-    // 1-100 or a negative page index is a 400 (audit D6). A page after the last one is empty.
-    private static async Task<Ok<PaginatedItems<CatalogItemResponse>>> GetItemsAsync(
+    // The legacy Index action's defaults: page 0 of 10 items. It did not check either value (audit D6).
+    /// <summary>Gets a page of items.</summary>
+    /// <remarks>The items are in ID order, each with its brand, its type and the URL of its picture. A page after the last is empty.</remarks>
+    /// <param name="pageSize">The number of items on a page, from 1 to 100.</param>
+    /// <param name="pageIndex">The index of the page, from 0.</param>
+    /// <response code="200">The page.</response>
+    /// <response code="400">The page size or the page index is out of range, or not an integer.</response>
+    internal static async Task<Ok<PaginatedItems<CatalogItemResponse>>> GetItemsAsync(
         ICatalogService service,
         LinkGenerator links,
         HttpContext httpContext,
@@ -35,16 +46,25 @@ internal static class ItemEndpoints
     }
 
     // {id} has no route constraint, so an ID that is not an int is a 400, as the legacy Details action answered.
-    private static async Task<Results<Ok<CatalogItemResponse>, NotFound>> GetItemAsync(
+    /// <summary>Gets an item.</summary>
+    /// <param name="id">The item's ID.</param>
+    /// <response code="200">The item, with its brand, its type and the URL of its picture.</response>
+    /// <response code="400">The ID is not a 32-bit integer.</response>
+    /// <response code="404">No item has this ID.</response>
+    internal static async Task<Results<Ok<CatalogItemResponse>, NotFound>> GetItemAsync(
         int id, ICatalogService service, LinkGenerator links, HttpContext httpContext, CancellationToken cancellationToken) =>
         await service.FindCatalogItemAsync(id, cancellationToken) is { } item
             ? TypedResults.Ok(Response(item, links, httpContext))
             : TypedResults.NotFound();
 
-    // Creates an item with a new ID and the default picture, and answers 201 with its location and the item as GET gives
-    // it (ADR-0025). The body is validated first: a field that breaks its rule is a 400 that names it. So is an unknown
-    // brand or type, where the legacy app answered 500 (audit D10).
-    private static async Task<Results<Created<CatalogItemResponse>, ValidationProblem>> CreateItemAsync(
+    // The body is validated before the handler runs (ADR-0025). An unknown brand or type is a 400 too, where the legacy
+    // app answered 500 (audit D10).
+    /// <summary>Creates an item.</summary>
+    /// <remarks>The API gives the item its ID, and the default picture.</remarks>
+    /// <param name="request">The item's fields.</param>
+    /// <response code="201">The item, as GET /api/items/{id} gives it. The Location header holds its URL.</response>
+    /// <response code="400">The body is missing or not an item's JSON, a field breaks its rule, or no brand or type has the ID given. The errors name each field at fault.</response>
+    internal static async Task<Results<Created<CatalogItemResponse>, ValidationProblem>> CreateItemAsync(
         CatalogItemRequest request, ICatalogService service, LinkGenerator links, HttpContext httpContext, CancellationToken cancellationToken)
     {
         if (await UnknownBrandOrTypeAsync(request, service, cancellationToken) is { } errors)
@@ -59,9 +79,15 @@ internal static class ItemEndpoints
         return TypedResults.Created($"/api/items/{item.Id}", Response(item, links, httpContext));
     }
 
-    // Replaces the item's fields with the request's, which has the rules of a new item (ADR-0026). Its ID and picture
-    // stay. 204, or 404 for an unknown item, where the legacy edit answered 500 (audit D11).
-    private static async Task<Results<NoContent, NotFound, ValidationProblem>> UpdateItemAsync(
+    // An unknown item is a 404, where the legacy edit answered 500 (audit D11, ADR-0026).
+    /// <summary>Replaces an item's fields.</summary>
+    /// <remarks>The fields have the rules of a new item. The item keeps its ID and its picture.</remarks>
+    /// <param name="id">The item's ID.</param>
+    /// <param name="request">The item's new fields.</param>
+    /// <response code="204">The item is updated.</response>
+    /// <response code="400">The ID is not a 32-bit integer, the body is missing or not an item's JSON, a field breaks its rule, or no brand or type has the ID given.</response>
+    /// <response code="404">No item has this ID.</response>
+    internal static async Task<Results<NoContent, NotFound, ValidationProblem>> UpdateItemAsync(
         int id, CatalogItemRequest request, ICatalogService service, CancellationToken cancellationToken)
     {
         if (await UnknownBrandOrTypeAsync(request, service, cancellationToken) is { } errors)
@@ -72,9 +98,13 @@ internal static class ItemEndpoints
         return await service.UpdateCatalogItemAsync(id, request.ToFields(), cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();
     }
 
-    // Deletes the item, as the legacy delete did: 204, or 404 for an unknown item, where the legacy app answered 500
-    // (audit D11).
-    private static async Task<Results<NoContent, NotFound>> DeleteItemAsync(int id, ICatalogService service, CancellationToken cancellationToken) =>
+    // The legacy delete, except for an unknown item, for which the legacy app answered 500 (audit D11).
+    /// <summary>Deletes an item.</summary>
+    /// <param name="id">The item's ID.</param>
+    /// <response code="204">The item is deleted.</response>
+    /// <response code="400">The ID is not a 32-bit integer.</response>
+    /// <response code="404">No item has this ID.</response>
+    internal static async Task<Results<NoContent, NotFound>> DeleteItemAsync(int id, ICatalogService service, CancellationToken cancellationToken) =>
         await service.RemoveCatalogItemAsync(id, cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();
 
     // The brand and the type are reference data, which nothing deletes, so checking them first is enough.

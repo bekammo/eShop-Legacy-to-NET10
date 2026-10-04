@@ -37,6 +37,8 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0025](#adr-0025-creating-items) | Creating items | Accepted | 7.6 |
 | [ADR-0026](#adr-0026-updating-and-deleting-items) | Updating and deleting items | Accepted | 7.7 |
 | [ADR-0027](#adr-0027-asynchronous-request-paths-and-cancellation) | Asynchronous request paths and cancellation | Accepted | 8.1 |
+| [ADR-0028](#adr-0028-openapi-tooling-swagger-ui-in-development) | OpenAPI tooling: Swagger UI in Development | Accepted | 9.1 |
+| [ADR-0029](#adr-0029-describing-the-api-in-the-openapi-document) | Describing the API in the OpenAPI document | Accepted | 9.2 |
 
 ## Template
 
@@ -2571,3 +2573,136 @@ Each of these deliberate breaks failed the intended tests:
 - SqlClient can also report a cancelled command as an `InvalidOperationException`, "Operation cancelled by user.", when the cancellation comes after the command has started but before SqlClient has a session for it, a short window. Such a request is still a 500 logged at Error. Matching the exception's message to catch it would be fragile.
 - If SqlClient comes to report a cancelled command as an `OperationCanceledException`, the exception handler's own path takes it, and the tests still pass.
 - This completes the verification that plan decision 6 and [ADR-0015](#adr-0015-async-first-catalog-service) left to Stage 8. ADR-0015 itself is unchanged.
+
+---
+
+## ADR-0028: OpenAPI tooling: Swagger UI in Development
+
+- **Status:** Accepted
+- **Date:** 2026-10-04
+- **Plan stage:** 9.1
+
+### Context
+
+- Plan decision 7 and [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) chose the built-in `Microsoft.AspNetCore.OpenApi` for the document, which the API serves at `/openapi/v1.json` in every environment. That package generates and serves the document, and has no UI. ADR-0020, decision 5, makes Swagger UI, a tool for developers, Development only, and its alternatives leave the choice of the UI to this stage.
+- The document is OpenAPI 3.1.1. Swagger UI reads 3.1 from its version 5.
+- `Swashbuckle.AspNetCore.SwaggerUI` is Swashbuckle's UI alone: a middleware that serves an embedded copy of swagger-ui. Its version 10.2.3 (June 2026) embeds swagger-ui 5.32.7, and depends on nothing but the ASP.NET Core shared framework. Swashbuckle's generator, `Swashbuckle.AspNetCore.SwaggerGen`, is a separate package. ASP.NET Core's documentation shows this package over the built-in document.
+- A probe, the API in mock mode in Development with the package added:
+  - `/swagger` answered 301 to `swagger/index.html`, and the page read its settings from `/swagger/index.js`.
+  - The UI showed the served document as "OAS 3.1", with its 10 operations, and no errors.
+  - A file under `/swagger` that the UI does not have was a 404 problem ([ADR-0021](#adr-0021-error-contract-problem-details)).
+
+### Decision
+
+1. **The UI is `Swashbuckle.AspNetCore.SwaggerUI` 10.2.3**, versioned in `Directory.Packages.props` beside the OpenAPI package. Swashbuckle's generator is not used: the document stays the built-in one.
+2. **It shows the document that the API serves.** `UseSwaggerUI` keeps its default route prefix, `swagger`, and has one entry, `SwaggerEndpoint("/openapi/v1.json", "v1")`, the document that `docs/openapi/v1.json` snapshots ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 6). Without that entry the UI asks for Swashbuckle's default, `/swagger/v1/swagger.json`, which the API does not serve.
+3. **Development only.** `Program.cs` adds the UI only in the Development environment. Elsewhere `/swagger` matches nothing, and the answer is a 404 problem. The UI is for developers, and its "Try it out" sends requests to the API, writes included, which stay anonymous until Stage 12 ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)). Clients of a deployed API still get the document.
+4. **Inside the request logging and the error handling.** `Program.cs` adds the UI after `UseCatalogRequestLogging` and `UseCatalogErrorHandling`, so its requests are logged ([ADR-0019](#adr-0019-request-logging-and-application-log-events)), and its errors are problems, like the API's. It is a middleware, not an endpoint, so the document does not list it.
+5. **The launch profiles open it.** Both profiles' `launchUrl` is `swagger`, instead of `health/live`. Visual Studio and `dotnet watch` open it; `dotnet run` opens no browser.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `SwaggerUiTests.Swagger_UI_shows_the_served_document_in_Development` | `/swagger` leads to an HTML page, and the UI's settings name `/openapi/v1.json`. |
+| `SwaggerUiTests.Swagger_UI_is_not_served_in_Production` | `/swagger/index.html` is a 404. |
+
+Each of these deliberate breaks failed the intended test:
+
+- the UI in every environment: `Swagger_UI_is_not_served_in_Production`
+- the UI without its `SwaggerEndpoint`: `Swagger_UI_shows_the_served_document_in_Development`
+
+### Alternatives considered
+
+- **Scalar (`Scalar.AspNetCore`).** It reads OpenAPI 3.1 too. The plan names Swagger UI, and Scalar would give this API nothing that Swagger UI lacks.
+- **NSwag's UI (`NSwag.AspNetCore`).** The package brings NSwag's generator, a second generator beside the built-in one.
+- **Swashbuckle whole (`Swashbuckle.AspNetCore`).** Also a second generator, `SwaggerGen`.
+- **swagger-ui from a CDN, in a page of the API's own.** No package, but the browser runs a third party's code, at a version pinned by hand in HTML, outside the NuGet audit ([ADR-0008](#adr-0008-continuous-integration)).
+- **ReDoc (`Swashbuckle.AspNetCore.ReDoc`).** It shows the document, but cannot send a request.
+- **The UI in every environment.** "Try it out" against a deployed API whose writes are anonymous until Stage 12.
+
+### Consequences
+
+- One more package, which the NuGet audit checks. The swagger-ui version comes with it, so the UI is updated by updating the package.
+- Developers get Swagger UI over the same document that the snapshot test keeps.
+- In Development, each of the UI's files is logged as a request, at Information.
+- The UI shows what the document says. Summaries, tags and the documented problem responses are Stage 9.2's.
+
+---
+
+## ADR-0029: Describing the API in the OpenAPI document
+
+- **Status:** Accepted
+- **Date:** 2026-10-04
+- **Plan stage:** 9.2
+
+### Context
+
+- [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 5, left the summaries, the tags and the documented error responses to this stage. Until it, the document had:
+  - no summary or description on any operation, parameter or schema
+  - as each operation's tag, the name of its endpoint class, such as `BrandEndpoints`
+  - every 404, and the picture's 400, without a body, although each is a problem ([ADR-0021](#adr-0021-error-contract-problem-details)). The 400 of an ID that is not an integer, and that of the page parameters of `GET /api/items`, were not listed.
+  - the picture without its 200 response ([ADR-0023](#adr-0023-security-fixes-made-during-the-migration))
+- ASP.NET Core 10's OpenAPI package has a source generator that puts XML comments into the document, when the compiler generates documentation:
+  - a handler's `<summary>` and `<remarks>` as the operation's summary and description
+  - its `<param>` tags as the descriptions of a parameter or of the body, and its `<response>` tags as those of the responses
+  - a type's `<summary>`, and a record's `<param>` tags, as the descriptions of a schema and of its properties
+- A probe on ASP.NET Core 10.0.12 showed:
+  - The generator read the comments of internal handlers, and skipped those of private ones, without a warning. It read those of internal records and their positional properties.
+  - `ProducesProblem(404)` on an endpoint that returns `TypedResults.NotFound()` replaced the 404 without a body with one of `application/problem+json`, `ProblemDetails`.
+  - The `ProblemDetails` and `HttpValidationProblemDetails` schemas have no `traceId`: `ProblemJsonWriter` adds it to the problem's extensions, which the schemas do not show.
+  - `Produces` without a response type wrote no content, and refused a content type with a wildcard, such as `image/*`, at startup.
+  - With documentation on, the build failed on CS1591 for the two public types, `CatalogItemRequest` and `TwoDecimalPlacesAttribute`, and on CS1573 for each handler that documents the parameters that a client sends, but not its services and token.
+
+### Decision
+
+**1. XML comments are the source.** The API project sets `GenerateDocumentationFile`, and suppresses CS1573: a handler documents the parameters that a client sends, not the services that it is given. CS1591 stays on, so each public type, such as a request type that validation needs public ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 4), is documented. The handlers of the documented endpoints are `internal static` methods, where they were private, so that the generator reads them. The retired `/api/files`, which the document leaves out ([ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone)), keeps its private handler.
+
+**2. What is described.** Every operation has a summary, and a description where there is more to say, such as the order of a list or the brand delete that deletes nothing. Every parameter that a client sends, every body and every response has a description, and so do the API's own request and response types and their properties. The notes for maintainers, such as the legacy behavior and the audit and ADR references, stay in `//` comments above the XML ones, out of the document.
+
+**3. Tags.** One per resource, set on its route group: `Brands`, `Items` and `Types`, and `Pictures` on the picture route.
+
+**4. Error responses.** Each operation lists the errors that its route, binding, validation and handler give, as `application/problem+json`:
+
+| Schema | Where | How |
+|---|---|---|
+| `ProblemDetails` | A 400 for an ID that is not a 32-bit integer, or for the picture's ID below 1, and every 404 | `ProducesProblem` |
+| `HttpValidationProblemDetails` | A 400 where validation runs: the page parameters of `GET /api/items`, and `POST` and `PUT`, whose 400 also covers a body, or on `PUT` an ID, that does not bind | `ProducesValidationProblem`, or the handler's `ValidationProblem` result |
+
+A 400 with `HttpValidationProblemDetails` can also be a value that does not bind, a problem without `errors`, which the schema allows. The errors that the framework gives any operation in the same way are not listed: a 405, the 413 and 415 of a body, and a 500. They are problems too ([ADR-0021](#adr-0021-error-contract-problem-details)). Nor are the picture's answers to conditional and range requests: a 304, a 412, and a 416.
+
+A schema transformer in `AddCatalogHttp` adds `traceId`, a string, to `ProblemDetails` and each type derived from it.
+
+**5. The picture.** Its 200 is declared with `Produces<Stream>(200, "image/png")`, which the document shows as a binary string, the schema `Stream`. image/png is the type of every picture of the sample items. The description says that the type comes from the file's extension, and how the route answers a Range request.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `OpenApiDocumentTests.Document_matches_the_committed_snapshot` | The summaries, descriptions, tags and problem responses, which `docs/openapi/v1.json` now holds. |
+| `OpenApiDocumentTests.Every_operation_is_described` | Every operation has a summary, every parameter and body a description, and every response a description other than the name of its status, such as "Not Found". |
+| `OpenApiDocumentTests.Every_error_response_is_documented_as_a_problem` | Every 4xx and 5xx response has `application/problem+json` as its only content, with `ProblemDetails` or `HttpValidationProblemDetails`, and both have a string `traceId`. ADR-0021's tests pin that every error is such a problem at run time, whatever the `Accept` header says, so the documented errors match the answers. |
+
+Each of these deliberate breaks failed the intended test, and `Document_matches_the_committed_snapshot`:
+
+- `GetTypesAsync` private again: `Every_operation_is_described`
+- the `<response code="204">` tag of `DELETE /api/items/{id}` removed: `Every_operation_is_described`
+- `DELETE /api/items/{id}` without `ProducesProblem(404)`: `Every_error_response_is_documented_as_a_problem`
+- the schema transformer matching no type: `Every_error_response_is_documented_as_a_problem`
+
+### Alternatives considered
+
+- **`WithSummary` and `WithDescription` in the mapping calls, and `[Description]` on parameters and properties.** No generator, and the handlers could stay private. But the text would sit in the mapping and in attributes, away from the code that it describes, and the plan names XML comments.
+- **An operation transformer that gives every error response without a body the problem schema.** It would cover the 404 that a result type declares, but not the 400 of binding, which nothing declares, so the operations would still list their errors. `ProducesProblem` is ASP.NET Core's own.
+- **A problem type of the API's own, with `TraceId`, for `Produces`.** A type that only the document would use: `ProblemJsonWriter` writes the framework's.
+- **The framework's errors on every operation.** The same answers on every operation, which say nothing about the operation.
+
+### Consequences
+
+- Swagger UI ([ADR-0028](#adr-0028-openapi-tooling-swagger-ui-in-development)) and generated clients show what each operation does, what it needs, and the shape of its errors.
+- A new handler is internal and documented, or `Every_operation_is_described` fails. Each error status that its result types declare gets its problem body, or `Every_error_response_is_documented_as_a_problem` fails. The 400 of a parameter that does not bind is declared by hand, with `ProducesProblem`, and only the snapshot's diff shows it missing.
+- CS1573 is off for the whole project, the records included: a record property without its `<param>` tag compiles, and only the snapshot's diff shows its missing description.
+- The build writes `eShop.Catalog.Api.xml` beside the assembly, and a publish includes it.
+- The document does not list the `Location` header of a 201. The response's description names it.
+- A picture of another type, which only a database adopted from the legacy app can hold ([ADR-0012](#adr-0012-adopting-a-legacy-database)), is served with its own content type, not the documented one.
+- The picture's 416, for a range outside the file, has no body, so it is not a problem as ADR-0021 requires: the file result sets the response's headers, and the status code pages leave such a response alone. This dates from Stage 7.4, and is left to a later change.

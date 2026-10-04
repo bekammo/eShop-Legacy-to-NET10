@@ -7,6 +7,20 @@ namespace eShop.Catalog.Api.Items;
 // An item as the API writes it (ADR-0024): the properties of the legacy CatalogItem model, with its brand and type as
 // objects, as the model's navigation properties held them. The item must have them loaded. PictureUri is the absolute URL of the item's picture, as the
 // legacy controller built it. The picture's file name stays inside the API.
+/// <summary>A catalog item.</summary>
+/// <param name="Id">The item's ID.</param>
+/// <param name="Name">The item's name.</param>
+/// <param name="Description">The item's description, or null.</param>
+/// <param name="Price">The item's price.</param>
+/// <param name="PictureUri">The absolute URL of the item's picture.</param>
+/// <param name="CatalogTypeId">The ID of the item's type.</param>
+/// <param name="CatalogType">The item's type.</param>
+/// <param name="CatalogBrandId">The ID of the item's brand.</param>
+/// <param name="CatalogBrand">The item's brand.</param>
+/// <param name="AvailableStock">The quantity in stock.</param>
+/// <param name="RestockThreshold">The stock at which the item should be reordered.</param>
+/// <param name="MaxStockThreshold">The most units that can be in stock at any time.</param>
+/// <param name="OnReorder">Whether the item is on reorder.</param>
 internal sealed record CatalogItemResponse(
     int Id,
     string Name,

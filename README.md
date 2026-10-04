@@ -19,7 +19,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 6 — Logging | Done |
 | 7 — HTTP endpoints | Done |
 | 8 — Async verification | Done |
-| 9 — OpenAPI docs & Swagger UI | Not started |
+| 9 — OpenAPI docs & Swagger UI | Done |
 | 10 — Test consolidation | Not started |
 | 11 — Cutover & cleanup | Not started |
 | 12 — Write-endpoint authorization | Not started |
@@ -106,7 +106,8 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 |---|---|
 | `GET /health/live` | `200 Healthy` while the process is up. It does not check the database or any other dependency. |
 | `GET /health/ready` | `200 Healthy` when the API can reach its database and the database has every migration, otherwise `503 Unhealthy` ([ADR-0013](DECISIONS.md#adr-0013-seeding-migrate-on-startup-and-readiness)). In mock mode it checks nothing and answers `200 Healthy`. |
-| `GET /openapi/v1.json` | The OpenAPI 3.1 document of the API, in every environment ([ADR-0020](DECISIONS.md#adr-0020-minimal-api-endpoints-and-the-openapi-document)). |
+| `GET /openapi/v1.json` | The OpenAPI 3.1 document of the API, in every environment ([ADR-0020](DECISIONS.md#adr-0020-minimal-api-endpoints-and-the-openapi-document)). It describes each operation, and the problem body of each error that it lists ([ADR-0029](DECISIONS.md#adr-0029-describing-the-api-in-the-openapi-document)). |
+| `GET /swagger` | Swagger UI over that document, in Development only. Visual Studio and `dotnet watch` open it ([ADR-0028](DECISIONS.md#adr-0028-openapi-tooling-swagger-ui-in-development)). |
 | `GET /api/brands` | Every brand, in ID order: `[{"Id":1,"Brand":"Azure"}, ...]`. |
 | `GET /api/brands/{id}` | One brand, or 404. An ID that is not an integer is a 400. |
 | `DELETE /api/brands/{id}` | Deletes nothing, as in the legacy app: 200 for a brand that exists, 404 otherwise. |

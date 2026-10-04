@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.OpenApi;
 
 namespace eShop.Catalog.Api.Http;
 
@@ -30,7 +32,23 @@ internal static class HttpServiceCollectionExtensions
         });
 
         services.AddValidation();
-        services.AddOpenApi();
+
+        // Every problem has the traceId that ProblemJsonWriter sets, which the generator cannot see: ProblemDetails
+        // holds it among its extensions (ADR-0029).
+        services.AddOpenApi(static options => options.AddSchemaTransformer(static (schema, context, _) =>
+        {
+            if (context.JsonTypeInfo.Type.IsAssignableTo(typeof(ProblemDetails)))
+            {
+                schema.Properties ??= new Dictionary<string, IOpenApiSchema>();
+                schema.Properties["traceId"] = new OpenApiSchema
+                {
+                    Type = JsonSchemaType.String,
+                    Description = "The request's ID in the W3C trace context form, 00-{trace ID}-{span ID}-{flags}. Its trace ID finds the request in the API's log.",
+                };
+            }
+
+            return Task.CompletedTask;
+        }));
         return services;
     }
 }

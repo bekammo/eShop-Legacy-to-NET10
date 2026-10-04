@@ -8,13 +8,15 @@ internal static class TypeEndpoints
 {
     internal static IEndpointRouteBuilder MapTypeEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var types = endpoints.MapGroup("/api/types");
+        var types = endpoints.MapGroup("/api/types").WithTags("Types");
         types.MapGet("", GetTypesAsync);
         return endpoints;
     }
 
-    // Every type, in ID order.
-    private static async Task<Ok<IReadOnlyList<CatalogTypeResponse>>> GetTypesAsync(ICatalogService service, CancellationToken cancellationToken)
+    /// <summary>Gets every item type.</summary>
+    /// <remarks>The types are in ID order.</remarks>
+    /// <response code="200">The types.</response>
+    internal static async Task<Ok<IReadOnlyList<CatalogTypeResponse>>> GetTypesAsync(ICatalogService service, CancellationToken cancellationToken)
     {
         var types = await service.GetCatalogTypesAsync(cancellationToken);
         return TypedResults.Ok<IReadOnlyList<CatalogTypeResponse>>([.. types.Select(CatalogTypeResponse.From)]);

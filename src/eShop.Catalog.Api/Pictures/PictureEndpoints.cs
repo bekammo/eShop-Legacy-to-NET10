@@ -13,14 +13,26 @@ internal static class PictureEndpoints
     internal static IEndpointRouteBuilder MapPictureEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // The int constraint is the legacy route's: an ID that is not an int matches no route, which is a 404.
-        endpoints.MapGet("/items/{catalogItemId:int}/pic", GetPictureAsync).WithName(RouteName);
+        // A file result has no metadata of its own, so its 200 is declared here: image/png, the type of every
+        // picture of the sample items (ADR-0029).
+        endpoints.MapGet("/items/{catalogItemId:int}/pic", GetPictureAsync)
+            .WithName(RouteName)
+            .WithTags("Pictures")
+            .Produces<Stream>(StatusCodes.Status200OK, "image/png")
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
         return endpoints;
     }
 
-    // 400 for an ID below 1 and 404 for an unknown item, as in the legacy app. 404 too for an item whose picture is not
-    // a file in the pictures folder, where the legacy app answered 500, or served the file that the name pointed at.
-    // A Range request gets the part that it asks for (206).
-    private static async Task<Results<PhysicalFileHttpResult, BadRequest, NotFound>> GetPictureAsync(
+    // The legacy action, except for a picture that is not a file in the pictures folder, for which the legacy app
+    // answered 500, or served the file that the name pointed at.
+    /// <summary>Gets an item's picture.</summary>
+    /// <remarks>The content type comes from the picture file's extension, such as image/png. A Range request gets the part it asks for (206), and a range outside the file a 416 without a body.</remarks>
+    /// <param name="catalogItemId">The item's ID.</param>
+    /// <response code="200">The picture.</response>
+    /// <response code="400">The ID is below 1.</response>
+    /// <response code="404">No item has this ID, the ID is not an integer, or the item's picture is missing.</response>
+    internal static async Task<Results<PhysicalFileHttpResult, BadRequest, NotFound>> GetPictureAsync(
         int catalogItemId, ICatalogService service, CatalogPictures pictures, CancellationToken cancellationToken)
     {
         if (catalogItemId <= 0)

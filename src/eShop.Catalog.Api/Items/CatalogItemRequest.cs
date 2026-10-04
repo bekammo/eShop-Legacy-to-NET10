@@ -8,6 +8,16 @@ namespace eShop.Catalog.Api.Items;
 // description is required: a value type is nullable here only so that a missing value is not read as zero. Public,
 // because .NET 10's validation skips internal types (ADR-0020). The rules are on the properties, where the OpenAPI
 // document shows them too, and the description has a default, so that the document does not require it.
+/// <summary>The fields of an item that a client writes.</summary>
+/// <param name="Name">The item's name.</param>
+/// <param name="Price">The item's price, with at most two decimal places.</param>
+/// <param name="CatalogTypeId">The ID of the item's type.</param>
+/// <param name="CatalogBrandId">The ID of the item's brand.</param>
+/// <param name="AvailableStock">The quantity in stock.</param>
+/// <param name="RestockThreshold">The stock at which the item should be reordered.</param>
+/// <param name="MaxStockThreshold">The most units that can be in stock at any time.</param>
+/// <param name="OnReorder">Whether the item is on reorder.</param>
+/// <param name="Description">The item's description. Optional.</param>
 public sealed record CatalogItemRequest(
     [property: Required, StringLength(50)] string? Name,
     [property: Required, Range(typeof(decimal), "0", "1000000", ParseLimitsInInvariantCulture = true), TwoDecimalPlaces] decimal? Price,
