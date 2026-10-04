@@ -32,8 +32,14 @@ var app = builder.Build();
 app.UseCatalogRequestLogging();
 app.UseCatalogErrorHandling();
 
-// The OpenAPI document, /openapi/v1.json, in every environment (ADR-0020).
+// The OpenAPI document, /openapi/v1.json, in every environment (ADR-0020), and Swagger UI over it, at /swagger, in
+// Development only (ADR-0028).
 app.MapOpenApi();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwaggerUI(static options => options.SwaggerEndpoint("/openapi/v1.json", "v1"));
+}
+
 app.MapHealthCheckEndpoints();
 app.MapBrandEndpoints();
 app.MapFileEndpoints();

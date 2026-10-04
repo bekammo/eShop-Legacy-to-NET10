@@ -47,7 +47,7 @@ public sealed class OpenApiDocumentTests(CatalogApiFactory factory) : IClassFixt
     }
 
     // The document describes the contract, which is public, so it is not a Development-only feature. Swagger UI is
-    // (Stage 9.1).
+    // (ADR-0028).
     [Theory]
     [InlineData("Development")]
     [InlineData("Production")]

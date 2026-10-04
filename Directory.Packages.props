@@ -33,9 +33,13 @@
     <PackageVersion Include="Serilog.Sinks.Async" Version="2.1.0" />
   </ItemGroup>
 
-  <!-- The OpenAPI document (ADR-0020). It shares the ASP.NET Core version of the runtime it runs on. -->
+  <!--
+    The OpenAPI document (ADR-0020). It shares the ASP.NET Core version of the runtime it runs on.
+    Swashbuckle.AspNetCore.SwaggerUI is only the UI over it, without Swashbuckle's generator (ADR-0028).
+  -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
   </ItemGroup>
 
   <!-- Tests (ADR-0007). -->

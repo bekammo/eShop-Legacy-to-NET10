@@ -37,6 +37,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0025](#adr-0025-creating-items) | Creating items | Accepted | 7.6 |
 | [ADR-0026](#adr-0026-updating-and-deleting-items) | Updating and deleting items | Accepted | 7.7 |
 | [ADR-0027](#adr-0027-asynchronous-request-paths-and-cancellation) | Asynchronous request paths and cancellation | Accepted | 8.1 |
+| [ADR-0028](#adr-0028-openapi-tooling-swagger-ui-in-development) | OpenAPI tooling: Swagger UI in Development | Accepted | 9.1 |
 
 ## Template
 
@@ -2571,3 +2572,57 @@ Each of these deliberate breaks failed the intended tests:
 - SqlClient can also report a cancelled command as an `InvalidOperationException`, "Operation cancelled by user.", when the cancellation comes after the command has started but before SqlClient has a session for it, a short window. Such a request is still a 500 logged at Error. Matching the exception's message to catch it would be fragile.
 - If SqlClient comes to report a cancelled command as an `OperationCanceledException`, the exception handler's own path takes it, and the tests still pass.
 - This completes the verification that plan decision 6 and [ADR-0015](#adr-0015-async-first-catalog-service) left to Stage 8. ADR-0015 itself is unchanged.
+
+---
+
+## ADR-0028: OpenAPI tooling: Swagger UI in Development
+
+- **Status:** Accepted
+- **Date:** 2026-10-04
+- **Plan stage:** 9.1
+
+### Context
+
+- Plan decision 7 and [ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document) chose the built-in `Microsoft.AspNetCore.OpenApi` for the document, which the API serves at `/openapi/v1.json` in every environment. That package generates and serves the document, and has no UI. ADR-0020, decision 5, makes Swagger UI, a tool for developers, Development only, and its alternatives leave the choice of the UI to this stage.
+- The document is OpenAPI 3.1.1. Swagger UI reads 3.1 from its version 5.
+- `Swashbuckle.AspNetCore.SwaggerUI` is Swashbuckle's UI alone: a middleware that serves an embedded copy of swagger-ui. Its version 10.2.3 (June 2026) embeds swagger-ui 5.32.7, and depends on nothing but the ASP.NET Core shared framework. Swashbuckle's generator, `Swashbuckle.AspNetCore.SwaggerGen`, is a separate package. ASP.NET Core's documentation shows this package over the built-in document.
+- A probe, the API in mock mode in Development with the package added:
+  - `/swagger` answered 301 to `swagger/index.html`, and the page read its settings from `/swagger/index.js`.
+  - The UI showed the served document as "OAS 3.1", with its 10 operations, and no errors.
+  - A file under `/swagger` that the UI does not have was a 404 problem ([ADR-0021](#adr-0021-error-contract-problem-details)).
+
+### Decision
+
+1. **The UI is `Swashbuckle.AspNetCore.SwaggerUI` 10.2.3**, versioned in `Directory.Packages.props` beside the OpenAPI package. Swashbuckle's generator is not used: the document stays the built-in one.
+2. **It shows the document that the API serves.** `UseSwaggerUI` keeps its default route prefix, `swagger`, and has one entry, `SwaggerEndpoint("/openapi/v1.json", "v1")`, the document that `docs/openapi/v1.json` snapshots ([ADR-0020](#adr-0020-minimal-api-endpoints-and-the-openapi-document), decision 6). Without that entry the UI asks for Swashbuckle's default, `/swagger/v1/swagger.json`, which the API does not serve.
+3. **Development only.** `Program.cs` adds the UI only in the Development environment. Elsewhere `/swagger` matches nothing, and the answer is a 404 problem. The UI is for developers, and its "Try it out" sends requests to the API, writes included, which stay anonymous until Stage 12 ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)). Clients of a deployed API still get the document.
+4. **Inside the request logging and the error handling.** `Program.cs` adds the UI after `UseCatalogRequestLogging` and `UseCatalogErrorHandling`, so its requests are logged ([ADR-0019](#adr-0019-request-logging-and-application-log-events)), and its errors are problems, like the API's. It is a middleware, not an endpoint, so the document does not list it.
+5. **The launch profiles open it.** Both profiles' `launchUrl` is `swagger`, instead of `health/live`. Visual Studio and `dotnet watch` open it; `dotnet run` opens no browser.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `SwaggerUiTests.Swagger_UI_shows_the_served_document_in_Development` | `/swagger` leads to an HTML page, and the UI's settings name `/openapi/v1.json`. |
+| `SwaggerUiTests.Swagger_UI_is_not_served_in_Production` | `/swagger/index.html` is a 404. |
+
+Each of these deliberate breaks failed the intended test:
+
+- the UI in every environment: `Swagger_UI_is_not_served_in_Production`
+- the UI without its `SwaggerEndpoint`: `Swagger_UI_shows_the_served_document_in_Development`
+
+### Alternatives considered
+
+- **Scalar (`Scalar.AspNetCore`).** It reads OpenAPI 3.1 too. The plan names Swagger UI, and Scalar would give this API nothing that Swagger UI lacks.
+- **NSwag's UI (`NSwag.AspNetCore`).** The package brings NSwag's generator, a second generator beside the built-in one.
+- **Swashbuckle whole (`Swashbuckle.AspNetCore`).** Also a second generator, `SwaggerGen`.
+- **swagger-ui from a CDN, in a page of the API's own.** No package, but the browser runs a third party's code, at a version pinned by hand in HTML, outside the NuGet audit ([ADR-0008](#adr-0008-continuous-integration)).
+- **ReDoc (`Swashbuckle.AspNetCore.ReDoc`).** It shows the document, but cannot send a request.
+- **The UI in every environment.** "Try it out" against a deployed API whose writes are anonymous until Stage 12.
+
+### Consequences
+
+- One more package, which the NuGet audit checks. The swagger-ui version comes with it, so the UI is updated by updating the package.
+- Developers get Swagger UI over the same document that the snapshot test keeps.
+- In Development, each of the UI's files is logged as a request, at Information.
+- The UI shows what the document says. Summaries, tags and the documented problem responses are Stage 9.2's.
