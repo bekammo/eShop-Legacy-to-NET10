@@ -224,7 +224,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 
 ### Stage 9 — OpenAPI docs & Swagger UI
 - [x] 9.1 Swagger UI at `/swagger` over `/openapi/v1.json` (Development only). ADR: OpenAPI tooling.
-- [ ] 9.2 Documentation completeness: summaries, tags and XML comments. Documented error responses match the runtime `application/problem+json`. Snapshot updated.
+- [x] 9.2 Documentation completeness: summaries, tags and XML comments. Documented error responses match the runtime `application/problem+json`. Snapshot updated.
 
 ### Stage 10 — Test consolidation
 - [ ] 10.1 Collect code coverage and publish a report. Close the real gaps.

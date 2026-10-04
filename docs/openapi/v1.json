@@ -8,13 +8,16 @@
     "/items/{catalogItemId}/pic": {
       "get": {
         "tags": [
-          "PictureEndpoints"
+          "Pictures"
         ],
+        "summary": "Gets an item's picture.",
+        "description": "The content type comes from the picture file's extension, such as image/png. A Range request gets the part it asks for (206), and a range outside the file a 416 without a body.",
         "operationId": "GetPicRouteTemplate",
         "parameters": [
           {
             "name": "catalogItemId",
             "in": "path",
+            "description": "The item's ID.",
             "required": true,
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -25,10 +28,34 @@
         ],
         "responses": {
           "400": {
-            "description": "Bad Request"
+            "description": "The ID is below 1.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Not Found"
+            "description": "No item has this ID, the ID is not an integer, or the item's picture is missing.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The picture.",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
           }
         }
       }
@@ -36,11 +63,13 @@
     "/api/brands": {
       "get": {
         "tags": [
-          "BrandEndpoints"
+          "Brands"
         ],
+        "summary": "Gets every brand.",
+        "description": "The brands are in ID order.",
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The brands.",
             "content": {
               "application/json": {
                 "schema": {
@@ -58,12 +87,14 @@
     "/api/brands/{id}": {
       "get": {
         "tags": [
-          "BrandEndpoints"
+          "Brands"
         ],
+        "summary": "Gets a brand.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
+            "description": "The brand's ID.",
             "required": true,
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -77,7 +108,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The brand.",
             "content": {
               "application/json": {
                 "schema": {
@@ -87,18 +118,38 @@
             }
           },
           "404": {
-            "description": "Not Found"
+            "description": "No brand has this ID.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The ID is not a 32-bit integer.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       },
       "delete": {
         "tags": [
-          "BrandEndpoints"
+          "Brands"
         ],
+        "summary": "Deletes nothing.",
+        "description": "The answer only says whether the brand exists.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
+            "description": "The brand's ID.",
             "required": true,
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -112,10 +163,27 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "The brand exists. It is not deleted."
           },
           "404": {
-            "description": "Not Found"
+            "description": "No brand has this ID.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The ID is not a 32-bit integer.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -123,12 +191,15 @@
     "/api/items": {
       "get": {
         "tags": [
-          "ItemEndpoints"
+          "Items"
         ],
+        "summary": "Gets a page of items.",
+        "description": "The items are in ID order, each with its brand, its type and the URL of its picture. A page after the last is empty.",
         "parameters": [
           {
             "name": "pageSize",
             "in": "query",
+            "description": "The number of items on a page, from 1 to 100.",
             "schema": {
               "maximum": 100,
               "minimum": 1,
@@ -144,6 +215,7 @@
           {
             "name": "pageIndex",
             "in": "query",
+            "description": "The index of the page, from 0.",
             "schema": {
               "maximum": 2147483647,
               "minimum": 0,
@@ -159,11 +231,21 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The page.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaginatedItemsOfCatalogItemResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The page size or the page index is out of range, or not an integer.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -172,9 +254,12 @@
       },
       "post": {
         "tags": [
-          "ItemEndpoints"
+          "Items"
         ],
+        "summary": "Creates an item.",
+        "description": "The API gives the item its ID, and the default picture.",
         "requestBody": {
+          "description": "The item's fields.",
           "content": {
             "application/json": {
               "schema": {
@@ -186,7 +271,7 @@
         },
         "responses": {
           "201": {
-            "description": "Created",
+            "description": "The item, as GET /api/items/{id} gives it. The Location header holds its URL.",
             "content": {
               "application/json": {
                 "schema": {
@@ -196,7 +281,7 @@
             }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "The body is missing or not an item's JSON, a field breaks its rule, or no brand or type has the ID given. The errors name each field at fault.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -211,12 +296,14 @@
     "/api/items/{id}": {
       "get": {
         "tags": [
-          "ItemEndpoints"
+          "Items"
         ],
+        "summary": "Gets an item.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
+            "description": "The item's ID.",
             "required": true,
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -230,7 +317,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The item, with its brand, its type and the URL of its picture.",
             "content": {
               "application/json": {
                 "schema": {
@@ -240,18 +327,38 @@
             }
           },
           "404": {
-            "description": "Not Found"
+            "description": "No item has this ID.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The ID is not a 32-bit integer.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       },
       "put": {
         "tags": [
-          "ItemEndpoints"
+          "Items"
         ],
+        "summary": "Replaces an item's fields.",
+        "description": "The fields have the rules of a new item. The item keeps its ID and its picture.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
+            "description": "The item's ID.",
             "required": true,
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -264,6 +371,7 @@
           }
         ],
         "requestBody": {
+          "description": "The item's new fields.",
           "content": {
             "application/json": {
               "schema": {
@@ -275,13 +383,20 @@
         },
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "The item is updated."
           },
           "404": {
-            "description": "Not Found"
+            "description": "No item has this ID.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "400": {
-            "description": "Bad Request",
+            "description": "The ID is not a 32-bit integer, the body is missing or not an item's JSON, a field breaks its rule, or no brand or type has the ID given.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -294,12 +409,14 @@
       },
       "delete": {
         "tags": [
-          "ItemEndpoints"
+          "Items"
         ],
+        "summary": "Deletes an item.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
+            "description": "The item's ID.",
             "required": true,
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -313,10 +430,27 @@
         ],
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "The item is deleted."
           },
           "404": {
-            "description": "Not Found"
+            "description": "No item has this ID.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The ID is not a 32-bit integer.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         }
       }
@@ -324,11 +458,13 @@
     "/api/types": {
       "get": {
         "tags": [
-          "TypeEndpoints"
+          "Types"
         ],
+        "summary": "Gets every item type.",
+        "description": "The types are in ID order.",
         "responses": {
           "200": {
-            "description": "OK",
+            "description": "The types.",
             "content": {
               "application/json": {
                 "schema": {
@@ -359,12 +495,15 @@
               "integer",
               "string"
             ],
+            "description": "The brand's ID.",
             "format": "int32"
           },
           "Brand": {
-            "type": "string"
+            "type": "string",
+            "description": "The brand's name."
           }
-        }
+        },
+        "description": "A brand of catalog items."
       },
       "CatalogItemRequest": {
         "required": [
@@ -385,7 +524,8 @@
             "type": [
               "null",
               "string"
-            ]
+            ],
+            "description": "The item's name."
           },
           "Price": {
             "maximum": 1000000,
@@ -396,6 +536,7 @@
               "number",
               "string"
             ],
+            "description": "The item's price, with at most two decimal places.",
             "format": "double"
           },
           "CatalogTypeId": {
@@ -405,6 +546,7 @@
               "integer",
               "string"
             ],
+            "description": "The ID of the item's type.",
             "format": "int32"
           },
           "CatalogBrandId": {
@@ -414,6 +556,7 @@
               "integer",
               "string"
             ],
+            "description": "The ID of the item's brand.",
             "format": "int32"
           },
           "AvailableStock": {
@@ -425,6 +568,7 @@
               "integer",
               "string"
             ],
+            "description": "The quantity in stock.",
             "format": "int32"
           },
           "RestockThreshold": {
@@ -436,6 +580,7 @@
               "integer",
               "string"
             ],
+            "description": "The stock at which the item should be reordered.",
             "format": "int32"
           },
           "MaxStockThreshold": {
@@ -447,21 +592,25 @@
               "integer",
               "string"
             ],
+            "description": "The most units that can be in stock at any time.",
             "format": "int32"
           },
           "OnReorder": {
             "type": [
               "null",
               "boolean"
-            ]
+            ],
+            "description": "Whether the item is on reorder."
           },
           "Description": {
             "type": [
               "null",
               "string"
-            ]
+            ],
+            "description": "The item's description. Optional."
           }
-        }
+        },
+        "description": "The fields of an item that a client writes."
       },
       "CatalogItemResponse": {
         "required": [
@@ -487,16 +636,19 @@
               "integer",
               "string"
             ],
+            "description": "The item's ID.",
             "format": "int32"
           },
           "Name": {
-            "type": "string"
+            "type": "string",
+            "description": "The item's name."
           },
           "Description": {
             "type": [
               "null",
               "string"
-            ]
+            ],
+            "description": "The item's description, or null."
           },
           "Price": {
             "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
@@ -504,10 +656,12 @@
               "number",
               "string"
             ],
+            "description": "The item's price.",
             "format": "double"
           },
           "PictureUri": {
-            "type": "string"
+            "type": "string",
+            "description": "The absolute URL of the item's picture."
           },
           "CatalogTypeId": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -515,9 +669,11 @@
               "integer",
               "string"
             ],
+            "description": "The ID of the item's type.",
             "format": "int32"
           },
           "CatalogType": {
+            "description": "The item's type.",
             "$ref": "#/components/schemas/CatalogTypeResponse"
           },
           "CatalogBrandId": {
@@ -526,9 +682,11 @@
               "integer",
               "string"
             ],
+            "description": "The ID of the item's brand.",
             "format": "int32"
           },
           "CatalogBrand": {
+            "description": "The item's brand.",
             "$ref": "#/components/schemas/CatalogBrandResponse"
           },
           "AvailableStock": {
@@ -537,6 +695,7 @@
               "integer",
               "string"
             ],
+            "description": "The quantity in stock.",
             "format": "int32"
           },
           "RestockThreshold": {
@@ -545,6 +704,7 @@
               "integer",
               "string"
             ],
+            "description": "The stock at which the item should be reordered.",
             "format": "int32"
           },
           "MaxStockThreshold": {
@@ -553,12 +713,15 @@
               "integer",
               "string"
             ],
+            "description": "The most units that can be in stock at any time.",
             "format": "int32"
           },
           "OnReorder": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the item is on reorder."
           }
-        }
+        },
+        "description": "A catalog item."
       },
       "CatalogTypeResponse": {
         "required": [
@@ -573,12 +736,15 @@
               "integer",
               "string"
             ],
+            "description": "The type's ID.",
             "format": "int32"
           },
           "Type": {
-            "type": "string"
+            "type": "string",
+            "description": "The type's name."
           }
-        }
+        },
+        "description": "A type of catalog items."
       },
       "HttpValidationProblemDetails": {
         "type": "object",
@@ -624,6 +790,10 @@
                 "type": "string"
               }
             }
+          },
+          "traceId": {
+            "type": "string",
+            "description": "The request's ID in the W3C trace context form, 00-{trace ID}-{span ID}-{flags}. Its trace ID finds the request in the API's log."
           }
         }
       },
@@ -639,6 +809,7 @@
               "integer",
               "string"
             ],
+            "description": "The index of this page, from 0.",
             "format": "int32"
           },
           "ItemsPerPage": {
@@ -647,6 +818,7 @@
               "integer",
               "string"
             ],
+            "description": "The page size: the most items that a page holds.",
             "format": "int32"
           },
           "TotalItems": {
@@ -655,6 +827,7 @@
               "integer",
               "string"
             ],
+            "description": "The number of items in the whole list.",
             "format": "int64"
           },
           "TotalPages": {
@@ -663,30 +836,79 @@
               "integer",
               "string"
             ],
+            "description": "The number of pages that hold the whole list, 0 for an empty list.",
             "format": "int64"
           },
           "Data": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CatalogItemResponse"
-            }
+            },
+            "description": "The items of this page."
+          }
+        },
+        "description": "A page of a list."
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "traceId": {
+            "type": "string",
+            "description": "The request's ID in the W3C trace context form, 00-{trace ID}-{span ID}-{flags}. Its trace ID finds the request in the API's log."
           }
         }
+      },
+      "Stream": {
+        "type": "string",
+        "format": "binary"
       }
     }
   },
   "tags": [
     {
-      "name": "PictureEndpoints"
+      "name": "Pictures"
     },
     {
-      "name": "BrandEndpoints"
+      "name": "Brands"
     },
     {
-      "name": "ItemEndpoints"
+      "name": "Items"
     },
     {
-      "name": "TypeEndpoints"
+      "name": "Types"
     }
   ]
 }

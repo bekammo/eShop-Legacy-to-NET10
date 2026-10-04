@@ -10,6 +10,17 @@
     <UserSecretsId>bd775565-2ab8-422b-829f-92585b457810</UserSecretsId>
   </PropertyGroup>
 
+  <!--
+    The XML comments of the handlers and of the request and response types describe the API in its OpenAPI
+    document: ASP.NET Core's OpenAPI source generator reads them when the compiler documents the assembly
+    (ADR-0029). A handler documents the parameters that a client sends, not the services that it is given,
+    so a handler's missing param tags (CS1573) are not reported.
+  -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1573</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
