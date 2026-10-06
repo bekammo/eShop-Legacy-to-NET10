@@ -7,27 +7,35 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Catalog.Api.IntegrationTests;
 
-// Hosts the API in memory for the integration tests (ADR-0007). Each test class gets its own
-// instance through IClassFixture<CatalogApiFactory>, and with it a database of its own in the shared
-// SQL Server container, migrated before the class's first test.
-public sealed class CatalogApiFactory(SqlServerFixture sqlServer) : WebApplicationFactory<Program>, IAsyncLifetime
+// Hosts the API in memory for the integration tests (ADR-0007). Each test class gets its own instance through
+// IClassFixture<CatalogApiFactory>, and with it a database of its own in the shared SQL Server container, migrated
+// before the class's first test. Such a class needs Docker, and has the Docker trait (ADR-0031).
+// MockModeCatalogApiFactory hosts the API without a database.
+public class CatalogApiFactory(SqlServerFixture sqlServer) : WebApplicationFactory<Program>, IAsyncLifetime
 {
     // Not Development: user secrets and Development-only features stay off unless a test opts in.
     public const string EnvironmentName = "Testing";
 
-    // The Testing environment has no connection string of its own (ADR-0009): this class's database.
-    public string ConnectionString { get; } = sqlServer.NewDatabase("catalog");
+    // The hosts built so far: this factory's own, and those of WithWebHostBuilder, which runs ConfigureWebHost too.
+    private int _hosts;
+
+    // The Testing environment has no connection string of its own (ADR-0009): this factory's database, once
+    // UseNewDatabaseAsync has named it. Until then a host in database mode does not start.
+    public string ConnectionString { get; private set; } = "";
 
     // The log file of this factory's own host, in a temporary directory of its own (ADR-0018). The committed path is
     // relative to the content root, which is the API's source folder here, and every host would share it.
     public string LogFilePath { get; } =
         Path.Combine(Directory.CreateTempSubdirectory("eShop.Catalog.Api.IntegrationTests-").FullName, "myapp.log");
 
-    // The hosts built so far: this factory's own, and those of WithWebHostBuilder, which runs ConfigureWebHost too.
-    private int _hosts;
+    // Names a new database in the shared container, which a host or a migration creates, for the hosts built from now
+    // on. xUnit does it for a class fixture, and a test that starts hosts of its own from a factory that xUnit does not
+    // initialize does it itself.
+    public async Task UseNewDatabaseAsync() => ConnectionString = await sqlServer.NewDatabaseAsync("catalog");
 
-    public async ValueTask InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
+        await UseNewDatabaseAsync();
         await using var scope = Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
@@ -38,6 +46,7 @@ public sealed class CatalogApiFactory(SqlServerFixture sqlServer) : WebApplicati
     public override async ValueTask DisposeAsync()
     {
         await base.DisposeAsync();
+        GC.SuppressFinalize(this);
         try
         {
             Directory.Delete(Path.GetDirectoryName(LogFilePath)!, recursive: true);

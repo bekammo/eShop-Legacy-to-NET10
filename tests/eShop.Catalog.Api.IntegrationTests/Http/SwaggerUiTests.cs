@@ -5,7 +5,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Http;
 
 // Swagger UI at /swagger, over the OpenAPI document that the API serves at /openapi/v1.json, in Development only
 // (ADR-0028).
-public sealed class SwaggerUiTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+public sealed class SwaggerUiTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 

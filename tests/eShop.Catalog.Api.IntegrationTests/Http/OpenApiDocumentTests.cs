@@ -10,7 +10,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Http;
 
 // The OpenAPI document that the API serves at /openapi/v1.json (ADR-0020), against the committed snapshot
 // docs/openapi/v1.json, so that every change to the contract of an endpoint shows in that file's diff.
-public sealed class OpenApiDocumentTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private const string SnapshotInRepository = "docs/openapi/v1.json";
 

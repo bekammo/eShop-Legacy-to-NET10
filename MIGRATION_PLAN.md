@@ -227,8 +227,8 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 9.2 Documentation completeness: summaries, tags and XML comments. Documented error responses match the runtime `application/problem+json`. Snapshot updated.
 
 ### Stage 10 — Test consolidation
-- [ ] 10.1 Collect code coverage and publish a report. Close the real gaps.
-- [ ] 10.2 Add a Docker trait and a documented Docker-free subset of the tests. CI publishes test results and coverage. Complete the README testing section.
+- [x] 10.1 Collect code coverage and publish a report. Close the real gaps.
+- [x] 10.2 Add a Docker trait and a documented Docker-free subset of the tests. CI publishes test results and coverage. Complete the README testing section.
 
 ### Stage 11 — Cutover & cleanup
 - [ ] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback, including databases adopted with the Stage 4.3 baseline (ADR-0012: rollback by pointing the legacy app at the same database, which holds while migrations stay expand-only).

@@ -7,8 +7,9 @@ namespace eShop.Catalog.Api.IntegrationTests.Contract;
 // ADR-0017: on the class's database, and from memory. Each exchange is one case, named with the delta that changes its
 // answer, if any. The replay spans every ported endpoint, so it has a folder of its own rather than one that mirrors a
 // folder of the API (ADR-0007).
-public sealed partial class LegacyContractTests(CatalogApiFactory factory, MockModeCatalogApi mockMode)
-    : IClassFixture<CatalogApiFactory>, IClassFixture<MockModeCatalogApi>
+[Trait("Category", "Docker")]
+public sealed partial class LegacyContractTests(CatalogApiFactory factory, MockModeCatalogApiFactory mockMode)
+    : IClassFixture<CatalogApiFactory>, IClassFixture<MockModeCatalogApiFactory>
 {
     // As the exchanges were recorded: a redirect is not followed, which would hide its status, and no cookie is sent.
     private static readonly WebApplicationFactoryClientOptions ClientOptions = new() { AllowAutoRedirect = false, HandleCookies = false };

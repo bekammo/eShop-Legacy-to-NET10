@@ -12,6 +12,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Catalog;
 
 // AddCatalogServices in the host (ADR-0017): Catalog:UseMockData chooses the catalog service, mock mode needs no
 // database, and the container validates scopes in every environment.
+[Trait("Category", "Docker")]
 public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, SqlServerFixture sqlServer) : IClassFixture<CatalogApiFactory>
 {
     // The name of the warning event: the name of its [LoggerMessage] method.
@@ -34,8 +35,8 @@ public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, S
     }
 
     // Settings that stop a host in database mode, and that mock mode does not read: a blank connection string, and
-    // migrate-on-startup, which is allowed only in Development. The factory is never initialized, so its database
-    // does not exist either.
+    // migrate-on-startup, which is allowed only in Development. The factory is never initialized, so it has no database
+    // either.
     [Theory]
     [InlineData("Development")]
     [InlineData("Testing")]

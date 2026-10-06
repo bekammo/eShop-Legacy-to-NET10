@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace eShop.Catalog.Api.IntegrationTests.Health;
 
 // /health/ready (ADR-0013): ready only when the catalog database can be reached and has every migration.
+[Trait("Category", "Docker")]
 public sealed class ReadinessEndpointTests(CatalogApiFactory factory, SqlServerFixture sqlServer) : IClassFixture<CatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
@@ -25,8 +26,8 @@ public sealed class ReadinessEndpointTests(CatalogApiFactory factory, SqlServerF
     [Fact]
     public async Task Get_returns_503_Unhealthy_when_the_database_cannot_be_reached()
     {
-        using var missingDatabase = factory.WithWebHostBuilder(builder =>
-            builder.UseSetting("ConnectionStrings:CatalogDb", sqlServer.NewDatabase("missing")));
+        var missing = await sqlServer.NewDatabaseAsync("missing");
+        using var missingDatabase = factory.WithWebHostBuilder(builder => builder.UseSetting("ConnectionStrings:CatalogDb", missing));
 
         await AssertUnhealthyAsync(missingDatabase);
     }

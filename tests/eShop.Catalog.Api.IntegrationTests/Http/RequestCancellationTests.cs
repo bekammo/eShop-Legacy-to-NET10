@@ -18,6 +18,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Http;
 // the request's RequestAborted to EF Core, which passes it to SqlClient. SqlClient reports the cancelled command as a
 // SqlException, and the request still ends as ASP.NET Core ends an aborted request: a 499, which is not an Error
 // (ADR-0019).
+[Trait("Category", "Docker")]
 public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
     private const string RequestLoggingMiddleware = "Serilog.AspNetCore.RequestLoggingMiddleware";

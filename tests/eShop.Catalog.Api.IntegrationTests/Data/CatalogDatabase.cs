@@ -26,7 +26,7 @@ internal static class CatalogDatabase
     // A database created and migrated the way CatalogApiFactory does it, sample items included.
     public static async Task<string> CreateMigratedAsync(SqlServerFixture sqlServer, CancellationToken cancellationToken)
     {
-        var connectionString = sqlServer.NewDatabase("migrated");
+        var connectionString = await sqlServer.NewDatabaseAsync("migrated");
         await using var context = CreateContext(connectionString);
         await context.Database.MigrateAsync(cancellationToken);
         return connectionString;

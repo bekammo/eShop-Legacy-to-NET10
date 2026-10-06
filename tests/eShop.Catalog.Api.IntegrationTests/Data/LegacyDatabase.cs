@@ -67,7 +67,7 @@ internal static class LegacyDatabase
     // A database that exists but has nothing in it, created the same way.
     public static async Task<string> CreateEmptyAsync(SqlServerFixture sqlServer, CancellationToken cancellationToken)
     {
-        var connectionString = sqlServer.NewDatabase("legacy");
+        var connectionString = await sqlServer.NewDatabaseAsync("legacy");
         await using var context = CatalogDatabase.CreateContext(connectionString);
         await context.GetService<IRelationalDatabaseCreator>().CreateAsync(cancellationToken);
         return connectionString;

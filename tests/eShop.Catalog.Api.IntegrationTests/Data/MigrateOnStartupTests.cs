@@ -10,8 +10,10 @@ using Microsoft.Extensions.Hosting;
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
 // Database:MigrateOnStartup (ADR-0013). Each test starts a host of its own, from a CatalogApiFactory that
-// xUnit never initializes, so the host's database does not exist until the host creates it. The settings
-// are host settings, which override the Development settings files and a developer's user secrets.
+// xUnit never initializes: the test names the factory's database, which does not exist until the host
+// creates it. The settings are host settings, which override the Development settings files and a
+// developer's user secrets.
+[Trait("Category", "Docker")]
 public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
@@ -20,6 +22,7 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
     public async Task Development_host_migrates_and_seeds_its_database_before_the_server_starts()
     {
         await using var factory = new CatalogApiFactory(sqlServer);
+        await factory.UseNewDatabaseAsync();
         var probe = new StartupProbe(factory.ConnectionString);
         var host = Host(factory, Environments.Development, migrateOnStartup: "true", services => services.AddHostedService(_ => probe));
 
@@ -41,6 +44,7 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
     public async Task Host_leaves_the_database_alone_with_migrate_on_startup_off(string environment, string? migrateOnStartup)
     {
         await using var factory = new CatalogApiFactory(sqlServer);
+        await factory.UseNewDatabaseAsync();
         var host = Host(factory, environment, migrateOnStartup);
 
         _ = host.Services;
@@ -56,6 +60,7 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
     public async Task Host_outside_Development_refuses_to_start_with_migrate_on_startup(string environment)
     {
         await using var factory = new CatalogApiFactory(sqlServer);
+        await factory.UseNewDatabaseAsync();
         var host = Host(factory, environment, migrateOnStartup: "true");
 
         var exception = Assert.ThrowsAny<Exception>(() => host.Services);
@@ -68,6 +73,7 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
     public async Task Host_does_not_start_with_a_malformed_migrate_on_startup()
     {
         await using var factory = new CatalogApiFactory(sqlServer);
+        await factory.UseNewDatabaseAsync();
         var host = Host(factory, Environments.Development, migrateOnStartup: "yes");
 
         var exception = Assert.ThrowsAny<Exception>(() => host.Services);

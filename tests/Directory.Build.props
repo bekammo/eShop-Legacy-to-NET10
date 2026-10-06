@@ -17,6 +17,17 @@
 
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Microsoft.Testing.Extensions.GitHubActionsReport" />
+  </ItemGroup>
+
+  <!--
+    The platform settings of both projects, code coverage's included (ADR-0030). MTP reads
+    <assembly>.testconfig.json beside the test assembly, and by itself copies only a testconfig.json from the
+    project's own folder.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)testconfig.json" Link="$(AssemblyName).testconfig.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace eShop.Catalog.Api.IntegrationTests.Health;
 
-public sealed class LivenessEndpointTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+public sealed class LivenessEndpointTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     [Fact]
     public async Task Get_returns_200_Healthy_as_plain_text()

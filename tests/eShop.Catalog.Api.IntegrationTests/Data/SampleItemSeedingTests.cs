@@ -8,6 +8,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Data;
 
 // The sample-item seeder that ends every Migrate (ADR-0013). Each test migrates a database of its own,
 // because seeding is what they test.
+[Trait("Category", "Docker")]
 public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
@@ -59,26 +60,25 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         Assert.Equal(sequence, await ItemIdSequenceAsync(database));
     }
 
-    // dotnet ef database update migrates synchronously, so it runs the synchronous seeder.
+    // dotnet ef database update migrates synchronously, so it runs the synchronous seeder. The migrations run in a
+    // synchronous method of their own: CA1849 allows no synchronous Migrate in an async test.
     [Fact]
-    public void Synchronous_migration_seeds_the_same_items_once()
+    public async Task Synchronous_migration_seeds_the_same_items_once()
     {
-        var database = sqlServer.NewDatabase("seeded");
+        var database = await sqlServer.NewDatabaseAsync("seeded");
 
-        using (var context = CatalogDatabase.CreateContext(database))
+        MigrateTwice(database);
+
+        Assert.Equal(LegacySeedData.Items, await CatalogDatabase.ItemsAsync(database, CancellationToken));
+        Assert.Equal(LegacySeedData.SequenceCurrentValues["catalog_hilo"], await ItemIdSequenceAsync(database));
+
+        static void MigrateTwice(string database)
         {
+            using var context = CatalogDatabase.CreateContext(database);
             context.Database.Migrate();
             Assert.Empty(context.ChangeTracker.Entries());
             context.Database.Migrate();
         }
-
-        using var reader = CatalogDatabase.CreateContext(database);
-        Assert.Equal(
-            LegacySeedData.Items,
-            reader.CatalogItems.AsNoTracking().OrderBy(item => item.Id).AsEnumerable().Select(LegacySeedData.Item));
-        Assert.Equal(
-            LegacySeedData.SequenceCurrentValues["catalog_hilo"],
-            reader.Database.SqlQuery<long>($"SELECT CAST(current_value AS bigint) AS Value FROM sys.sequences WHERE name = N'catalog_hilo'").Single());
     }
 
     // EF Core keeps HiLo blocks for the life of the process, even when a revert drops the sequence and the
@@ -88,7 +88,7 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
     [Fact]
     public async Task Seeding_refuses_hilo_ids_from_before_the_sequence_and_leaves_the_database_unused()
     {
-        var database = sqlServer.NewDatabase("stale");
+        var database = await sqlServer.NewDatabaseAsync("stale");
         await using var context = CatalogDatabase.CreateContext(database);
         await context.Database.MigrateAsync(CancellationToken);
         Assert.Empty(context.ChangeTracker.Entries());
