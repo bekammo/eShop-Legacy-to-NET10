@@ -14,6 +14,8 @@ public sealed class CatalogServiceCollectionExtensionsTests
 {
     private const string ConnectionString = "Data Source=unused;Initial Catalog=unused";
 
+    // Database mode is the default. Registration chooses it without a Catalog section too, and the host then stops on the
+    // required PicturesPath.
     [Fact]
     public void Database_mode_registers_a_scoped_catalog_service_and_the_database()
     {
@@ -62,14 +64,16 @@ public sealed class CatalogServiceCollectionExtensionsTests
         Assert.Contains("'Catalog:UseMockData'", exception.Message, StringComparison.Ordinal);
     }
 
+    // A null leaves the setting out, as when no source sets it: without UseMockData there is no Catalog section at all.
     private static ServiceCollection Register(string? useMockData, string? connectionString)
     {
+        var settings = new Dictionary<string, string?>
+        {
+            ["Catalog:UseMockData"] = useMockData,
+            ["ConnectionStrings:CatalogDb"] = connectionString,
+        };
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Catalog:UseMockData"] = useMockData,
-                ["ConnectionStrings:CatalogDb"] = connectionString,
-            })
+            .AddInMemoryCollection(settings.Where(static setting => setting.Value is not null))
             .Build();
         var services = new ServiceCollection();
         services.AddCatalogServices(configuration);

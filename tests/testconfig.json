@@ -1,0 +1,12 @@
+{
+  "codeCoverage": {
+    "Configuration": {
+      "Format": "cobertura",
+      "CodeCoverage": {
+        "Sources": {
+          "Exclude": [ ".*[\\\\/]obj[\\\\/].*" ]
+        }
+      }
+    }
+  }
+}

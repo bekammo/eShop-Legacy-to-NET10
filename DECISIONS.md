@@ -39,6 +39,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0027](#adr-0027-asynchronous-request-paths-and-cancellation) | Asynchronous request paths and cancellation | Accepted | 8.1 |
 | [ADR-0028](#adr-0028-openapi-tooling-swagger-ui-in-development) | OpenAPI tooling: Swagger UI in Development | Accepted | 9.1 |
 | [ADR-0029](#adr-0029-describing-the-api-in-the-openapi-document) | Describing the API in the OpenAPI document | Accepted | 9.2 |
+| [ADR-0030](#adr-0030-code-coverage) | Code coverage | Accepted | 10.1 |
 
 ## Template
 
@@ -2706,3 +2707,68 @@ Each of these deliberate breaks failed the intended test, and `Document_matches_
 - The document does not list the `Location` header of a 201. The response's description names it.
 - A picture of another type, which only a database adopted from the legacy app can hold ([ADR-0012](#adr-0012-adopting-a-legacy-database)), is served with its own content type, not the documented one.
 - The picture's 416, for a range outside the file, has no body, so it is not a problem as ADR-0021 requires: the file result sets the response's headers, and the status code pages leave such a response alone. This dates from Stage 7.4, and is left to a later change.
+
+---
+
+## ADR-0030: Code coverage
+
+- **Status:** Accepted
+- **Date:** 2026-10-06
+- **Plan stage:** 10.1
+
+### Context
+
+- [ADR-0008](#adr-0008-continuous-integration) left coverage and published test reports to Stage 10. Each stage added its tests with its code, and checked them against deliberate breaks, but no run had measured what the tests leave out.
+- The tests run on Microsoft.Testing.Platform (MTP) 2.4, which `xunit.v3` 4.0.1 brings ([ADR-0007](#adr-0007-test-strategy)). VSTest's coverage collectors do not run on it. Two MTP extensions do: Microsoft's `Microsoft.Testing.Extensions.CodeCoverage`, and `coverlet.MTP`.
+- Both test projects run code of one assembly, `eShop.Catalog.Api`, and each writes a coverage file of its own, so a report has to merge them.
+- The API compiles code that source generators add, whose source paths the compiler puts under `obj/`: the `[LoggerMessage]` methods, the validation resolver and the OpenAPI support for XML comments. A first run with the extension's defaults counted it.
+
+### Decision
+
+1. **`Microsoft.Testing.Extensions.CodeCoverage` 18.11.2** in both test projects, through `tests/Directory.Build.props`. It is Microsoft's code coverage, the engine of Visual Studio and `dotnet-coverage`, as an MTP extension. Its version 18.11.2 depends on MTP 2.4.0, the version that `xunit.v3` brings. It collects nothing unless a run passes `--coverage`.
+2. **Settings in `tests/testconfig.json`**, MTP's configuration file, which the build copies into each test project's output folder as `<assembly>.testconfig.json`:
+   - the Cobertura format, which ReportGenerator and CI tools read
+   - sources under `obj/` left out: generated code is its generator's to test
+   - otherwise the extension's defaults, which leave out the test assemblies, so the report covers `eShop.Catalog.Api` only
+3. **ReportGenerator 5.5.11**, a local tool in `dotnet-tools.json`, merges the two projects' files into one HTML report. The README gives the commands.
+4. **No threshold.** Nothing fails on a coverage number.
+
+The extension names each file with a new GUID. A name given with `--coverage-output` would be the same for both projects, so the second file would overwrite the first. A report therefore starts from an empty results folder.
+
+**Measurement at 10.1**, in a Debug build, with every test passing:
+
+| Run | Lines | Branches |
+|---|---|---|
+| The extension's defaults, generated code included (537 tests) | 89.7% (1,654 of 1,843) | 75.8% (326 of 430) |
+| Generated code left out (537 tests) | 99.6% (1,184 of 1,189) | 97.4% (187 of 192) |
+| After closing the gaps below (538 tests) | 100% (1,189 of 1,189) | 97.9% (188 of 192) |
+
+**Gaps**
+
+| Uncovered | Real gap? | Change |
+|---|---|---|
+| `CatalogDbContextDesignTimeFactory`, which only `dotnet ef` calls | Yes. `dotnet ef migrations script` writes the deployment script from the factory's context ([ADR-0011](#adr-0011-ef-core-migration-strategy)). A factory without the app's SQL Server options would leave the history table unqualified there, in the default schema of the login that runs the script, while `MigrationScriptTests`, which builds the app's context, still passed. | New: `CatalogDbContextDesignTimeFactoryTests.Deployment_script_puts_the_history_table_in_dbo` |
+| `AddCatalogServices` without a `Catalog` section: the default options (`?? new CatalogOptions()`) | Yes. A host without the section has to stop at startup on the required `Catalog:PicturesPath`, with a message that names it. Without the default options, `AddCatalogServices` throws a `NullReferenceException` first, which names nothing. The unit tests set `Catalog:UseMockData` to null for "not set", which still makes a section. | The tests' helper leaves a null setting out, so `Database_mode_registers_a_scoped_catalog_service_and_the_database` runs without the section. |
+| `FileEndpoints`: one branch of the second `MapGet(..., Retired)` | No. The compiler caches the delegate of `Retired`, and the first `MapGet` fills the cache, so the second never creates it. | None |
+| The `traceId` schema transformer: `schema.Properties ??=` | No. The problem schemas always have properties. The fallback guards a nullable API. | None |
+| `TwoDecimalPlacesAttribute.IsValid` for a value that is not a `decimal` | No. Its one property, `Price`, is a `decimal?` and `[Required]`: a null fails `Required`, and validation then skips the property's other attributes. | None |
+| The request log's `QueryString.Value ?? string.Empty` | No. Kestrel and the test server give a request without a query string an empty value, never null. | None |
+
+Each of these deliberate breaks failed the intended test:
+
+- the design-time factory with `UseSqlServer()` in place of `UseCatalogSqlServer()`: `Deployment_script_puts_the_history_table_in_dbo`
+- `AddCatalogServices` without its default options: `Database_mode_registers_a_scoped_catalog_service_and_the_database`
+
+### Alternatives considered
+
+- **`coverlet.MTP`** (MIT). It rewrites the assemblies on disk before the run and restores them after it, where Microsoft's extension instruments them in memory as they load and leaves the build output alone. Its version 10.1.0 also needs MTP 2.4.1, above the 2.4.0 that `xunit.v3` brings.
+- **A threshold that fails the run.** With every hand-written line covered, a threshold would either fail on the next fallback that no input can reach, or sit too low to ever fail. The triage of each uncovered line found the real gaps; Stage 10.2 shows the numbers on every CI run.
+- **The report committed to the repository.** It would be out of date after the next commit.
+- **`dotnet-coverage merge`.** It merges the files but writes no HTML report.
+
+### Consequences
+
+- `dotnet test --solution eShop.Catalog.slnx --coverage` measures both projects, with no other option.
+- The Microsoft package is closed source, under the Microsoft .NET Library license, which lets anyone use it to develop and test applications; the package asks for license acceptance. The NuGet audit checks it like every other package.
+- Coverage shows which code runs, not what the tests assert. The deliberate breaks of each stage remain the check that a test fails when its behaviour breaks.
+- The four branches above that no input reaches stay uncovered.
