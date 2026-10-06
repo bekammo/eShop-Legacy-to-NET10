@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
+[Trait("Category", "Docker")]
 public sealed class CatalogDbContextRegistrationTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
     [Fact]

@@ -13,7 +13,7 @@ using Serilog.Events;
 namespace eShop.Catalog.Api.IntegrationTests.Logging;
 
 // Serilog in place of log4net (ADR-0018): the committed sinks, the log file's limits, and what the host writes.
-public sealed partial class LoggingTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private const int MiB = 1024 * 1024;
 

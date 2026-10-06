@@ -11,7 +11,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Http;
 
 // The error contract in the app that Program.cs builds (ADR-0021). HttpConventionsTests covers the cases that need
 // endpoints of their own.
-public sealed class ErrorHandlingTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+public sealed class ErrorHandlingTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 

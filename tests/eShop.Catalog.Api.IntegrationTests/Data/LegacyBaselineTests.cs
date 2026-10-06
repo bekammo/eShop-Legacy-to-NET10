@@ -11,6 +11,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Data;
 
 // docs/legacy/baseline.sql, which adopts a database that the legacy app created (ADR-0012). Each
 // test builds its own legacy database, because the baseline and the tests change it.
+[Trait("Category", "Docker")]
 public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;

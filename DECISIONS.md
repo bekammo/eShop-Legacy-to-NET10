@@ -40,6 +40,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0028](#adr-0028-openapi-tooling-swagger-ui-in-development) | OpenAPI tooling: Swagger UI in Development | Accepted | 9.1 |
 | [ADR-0029](#adr-0029-describing-the-api-in-the-openapi-document) | Describing the API in the OpenAPI document | Accepted | 9.2 |
 | [ADR-0030](#adr-0030-code-coverage) | Code coverage | Accepted | 10.1 |
+| [ADR-0031](#adr-0031-docker-trait-and-published-test-results) | Docker trait and published test results | Accepted | 10.2 |
 
 ## Template
 
@@ -2772,3 +2773,53 @@ Each of these deliberate breaks failed the intended test:
 - The Microsoft package is closed source, under the Microsoft .NET Library license, which lets anyone use it to develop and test applications; the package asks for license acceptance. The NuGet audit checks it like every other package.
 - Coverage shows which code runs, not what the tests assert. The deliberate breaks of each stage remain the check that a test fails when its behaviour breaks.
 - The four branches above that no input reaches stay uncovered.
+
+---
+
+## ADR-0031: Docker trait and published test results
+
+- **Status:** Accepted
+- **Date:** 2026-10-06
+- **Plan stage:** 10.2
+
+### Context
+
+- From Stage 4.2 every integration test needed Docker. The assembly fixture started the SQL Server container before the first test, and every factory migrated a database. [ADR-0011](#adr-0011-ef-core-migration-strategy) named what a Docker-free subset would need: a fixture that starts the container only when a test asks for a database, and a factory without one. Testcontainers needs Docker even to build a container: run without Docker, the Stage 10.1 code failed both tests of `LivenessEndpointTests` with `DockerUnavailableException`.
+- Some integration test classes never touch the catalog's data: the error contract, the logs, the OpenAPI document, Swagger UI, the configuration, liveness and the retired `/api/files`. Mock mode ([ADR-0017](#adr-0017-built-in-dependency-injection-and-mock-mode)) serves the catalog from memory and registers nothing of the database.
+- [ADR-0008](#adr-0008-continuous-integration) uploaded the TRX files as an artifact, and left coverage and published test reports to this stage.
+- MTP has a report extension for GitHub Actions, `Microsoft.Testing.Extensions.GitHubActionsReport` (MIT). Its version 2.4.0 depends on MTP 2.4.0, the version that `xunit.v3` brings. With `--report-gh`, and only when `GITHUB_ACTIONS` is `true`, it writes a Markdown summary to the file in `GITHUB_STEP_SUMMARY`, which GitHub shows on the run's page.
+- A probe of it under `dotnet test --solution`, in a container with both variables set: the file got a section per test project, with its totals, each failure with its message and stack trace, the slowest tests, and the coverage of that project alone. No annotations or log groups reached the output, because `dotnet test` captures the test applications' console.
+
+### Decision
+
+1. **The Docker trait.** Each integration test class that reaches SQL Server has `[Trait("Category", "Docker")]`: 16 classes. `--filter-not-trait "Category=Docker"` runs everything else, the unit tests included.
+2. **SQL Server on demand.** `SqlServerFixture` builds and starts the container when a test first asks for a database (`NewDatabaseAsync`) or runs `sqlcmd`. Every later test waits for that one start, and a start that failed fails each of them.
+3. **The trait is checked.** Before it hands out the container, the fixture checks that the running test, or the test class whose fixture is starting, has the trait, and otherwise fails with a message that names it. A class that reaches SQL Server without the trait fails in every run, CI included, so the Docker-free run cannot reach SQL Server.
+4. **Mock mode for the rest.** `MockModeCatalogApiFactory`, a `CatalogApiFactory` with `Catalog:UseMockData` on, hosts the 8 classes whose subject is not the catalog's data: `ConfigurationTests`, `ErrorHandlingTests`, `FileEndpointsTests`, `LivenessEndpointTests`, `LoggingTests`, `OpenApiDocumentTests`, `RequestLoggingTests` and `SwaggerUiTests`. `HttpConventionsTests` builds hosts of its own without a database. The factory replaces `MockModeCatalogApi`, the mock-mode host of `LegacyContractTests` and `ItemEndpointsTests`. `CatalogApiFactory` names its database in `InitializeAsync`, where it named it in its constructor. A test that starts hosts from a factory that xUnit does not initialize calls `UseNewDatabaseAsync` itself.
+5. **CI publishes the results.** The test step adds `--coverage` ([ADR-0030](#adr-0030-code-coverage)) and `--report-gh --report-gh-step-summary-sections test-results`: each project's results and failures on the run's page, without the coverage of each project alone. Two steps after it merge the coverage with ReportGenerator, add its Markdown summary to the page, and upload the HTML report as the `coverage-report` artifact. The TRX files stay in `test-results`. These steps, like the TRX upload, also run when tests fail; the merge is skipped when the tests wrote no coverage. No action is added, and the workflow token stays read-only.
+6. **The README's testing section** lists the two projects, what each needs, and the commands: every test, the Docker-free run, one project, one class, TRX and coverage.
+
+**Verification**, in a Linux container with the .NET 10 SDK:
+
+- The CI's commands in Release, with `GITHUB_ACTIONS` and `GITHUB_STEP_SUMMARY` set: 538 tests passed, and the summary held both projects' results and the merged coverage: 100% of lines (1,082) and 97.8% of branches (186 of 190).
+- The Docker-free run in a container without a Docker socket: 196 tests passed, 130 unit and 66 integration.
+
+Each of these deliberate breaks failed the intended tests with the fixture's message:
+
+- `TypeEndpointsTests` without the trait: its test
+- `FileEndpointsTests` on `CatalogApiFactory`: its 6 tests
+
+### Alternatives considered
+
+- **A trait on the Docker-free classes instead.** The plan names a Docker trait. Marking the classes that need Docker also lets the fixture check the mark where the need arises.
+- **A database-mode host with a connection string to nowhere** for the classes without data. A Development host migrates at startup ([ADR-0013](#adr-0013-seeding-migrate-on-startup-and-readiness)), and `/health/ready` checks the database, so those tests would need settings that no deployment has. Mock mode is one of the app's own configurations.
+- **A third test project for the Docker-free tests.** It would split the HTTP tests by fixture rather than by subject, and the trait already selects them.
+- **`dorny/test-reporter` and similar actions**, which publish the TRX files as a check run. They need the `checks: write` permission, which a pull request from a fork does not get, and they are third-party code. The MTP extension writes the summary with no permission.
+- **Annotations on the pull request's diff.** The extension makes them only when the test application writes to the step's output. Running each test application by itself would give up the one `dotnet test` command of [ADR-0007](#adr-0007-test-strategy).
+
+### Consequences
+
+- Without Docker, `dotnet test --solution eShop.Catalog.slnx --filter-not-trait "Category=Docker"` runs 196 of the 538 tests. The tests of the database, the migrations and the endpoints with data still need Docker.
+- A new test class that reaches SQL Server needs the trait, and its first run says so.
+- The Docker-free classes test the API in mock mode, as `LegacyContractTests` and `ItemEndpointsTests` already did beside the database. A Development host in those classes does not migrate at startup, which `MigrateOnStartupTests` covers.
+- The coverage on the run's page is that of the Release build, which counts fewer lines than the Debug build of the README's commands. ReportGenerator's free version does not compute method coverage, and its summary says so in a row.

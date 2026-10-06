@@ -8,6 +8,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Data;
 
 // The database that the migrations create (CatalogApiFactory migrates it) against the schema and the
 // reference data that the legacy app creates (docs/legacy/schema.json, seed-data.json).
+[Trait("Category", "Docker")]
 public sealed class MigrationTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
     public static TheoryData<string> LegacyTables => [.. LegacySchema.Tables];

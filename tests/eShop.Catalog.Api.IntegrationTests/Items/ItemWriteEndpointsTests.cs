@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 namespace eShop.Catalog.Api.IntegrationTests.Items;
 
 // Creating, updating and deleting items (ADR-0025, ADR-0026), on a database of the class's own, which the writes change.
+[Trait("Category", "Docker")]
 public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;

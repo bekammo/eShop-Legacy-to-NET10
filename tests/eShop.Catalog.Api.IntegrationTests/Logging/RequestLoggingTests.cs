@@ -11,7 +11,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Logging;
 // One event per request, in place of the legacy Application_BeginRequest event and its requestinfo and activityid
 // properties (ADR-0019). Each request carries a W3C traceparent header, as from a calling service, so its trace ID
 // is known and finds its events.
-public sealed class RequestLoggingTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private const string RequestLoggingMiddleware = "Serilog.AspNetCore.RequestLoggingMiddleware";
 

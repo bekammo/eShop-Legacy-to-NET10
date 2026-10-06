@@ -12,6 +12,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Catalog;
 // The EF Core CatalogService against SQL Server (ADR-0015): the shared contract, and what only this implementation has
 // to show. CatalogApiFactory migrates the class's database, so it holds the sample data. Each test works on the host's
 // context in a transaction that it never commits, so the next test finds the sample data again.
+[Trait("Category", "Docker")]
 public sealed class CatalogServiceTests : CatalogServiceContractTests, IClassFixture<CatalogApiFactory>, IAsyncLifetime
 {
     private readonly string _connectionString;

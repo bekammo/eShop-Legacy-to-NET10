@@ -5,8 +5,9 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace eShop.Catalog.Api.IntegrationTests.Items;
 
 // The item reads (ADR-0024), on the class's database, which holds the 12 sample items, and in mock mode.
-public sealed class ItemEndpointsTests(CatalogApiFactory factory, MockModeCatalogApi mockMode)
-    : IClassFixture<CatalogApiFactory>, IClassFixture<MockModeCatalogApi>
+[Trait("Category", "Docker")]
+public sealed class ItemEndpointsTests(CatalogApiFactory factory, MockModeCatalogApiFactory mockMode)
+    : IClassFixture<CatalogApiFactory>, IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 

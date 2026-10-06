@@ -20,7 +20,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 7 — HTTP endpoints | Done |
 | 8 — Async verification | Done |
 | 9 — OpenAPI docs & Swagger UI | Done |
-| 10 — Test consolidation | In progress |
+| 10 — Test consolidation | Done |
 | 11 — Cutover & cleanup | Not started |
 | 12 — Write-endpoint authorization | Not started |
 
@@ -282,18 +282,39 @@ A database that the legacy app created cannot take the migrations until [`docs/l
 
 ## Running the tests
 
-The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). The unit tests need only the SDK. The integration tests start SQL Server in a container, so Docker must be running. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`, which `compose.yaml` also runs for [local development](#sql-server-in-a-container). Each test class, or each test that needs one, gets a database of its own in that container.
+The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` selects for `dotnet test` ([ADR-0007](DECISIONS.md#adr-0007-test-strategy)). There are two test projects:
 
-Run every test:
+| Project | What it tests | Needs |
+|---|---|---|
+| `tests/eShop.Catalog.Api.UnitTests` | Logic without a host, such as the in-memory catalog service, paging, the service registrations and health-check policies, the problem writer, the EF Core model against the legacy schema and the migrations' snapshot, the baseline script and `compose.yaml`. | The SDK |
+| `tests/eShop.Catalog.Api.IntegrationTests` | The API hosted in memory: every endpoint, the error contract, the logs and the OpenAPI document, the golden exchanges of the legacy app, and the database: migrations, seeding, readiness and the adoption of a legacy database. | Docker, for the test classes with the Docker trait |
+
+The integration test classes that reach SQL Server have the trait `Category=Docker`. They share one SQL Server container, which the first of them starts, and each test class, or each test that needs one, gets a database of its own in it. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`, which `compose.yaml` also runs for [local development](#sql-server-in-a-container). The other integration test classes need no database: they host the API in mock mode, or, in `HttpConventionsTests`, endpoints of their own ([ADR-0031](DECISIONS.md#adr-0031-docker-trait-and-published-test-results)).
+
+Run every test, with Docker running:
 
 ```bash
 dotnet test --solution eShop.Catalog.slnx
 ```
 
+Run the tests that need no Docker: the unit tests, and the integration tests without the Docker trait.
+
+```bash
+dotnet test --solution eShop.Catalog.slnx --filter-not-trait "Category=Docker"
+```
+
+A test class that reaches SQL Server without the trait fails in every run, with a message that names the trait, so this subset never needs Docker.
+
 Run one test project, for example only the unit tests:
 
 ```bash
 dotnet test --project tests/eShop.Catalog.Api.UnitTests
+```
+
+Run one test class, or the classes whose names match a pattern:
+
+```bash
+dotnet test --project tests/eShop.Catalog.Api.IntegrationTests --filter-class "*ItemWriteEndpointsTests"
 ```
 
 Write a TRX report per test project into `TestResults/`:
@@ -326,7 +347,7 @@ When a change alters the contract of an endpoint, `OpenApiDocumentTests.Document
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request, on every push to `main` and once a week ([ADR-0008](DECISIONS.md#adr-0008-continuous-integration)). It has two jobs:
 
-- **Build and test.** Builds the new solution in Release with warnings as errors, builds the Stage 1.2 capture tool, runs every test, and uploads the TRX reports as the `test-results` artifact.
+- **Build and test.** Builds the new solution in Release with warnings as errors, builds the Stage 1.2 capture tool, and runs every test with code coverage. The run's summary page shows the results of each test project, with the message and stack trace of each failure, and the coverage of the API. The TRX reports are uploaded as the `test-results` artifact, and the HTML coverage report as `coverage-report` ([ADR-0031](DECISIONS.md#adr-0031-docker-trait-and-published-test-results)).
 - **Vulnerable packages.** Fails when any direct or transitive package has a known vulnerability, at any severity, or when the vulnerability data cannot be fetched. An advisory accepted with `NuGetAuditSuppress` does not fail it.
 
 The legacy solution is not built in CI. It needs Windows and Visual Studio, so it is built locally whenever a repo-wide build file changes.

@@ -44,12 +44,14 @@
 
   <!--
     Tests (ADR-0007). Microsoft.Testing.Extensions.CodeCoverage is the coverage extension of the test
-    platform that xunit.v3 runs on (ADR-0030). Take the release that depends on the platform version
-    that xunit.v3 brings.
+    platform that xunit.v3 runs on (ADR-0030), and Microsoft.Testing.Extensions.GitHubActionsReport its
+    report for GitHub Actions (ADR-0031). Take the releases that depend on the platform version that
+    xunit.v3 brings.
   -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.GitHubActionsReport" Version="2.4.0" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.15.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
   </ItemGroup>

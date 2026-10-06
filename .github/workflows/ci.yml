@@ -57,11 +57,26 @@ jobs:
       - name: Build the capture tool
         run: dotnet build docs/legacy/capture/capture.cs
 
+      # Every test, Docker included. --report-gh writes each test project's results, failures
+      # included, to the run's summary page. The next step merges the coverage of the two projects
+      # (ADR-0030, ADR-0031).
       - name: Test
         run: >-
           dotnet test --solution eShop.Catalog.slnx
           --configuration Release --no-build
-          --report-xunit-trx --results-directory TestResults
+          --report-xunit-trx --coverage
+          --report-gh --report-gh-step-summary-sections test-results
+          --results-directory TestResults
+
+      # One coverage report over both test projects, as HTML for the artifact, and its summary on the
+      # run's page. Skipped when the tests wrote no coverage, as when the build failed.
+      - name: Coverage report
+        if: ${{ !cancelled() && hashFiles('TestResults/*.cobertura.xml') != '' }}
+        run: |
+          dotnet tool restore
+          dotnet reportgenerator -reports:"TestResults/*.cobertura.xml" -targetdir:TestResults/coverage \
+            -reporttypes:"Html;MarkdownSummaryGithub"
+          cat TestResults/coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test results
         if: ${{ !cancelled() }}
@@ -69,6 +84,14 @@ jobs:
         with:
           name: test-results
           path: TestResults/*.trx
+          if-no-files-found: warn
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: TestResults/coverage/
           if-no-files-found: warn
 
   vulnerable-packages:

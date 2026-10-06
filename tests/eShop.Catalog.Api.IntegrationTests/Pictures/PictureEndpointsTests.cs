@@ -12,6 +12,7 @@ namespace eShop.Catalog.Api.IntegrationTests.Pictures;
 // GET /items/{catalogItemId:int}/pic beyond the golden exchanges, which LegacyContractTests replays (ADR-0023): the
 // legacy defects that the evidence shows, on items with the picture names that the legacy app let clients store. The
 // host serves a pictures folder of the test's own, and secret.txt sits beside that folder, outside it.
+[Trait("Category", "Docker")]
 public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>, IDisposable
 {
     private static readonly byte[] Picture = [0x89, 0x50, 0x4E, 0x47];

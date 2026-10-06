@@ -7,7 +7,7 @@ using Microsoft.Extensions.Hosting;
 
 namespace eShop.Catalog.Api.IntegrationTests.Configuration;
 
-public sealed class ConfigurationTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
+public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private string ContentRoot => factory.Services.GetRequiredService<IHostEnvironment>().ContentRootPath;
 

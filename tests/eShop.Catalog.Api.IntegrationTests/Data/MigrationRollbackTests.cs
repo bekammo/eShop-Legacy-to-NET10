@@ -8,13 +8,14 @@ namespace eShop.Catalog.Api.IntegrationTests.Data;
 
 // The Down side of the migrations, on a database of its own: a rollback must leave nothing behind
 // that stops the migrations from being applied again (ADR-0011).
+[Trait("Category", "Docker")]
 public sealed class MigrationRollbackTests(SqlServerFixture sqlServer)
 {
     [Fact]
     public async Task Migrations_revert_to_an_empty_database_and_apply_again()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var connectionString = sqlServer.NewDatabase("rollback");
+        var connectionString = await sqlServer.NewDatabaseAsync("rollback");
         await using var context = CatalogDatabase.CreateContext(connectionString);
         var migrator = context.GetService<IMigrator>();
         await using var connection = new SqlConnection(connectionString);
