@@ -21,7 +21,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 8 — Async verification | Done |
 | 9 — OpenAPI docs & Swagger UI | Done |
 | 10 — Test consolidation | Done |
-| 11 — Cutover & cleanup | Not started |
+| 11 — Cutover & cleanup | In progress |
 | 12 — Write-endpoint authorization | Not started |
 
 ## Documentation

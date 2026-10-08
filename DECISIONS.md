@@ -41,6 +41,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0029](#adr-0029-describing-the-api-in-the-openapi-document) | Describing the API in the OpenAPI document | Accepted | 9.2 |
 | [ADR-0030](#adr-0030-code-coverage) | Code coverage | Accepted | 10.1 |
 | [ADR-0031](#adr-0031-docker-trait-and-published-test-results) | Docker trait and published test results | Accepted | 10.2 |
+| [ADR-0032](#adr-0032-cutover-and-rollback) | Cutover and rollback | Accepted | 11.1 |
 
 ## Template
 
@@ -2823,3 +2824,60 @@ Each of these deliberate breaks failed the intended tests with the fixture's mes
 - A new test class that reaches SQL Server needs the trait, and its first run says so.
 - The Docker-free classes test the API in mock mode, as `LegacyContractTests` and `ItemEndpointsTests` already did beside the database. A Development host in those classes does not migrate at startup, which `MigrateOnStartupTests` covers.
 - The coverage on the run's page is that of the Release build, which counts fewer lines than the Debug build of the README's commands. ReportGenerator's free version does not compute method coverage, and its summary says so in a row.
+
+---
+
+## ADR-0032: Cutover and rollback
+
+- **Status:** Accepted
+- **Date:** 2026-10-08
+- **Plan stage:** 11.1
+
+### Context
+
+- [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) plans one cutover step in Stage 11, with `legacy-final` as the rollback point, and leaves the procedure to Stage 11.1.
+- From Stage 11.2 the legacy app in the repository is no longer complete: 11.2 moves its pictures into the API project, and 11.3 deletes it.
+- A deployed legacy app keeps the catalog in its database. The new API takes that database over with the baseline of [ADR-0012](#adr-0012-adopting-a-legacy-database), which adds only EF Core's history table. Both apps can then run against it, and their item IDs cannot collide (ADR-0012, decision 7).
+- Under ADR-0012, a rollback points the legacy app at the same database. That holds while every migration applied after the adoption is expand-only, which ADR-0012 required "until Stage 11", the stage that it also gave as the end of the shared database. The only migration so far is `InitialCreate`, which the baseline records without running it.
+- The new API writes items under the legacy rules or stricter ones ([ADR-0025](#adr-0025-creating-items), [ADR-0026](#adr-0026-updating-and-deleting-items)), and gives a new item the legacy default picture, `dummy.png`. Neither app uploads pictures.
+
+### Decision
+
+**1. The tag.** `legacy-final` is an annotated tag on the commit that adds this ADR: the next commit moves the pictures out of the legacy project. The tag is never moved or deleted. A checkout of it has the legacy solution, the README section that builds and runs it, and the capture tool that re-captures `docs/legacy`.
+
+**2. Cutover** of a running legacy deployment, which keeps its database:
+
+1. Take a copy-only backup of the legacy database, and adopt it with `baseline.sql` ([procedure](docs/legacy/README.md#adopting-an-existing-legacy-database)).
+2. Apply the idempotent migrations script ([ADR-0011](#adr-0011-ef-core-migration-strategy)).
+3. Deploy the new API with `ConnectionStrings:CatalogDb` pointing at that database, and check that `/health/ready` answers 200.
+4. Send the clients to the new API. Until then, the legacy app keeps serving them from the same database.
+
+Until Stage 12 the new API takes the legacy app's place only where [ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover) lets it run: out of reach of untrusted clients.
+
+**3. Rollback** points the legacy app at the same database: the deployment that served the clients before the cutover, or a new one built from `legacy-final` with the same `Web.config` connection string. The clients then go back to it. The database is not restored: what the clients wrote through the new API stays, and the legacy app reads and changes it. The backup of step 1 is for a disaster only. It predates the adoption, so a restored database needs the baseline and the migrations script again before the new API serves it, and both apps restart, because each holds a block of item IDs in memory.
+
+**4. The rollback window.** A rollback works while every migration applied after the adoption is expand-only, so that the legacy app's reads and writes still work: no renamed, dropped or narrowed column that the legacy app maps, no new constraint, unique index or foreign key that its writes or deletes can break, `catalog_hilo` unchanged, and new columns nullable or with a default. The rule does not end with Stage 11. It holds until a later ADR closes the window, and the first migration that breaks it needs that ADR. So does dropping EF6's history table and the two unused sequences, which ADR-0012 allowed after Stage 11: no rollback was tried without them. This amends ADR-0012, decision 7 and its consequences: the shared database and the expand-only rule both last until an ADR closes the window, not until Stage 11, and the rule is the one above.
+
+**5. Databases that the migrations created** never held legacy data, and no legacy deployment stands behind them. There is nothing to roll back to, and the legacy app is not supported on them.
+
+**Verification**, on the legacy code that the tag marks:
+
+- The capture tool (`dotnet run docs/legacy/capture/capture.cs -- --build`) built the legacy solution with MSBuild, with the 6 warnings of the audit, ran the app in IIS Express against a fresh LocalDB database, and replayed the 61 golden exchanges and the 12 evidence scenarios. The files that it wrote equal the committed ones, apart from the capture time and source commit in `capture-info.json` and the timestamp in EF6's `MigrationId`. Its log4net sample, which `docs/legacy` links to but which the `*.log` rule of `.gitignore` had kept out of the repository, is committed with this ADR.
+- A rollback rehearsal on LocalDB:
+  1. The legacy app created and seeded its database, and the baseline adopted it.
+  2. The new API, pointed at it, answered `/health/ready` with 200, created item 21, changed the price of item 1 and deleted item 12.
+  3. The legacy app, started again on the same database, showed item 21 and item 1's new price, answered 404 for item 12, and served item 21's picture (`dummy.png`). Through its forms it created item 31, the first ID of the next block, and saved an edit of item 21, which EF6 validated.
+
+### Alternatives considered
+
+- **The tag on the Stage 10 merge commit**, which is already on `main`. The legacy app is complete there too, but the commit of this ADR is the last one where it is, as ADR-0005 defines the tag, and it carries the procedure.
+- **Rolling back by restoring the backup.** It loses every change since the backup, the clients' changes through the new API included, and only a lost database needs it.
+- **Ending the expand-only rule with Stage 11**, as ADR-0012 put it. The rule protects the rollback, not the legacy code in the repository: the legacy deployment and the tag outlive the deletion in Stage 11.3.
+
+### Consequences
+
+- While the window is open, a rollback is a deployment and a routing change, without data loss.
+- After a rollback, clients lose what only the new API has: the item and type endpoints, and the fixes of the [behavior-change register](docs/behavior-changes.md). The legacy routes answer as they did before the cutover.
+- Migration reviews keep the expand-only check after Stage 11.
+- Pushing a branch does not push the tag: it needs `git push origin legacy-final`.
+- From Stage 11.2, running the legacy app or re-capturing `docs/legacy` means checking out `legacy-final`.

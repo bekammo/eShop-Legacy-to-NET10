@@ -49,7 +49,7 @@ Afterwards:
 
 - **Undo**, before any later migration was applied: `DROP TABLE dbo.__EFMigrationsHistory`, while it holds only the `InitialCreate` row. No restore is needed.
 - **Never revert past `InitialCreate`** on an adopted database, with `dotnet ef database update 0` or a script: its `Down` drops the legacy tables and the item-ID sequence.
-- **Rollback to the legacy app** means pointing it at the same database. That works while every migration applied since then is expand-only, until the legacy app is retired in Stage 11: no renamed or dropped columns that the legacy app maps, and new columns nullable or with a default. Restore the backup only in a disaster: it loses everything written since. After a restore, restart both apps, because each holds a block of item IDs in memory.
+- **Rollback to the legacy app** means pointing it at the same database: the legacy deployment, or one built from the `legacy-final` tag ([ADR-0032](../../DECISIONS.md#adr-0032-cutover-and-rollback)). That works while every migration applied since then is expand-only: no renamed, dropped or narrowed columns that the legacy app maps, no new constraint, unique index or foreign key that its writes or deletes can break, `catalog_hilo` unchanged, and new columns nullable or with a default. The rule outlives Stage 11, until an ADR closes the rollback window. Restore the backup only in a disaster: it loses everything written since. The backup predates the adoption, so run the baseline and the migrations script again before the new API uses the restored database, and restart both apps, because each holds a block of item IDs in memory.
 
 ## Re-running the capture
 

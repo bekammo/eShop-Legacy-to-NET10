@@ -231,7 +231,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 10.2 Add a Docker trait and a documented Docker-free subset of the tests. CI publishes test results and coverage. Complete the README testing section.
 
 ### Stage 11 — Cutover & cleanup
-- [ ] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback, including databases adopted with the Stage 4.3 baseline (ADR-0012: rollback by pointing the legacy app at the same database, which holds while migrations stay expand-only).
+- [x] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback, including databases adopted with the Stage 4.3 baseline (ADR-0012: rollback by pointing the legacy app at the same database, which holds while migrations stay expand-only).
 - [ ] 11.2 Move the pictures into the API project and switch the default `PicturesPath`.
 - [ ] 11.3 Delete the legacy projects, `eShopLegacyMVC.sln`, the stop-files in the legacy project folders and all legacy-only assets. `docs/legacy` stays as a reference, with its capture tool and that tool's stop-files. ADR summarizing the removals.
 - [ ] 11.4 Package hygiene, dead-code removal, and a final pass on the README, this plan and `DECISIONS.md`.

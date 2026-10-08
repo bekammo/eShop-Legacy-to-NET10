@@ -1,0 +1,56 @@
+2026-10-08 12:18:26,895 [15] (null) DEBUG eShopLegacyMVC.MvcApplication - /api/brands, 
+WebApplication_BeginRequest
+
+2026-10-08 12:18:39,717 [12] (null) DEBUG eShopLegacyMVC.MvcApplication - /api/brands, 
+WebApplication_BeginRequest
+
+2026-10-08 12:18:40,031 [17] (null) INFO eShopLegacyMVC.Controllers.PicController - /items/1/pic, 
+Now loading... /items/Index?1/pic
+
+2026-10-08 12:18:40,361 [21] (null) INFO eShopLegacyMVC.Controllers.PicController - /items/2/pic, 
+Now loading... /items/Index?2/pic
+
+2026-10-08 12:18:40,490 [27] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Create, 
+Now loading... /Catalog/Create
+
+2026-10-08 12:18:45,340 [27] (null) DEBUG eShopLegacyMVC.Controllers.CatalogController - /Catalog/Create, 
+Now disposing
+
+2026-10-08 12:18:45,340 [27] (null) DEBUG eShopLegacyMVC.Controllers.CatalogController - /Catalog/Create, 
+Now disposing
+
+2026-10-08 12:18:45,379 [20] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Create, 
+Now processing... /Catalog/Create?catalogItemName=Validation 01 valid
+
+2026-10-08 12:18:45,413 [21] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Create, 
+Now processing... /Catalog/Create?catalogItemName=
+
+2026-10-08 12:18:45,876 [21] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Edit/2, 
+Now processing... /Catalog/Edit?id=2
+
+2026-10-08 12:18:45,904 [23] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Edit/2, 
+Now processing... /Catalog/Edit?id=2
+
+2026-10-08 12:18:45,937 [26] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Delete/999, 
+Now processing... /Catalog/DeleteConfirmed?id=999
+
+2026-10-08 12:18:45,967 [5] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Delete/30, 
+Now processing... /Catalog/DeleteConfirmed?id=30
+
+2026-10-08 12:18:46,010 [22] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /, 
+Now loading... /Catalog/Index?pageSize=10&pageIndex=0
+
+2026-10-08 12:18:46,164 [21] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /?pageSize=5&pageIndex=1, 
+Now loading... /Catalog/Index?pageSize=5&pageIndex=1
+
+2026-10-08 12:18:46,287 [20] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Details/1, 
+Now loading... /Catalog/Details?id=1
+
+2026-10-08 12:18:46,303 [14] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Details, 
+Now loading... /Catalog/Details?id=
+
+2026-10-08 12:18:49,576 [15] (null) INFO eShopLegacyMVC.Controllers.CatalogController - /Catalog/Create, 
+Now loading... /Catalog/Create
+
+2026-10-08 12:18:52,338 [12] (null) DEBUG eShopLegacyMVC.Controllers.CatalogController - /Catalog/Create, 
+Now disposing
