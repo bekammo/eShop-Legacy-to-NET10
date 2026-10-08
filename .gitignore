@@ -481,7 +481,7 @@ $RECYCLE.BIN/
 ## Project-specific
 ##
 
-# Log files: log4net in the legacy app (src/eShopLegacyMVC/log4Net.xml) and Serilog in the new API (ADR-0018)
+# Log files of the API (ADR-0018)
 logFiles/
 
 # Claude Code local settings

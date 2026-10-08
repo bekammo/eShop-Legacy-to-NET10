@@ -1,6 +1,6 @@
 # Legacy characterization
 
-This folder records what the legacy app (`src/eShopLegacyMVC`) actually does when it runs. The data was captured from the running app, not derived from the code, and later stages test the new API against it:
+This folder records what the legacy app (`src/eShopLegacyMVC` at the `legacy-final` tag) actually does when it runs. The data was captured from the running app, not derived from the code, and later stages test the new API against it:
 
 - Stage 4 checks the EF Core schema and seed data against `schema.json` and `seed-data.json`.
 - Stage 4.3 builds legacy databases from `schema.sql`, `seed-data.json` and `ef6-model.edmx` to test `baseline.sql`, which lets the new API adopt one.
@@ -49,11 +49,11 @@ Afterwards:
 
 - **Undo**, before any later migration was applied: `DROP TABLE dbo.__EFMigrationsHistory`, while it holds only the `InitialCreate` row. No restore is needed.
 - **Never revert past `InitialCreate`** on an adopted database, with `dotnet ef database update 0` or a script: its `Down` drops the legacy tables and the item-ID sequence.
-- **Rollback to the legacy app** means pointing it at the same database. That works while every migration applied since then is expand-only, until the legacy app is retired in Stage 11: no renamed or dropped columns that the legacy app maps, and new columns nullable or with a default. Restore the backup only in a disaster: it loses everything written since. After a restore, restart both apps, because each holds a block of item IDs in memory.
+- **Rollback to the legacy app** means pointing it at the same database: the legacy deployment, or one built from the `legacy-final` tag ([ADR-0032](../../DECISIONS.md#adr-0032-cutover-and-rollback)). That works while every migration applied since then is expand-only: no renamed, dropped or narrowed columns that the legacy app maps, no new constraint, unique index or foreign key that its writes or deletes can break, `catalog_hilo` unchanged, and new columns nullable or with a default. The rule outlives Stage 11, until an ADR closes the rollback window. Restore the backup only in a disaster: it loses everything written since. The backup predates the adoption, so run the baseline and the migrations script again before the new API uses the restored database, and restart both apps, because each holds a block of item IDs in memory.
 
 ## Re-running the capture
 
-Prerequisites (Windows): IIS Express, SQL Server LocalDB with the `MSSQLLocalDB` instance, the .NET 10 SDK, and a Debug build of `eShopLegacyMVC.sln` (see the root README).
+Run it from a checkout of the `legacy-final` tag, the last commit with the complete legacy app ([ADR-0032](../../DECISIONS.md#adr-0032-cutover-and-rollback)). Prerequisites (Windows): IIS Express, SQL Server LocalDB with the `MSSQLLocalDB` instance, the .NET 10 SDK, and a Debug build of `eShopLegacyMVC.sln` (see the root README).
 
 ```bash
 dotnet run docs/legacy/capture/capture.cs
@@ -190,7 +190,7 @@ When a create attempt breaks more than one rule, which message the form shows is
 6. Success responses recorded as `empty` must have no body.
 7. Error bodies are not contract. The legacy error bodies are framework output: Web API `{"Message", "MessageDetail"}`, IIS and ASP.NET HTML pages, or nothing. For 4xx and 5xx responses only the status code is compared, plus the `Allow` header on 405 (compared as a set of methods). The new error format is decided in Stage 7.1.
 8. XML is not ported. For an exchange whose legacy body is `xml`, the test asserts that the new API answers the same request with the JSON body of the matching JSON exchange: `brands-get-all--accept-xml` is checked against `brands-get-all--accept-json`, and so on. This delta is recorded in the register.
-9. Binary bodies are compared by length and SHA-256. `matchesFile` names the source file, so the check still holds after Stage 11.2 moves the pictures, as long as the bytes do not change.
+9. Binary bodies are compared by length and SHA-256. `matchesFile` names the file at capture time. Stage 11.2 moved the pictures to `src/eShop.Catalog.Api/Pics` without changing their bytes, so the check still holds.
 10. These headers are informational and not compared:
     - `Server`, `X-Powered-By`, `X-AspNet-Version`, `X-AspNetMvc-Version`: they disclose the stack, and the new API does not send them.
     - `Cache-Control`, `Pragma`, `Expires`: Web API no-cache defaults.

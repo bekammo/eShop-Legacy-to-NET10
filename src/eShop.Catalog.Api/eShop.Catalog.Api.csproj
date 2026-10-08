@@ -36,6 +36,15 @@
                       IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
+  <!--
+    The item pictures, moved here from the legacy app's Pics folder at cutover (Stage 11.2). Catalog:PicturesPath
+    names the folder relative to the content root: the project folder under dotnet run and in the tests, and the
+    app's folder when the published app starts there, so the publish copies it.
+  -->
+  <ItemGroup>
+    <None Update="Pics\**" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="eShop.Catalog.Api.UnitTests" />
     <InternalsVisibleTo Include="eShop.Catalog.Api.IntegrationTests" />

@@ -1,6 +1,5 @@
 using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Data;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;

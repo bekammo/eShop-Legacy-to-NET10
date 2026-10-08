@@ -8,7 +8,7 @@
 //   docs/legacy/evidence/*                  behaviour reachable only through the MVC UI, including the defects
 //   docs/legacy/capture-info.json           versions of everything involved in the capture
 //
-// Run from the repository root (Windows, IIS Express, SQL Server LocalDB, legacy app built with MSBuild):
+// Run from the repository root of a legacy-final checkout (Windows, IIS Express, SQL Server LocalDB, legacy app built with MSBuild):
 //
 //   dotnet run docs/legacy/capture/capture.cs -- [--build] [--reset] [--keep-db] [--port <n>]
 //
@@ -1324,7 +1324,7 @@ static class Tools
                 return dir.FullName;
             }
         }
-        throw new InvalidOperationException("Run this from inside the repository (eShopLegacyMVC.sln not found).");
+        throw new InvalidOperationException("Run this from a checkout of the legacy-final tag (eShopLegacyMVC.sln not found).");
     }
 
     public static void WriteText(string path, string text)

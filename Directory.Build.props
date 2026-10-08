@@ -2,9 +2,9 @@
 
   <!--
     Build settings for the projects of eShop.Catalog.slnx (ADR-0006). MSBuild imports this file into
-    every SDK project below the repository root, so the folders that must not get these settings hold
-    an empty Directory.Build.props that stops the upward search: the legacy projects
-    (src/eShopLegacyMVC, src/eShopLegacy.Utilities) and the Stage 1.2 capture tool (docs/legacy/capture).
+    every SDK project below the repository root. The Stage 1.2 capture tool (docs/legacy/capture) must
+    not get these settings, so its folder holds an empty Directory.Build.props that stops the upward
+    search.
   -->
 
   <PropertyGroup>

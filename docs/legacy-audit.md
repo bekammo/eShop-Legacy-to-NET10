@@ -5,7 +5,7 @@ This is the Stage 1.1 audit of the legacy app, as imported at commit `80278f1`. 
 - `src/eShopLegacyMVC`: ASP.NET Web API 2 + MVC 5 on .NET Framework 4.7.2
 - `src/eShopLegacy.Utilities`: .NET Framework 4.6.1
 
-It is the reference for the later stages of [MIGRATION_PLAN.md](../MIGRATION_PLAN.md). The legacy code itself stays untouched.
+It is the reference for the later stages of [MIGRATION_PLAN.md](../MIGRATION_PLAN.md). The legacy code was deleted at cutover (Stage 11.3); the paths below refer to the `legacy-final` tag ([ADR-0033](../DECISIONS.md#adr-0033-legacy-code-removed-at-cutover)).
 
 ## Contents
 

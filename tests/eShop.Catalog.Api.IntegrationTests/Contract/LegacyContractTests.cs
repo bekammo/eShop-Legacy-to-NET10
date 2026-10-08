@@ -37,7 +37,7 @@ public sealed partial class LegacyContractTests(CatalogApiFactory factory, MockM
     }
 
     // Each delta that the replay applies is an entry of the register, and the entry names the exchange. Only the
-    // entries count: the table of upcoming deltas, after them, names exchanges too.
+    // entries count.
     [Fact]
     public void Deltas_are_recorded_in_the_register()
     {
