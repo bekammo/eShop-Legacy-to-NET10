@@ -53,7 +53,7 @@ Afterwards:
 
 ## Re-running the capture
 
-Prerequisites (Windows): IIS Express, SQL Server LocalDB with the `MSSQLLocalDB` instance, the .NET 10 SDK, and a Debug build of `eShopLegacyMVC.sln` (see the root README).
+Run it from a checkout of the `legacy-final` tag, the last commit with the complete legacy app ([ADR-0032](../../DECISIONS.md#adr-0032-cutover-and-rollback)). Prerequisites (Windows): IIS Express, SQL Server LocalDB with the `MSSQLLocalDB` instance, the .NET 10 SDK, and a Debug build of `eShopLegacyMVC.sln` (see the root README).
 
 ```bash
 dotnet run docs/legacy/capture/capture.cs
@@ -190,7 +190,7 @@ When a create attempt breaks more than one rule, which message the form shows is
 6. Success responses recorded as `empty` must have no body.
 7. Error bodies are not contract. The legacy error bodies are framework output: Web API `{"Message", "MessageDetail"}`, IIS and ASP.NET HTML pages, or nothing. For 4xx and 5xx responses only the status code is compared, plus the `Allow` header on 405 (compared as a set of methods). The new error format is decided in Stage 7.1.
 8. XML is not ported. For an exchange whose legacy body is `xml`, the test asserts that the new API answers the same request with the JSON body of the matching JSON exchange: `brands-get-all--accept-xml` is checked against `brands-get-all--accept-json`, and so on. This delta is recorded in the register.
-9. Binary bodies are compared by length and SHA-256. `matchesFile` names the source file, so the check still holds after Stage 11.2 moves the pictures, as long as the bytes do not change.
+9. Binary bodies are compared by length and SHA-256. `matchesFile` names the file at capture time. Stage 11.2 moved the pictures to `src/eShop.Catalog.Api/Pics` without changing their bytes, so the check still holds.
 10. These headers are informational and not compared:
     - `Server`, `X-Powered-By`, `X-AspNet-Version`, `X-AspNetMvc-Version`: they disclose the stack, and the new API does not send them.
     - `Cache-Control`, `Pragma`, `Expires`: Web API no-cache defaults.

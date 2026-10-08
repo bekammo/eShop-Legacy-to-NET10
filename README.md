@@ -157,7 +157,7 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 | `ConnectionStrings:CatalogDb` | LocalDB, database `eShopCatalog` (`appsettings.Development.json`), unless user secrets override it (see [Local database](#local-database)) | Required, for example as the environment variable `ConnectionStrings__CatalogDb` |
 | `Database:MigrateOnStartup` | `true`: the migrations are applied, and a new database seeded, before the app accepts requests | `false`. The host refuses to start with `true` outside Development. |
 | `Catalog:UseMockData` | `false` (`appsettings.json`). `true` serves the catalog from memory, and the two settings above are not read. | `false`, as in Development |
-| `Catalog:PicturesPath` | `../eShopLegacyMVC/Pics`, the legacy app's pictures, relative to the content root (`appsettings.json`) | The same, until Stage 11.2 moves the pictures into the API. A published app needs it set, for example as `Catalog__PicturesPath`. The host does not start when the folder does not exist. |
+| `Catalog:PicturesPath` | `Pics`, the pictures in the API project, relative to the content root (`appsettings.json`) | The same: `dotnet publish` copies the `Pics` folder with the app. Set it, for example as `Catalog__PicturesPath`, to serve the pictures from another folder. The host does not start when the folder does not exist. |
 
 The host does not start with an invalid setting, or without a connection string unless mock mode is on. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 

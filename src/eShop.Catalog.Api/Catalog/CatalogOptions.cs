@@ -12,8 +12,8 @@ internal sealed class CatalogOptions
     public bool UseMockData { get; set; }
 
     // The folder of the item pictures. A relative path is resolved against the content root, as the log file's is
-    // (ADR-0018). appsettings.json points at the legacy app's Pics folder until Stage 11.2 moves the pictures into the
-    // API project (ADR-0005). The host does not start when the folder does not exist (ADR-0023).
+    // (ADR-0018). appsettings.json names the project's Pics folder, which the publish copies with the app. The host does
+    // not start when the folder does not exist (ADR-0023).
     [Required]
     public string? PicturesPath { get; set; }
 }
