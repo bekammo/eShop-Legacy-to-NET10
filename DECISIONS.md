@@ -42,6 +42,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0030](#adr-0030-code-coverage) | Code coverage | Accepted | 10.1 |
 | [ADR-0031](#adr-0031-docker-trait-and-published-test-results) | Docker trait and published test results | Accepted | 10.2 |
 | [ADR-0032](#adr-0032-cutover-and-rollback) | Cutover and rollback | Accepted | 11.1 |
+| [ADR-0033](#adr-0033-legacy-code-removed-at-cutover) | Legacy code removed at cutover | Accepted | 11.3 |
 
 ## Template
 
@@ -2881,3 +2882,56 @@ Until Stage 12 the new API takes the legacy app's place only where [ADR-0004](#a
 - Migration reviews keep the expand-only check after Stage 11.
 - Pushing a branch does not push the tag: it needs `git push origin legacy-final`.
 - From Stage 11.2, running the legacy app or re-capturing `docs/legacy` means checking out `legacy-final`.
+
+---
+
+## ADR-0033: Legacy code removed at cutover
+
+- **Status:** Accepted
+- **Date:** 2026-10-08
+- **Plan stage:** 11.3
+
+### Context
+
+- [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) kept the legacy projects unchanged, as the reference, until Stage 11, and [ADR-0006](#adr-0006-solution-structure-and-build-conventions) gave their folders stop-files. Both planned their deletion in this stage.
+- The `legacy-final` tag keeps the complete legacy app ([ADR-0032](#adr-0032-cutover-and-rollback)). Since Stage 11.2 the API serves the pictures from its own folder. Nothing in the solution, the tests or CI reads a file of the legacy projects: the tests read the characterization data in `docs/legacy`.
+- The legacy app references Newtonsoft.Json 12.0.1 and log4net 2.0.10, which have known vulnerabilities ([audit D5](docs/legacy-audit.md#7-defects-and-risks)). [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) left them in the repository until this stage.
+
+### Decision
+
+**Removed**
+
+| Path | What it was | In its place |
+|---|---|---|
+| `src/eShopLegacyMVC` (134 files) | The Web API 2 and MVC 5 app: controllers, models, the EF6 context and its seeding, Razor views, scripts, styles, fonts, `Web.config`, the log4net configuration, and its three stop-files | `src/eShop.Catalog.Api` ([ADR-0001](#adr-0001-migration-scope)) |
+| `src/eShopLegacy.Utilities` (6 files) | The BinaryFormatter serializer of `GET /api/files`, and its three stop-files | `410 Gone` ([ADR-0022](#adr-0022-get-apifiles-retired-with-410-gone)) |
+| `eShopLegacyMVC.sln` | The legacy solution, built with Visual Studio's MSBuild | `eShop.Catalog.slnx` |
+
+The comments of the repo-wide files that named the legacy folders or two solutions (`.editorconfig`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `.gitignore`, `ci.yml`) no longer name the legacy folders or a second solution, and the README points to the tag.
+
+**Kept**
+
+- `docs/legacy`: the characterization, `baseline.sql`, and the capture tool with its three stop-files. The tests read the data, and the ADRs cite it.
+- `docs/legacy-audit.md`. Its paths refer to the tag.
+- The capture tool still builds on every CI run, which checks its stop-files.
+
+**Rules that end**
+
+- A commit that changes a repo-wide build file no longer runs the legacy MSBuild build ([ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover), decision 5; ADR-0006).
+- ADR-0006's rule that every command names its solution ends with the second solution. The documented commands still name `eShop.Catalog.slnx`.
+
+**Verification**
+
+- `dotnet build eShop.Catalog.slnx` and `dotnet build docs/legacy/capture/capture.cs` succeed, and the full suite passes.
+- Outside the ADRs and the migration plan, only the documents that describe the legacy app name a deleted path: `README.md`, the audit, and `docs/legacy`, the capture tool included.
+
+### Alternatives considered
+
+- **Keeping the legacy code, frozen, beside the API.** The second toolchain, the stop-files and the vulnerable packages would stay in the repository for code that no stage changes. The tag keeps it exactly as it was.
+- **Moving it into a `legacy/` folder or onto a branch.** A folder keeps the same costs. A branch moves, and the tag is never moved (ADR-0032).
+
+### Consequences
+
+- Building and testing need only the .NET 10 SDK, and Docker for the tests with the Docker trait ([ADR-0031](#adr-0031-docker-trait-and-published-test-results)). Visual Studio and the .NET Framework targeting pack are no longer needed.
+- The repository no longer references the vulnerable legacy packages.
+- Running the legacy app, re-capturing `docs/legacy`, or checking a claim of the audit against the code needs a checkout of `legacy-final`.

@@ -1,6 +1,6 @@
 # Legacy characterization
 
-This folder records what the legacy app (`src/eShopLegacyMVC`) actually does when it runs. The data was captured from the running app, not derived from the code, and later stages test the new API against it:
+This folder records what the legacy app (`src/eShopLegacyMVC` at the `legacy-final` tag) actually does when it runs. The data was captured from the running app, not derived from the code, and later stages test the new API against it:
 
 - Stage 4 checks the EF Core schema and seed data against `schema.json` and `seed-data.json`.
 - Stage 4.3 builds legacy databases from `schema.sql`, `seed-data.json` and `ef6-model.edmx` to test `baseline.sql`, which lets the new API adopt one.

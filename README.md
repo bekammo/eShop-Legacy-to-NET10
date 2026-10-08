@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/bekammo/eShop-Legacy-to-NET10/actions/workflows/ci.yml/badge.svg)](https://github.com/bekammo/eShop-Legacy-to-NET10/actions/workflows/ci.yml)
 
-This project is based on Microsoft's [eShopModernizing](https://github.com/dotnet-architecture/eShopModernizing) sample. This fork keeps only the `eShopLegacyMVC` app. Its Web API layer is the starting point for an independent .NET Framework → .NET 10 modernization. The work is API-focused and does not cover the Razor/MVC UI.
+This project is based on Microsoft's [eShopModernizing](https://github.com/dotnet-architecture/eShopModernizing) sample. This fork kept only the `eShopLegacyMVC` app. Its Web API layer was the starting point for an independent .NET Framework → .NET 10 modernization. The work is API-focused and does not cover the Razor/MVC UI.
 
 ## Migration status
 
@@ -39,15 +39,14 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 
 ```
 .github/workflows/ci.yml     CI: build, tests, vulnerable-package check
-eShop.Catalog.slnx           New solution (.NET 10, built with the dotnet CLI)
-eShopLegacyMVC.sln           Legacy solution (built with MSBuild until cutover)
+eShop.Catalog.slnx           The solution (.NET 10, built with the dotnet CLI)
 global.json                  .NET SDK and test runner selection
 dotnet-tools.json            Local .NET tools (dotnet-ef, ReportGenerator)
 compose.yaml                 SQL Server in a container, for local development
-Directory.Build.props        Build settings for the new solution
-Directory.Packages.props     Central package versions for the new solution
-nuget.config                 Package sources (both solutions)
-.editorconfig                Code style and analyzer severities for the new solution
+Directory.Build.props        Build settings for the solution
+Directory.Packages.props     Central package versions for the solution
+nuget.config                 Package sources
+.editorconfig                Code style and analyzer severities for the solution
 MIGRATION_PLAN.md
 DECISIONS.md
 docs/
@@ -56,9 +55,7 @@ docs/
   openapi/                   The OpenAPI document of the new API
   legacy/                    Characterization data and the tool that captures it
 src/
-  eShop.Catalog.Api/         The new ASP.NET Core API (.NET 10)
-  eShopLegacyMVC/            ASP.NET Web API 2 + MVC 5 app (.NET Framework 4.7.2)
-  eShopLegacy.Utilities/     Shared class library (.NET Framework 4.6.1)
+  eShop.Catalog.Api/         The ASP.NET Core API (.NET 10)
 tests/
   eShop.Catalog.Api.UnitTests/         Tests without a host (xUnit v3)
   eShop.Catalog.Api.IntegrationTests/  Tests against the in-memory host and SQL Server in a container (xUnit v3)
@@ -66,7 +63,7 @@ tests/
   testconfig.json                      Test platform settings both projects use: code coverage
 ```
 
-The build files at the repository root reach every project below them. Three folders opt out with stop-files (`Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`): the two legacy project folders and the Stage 1.2 capture tool in `docs/legacy/capture` ([ADR-0006](DECISIONS.md#adr-0006-solution-structure-and-build-conventions)).
+The build files at the repository root reach every project below them. One folder opts out with stop-files (`Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`): the Stage 1.2 capture tool in `docs/legacy/capture` ([ADR-0006](DECISIONS.md#adr-0006-solution-structure-and-build-conventions)).
 
 ## Legacy baseline (as-is)
 
@@ -91,7 +88,7 @@ The build files at the repository root reach every project below them. Three fol
 
 ## Building the new API
 
-The new API needs a [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0): 10.0.100 or a later 10.0 feature band ([global.json](global.json)). It builds on Windows, Linux and macOS. Two solutions coexist until cutover, so always name the solution:
+The new API needs a [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0): 10.0.100 or a later 10.0 feature band ([global.json](global.json)). It builds on Windows, Linux and macOS:
 
 ```bash
 dotnet build eShop.Catalog.slnx
@@ -350,23 +347,17 @@ When a change alters the contract of an endpoint, `OpenApiDocumentTests.Document
 - **Build and test.** Builds the new solution in Release with warnings as errors, builds the Stage 1.2 capture tool, and runs every test with code coverage. The run's summary page shows the results of each test project, with the message and stack trace of each failure, and the coverage of the API. The TRX reports are uploaded as the `test-results` artifact, and the HTML coverage report as `coverage-report` ([ADR-0031](DECISIONS.md#adr-0031-docker-trait-and-published-test-results)).
 - **Vulnerable packages.** Fails when any direct or transitive package has a known vulnerability, at any severity, or when the vulnerability data cannot be fetched. An advisory accepted with `NuGetAuditSuppress` does not fail it.
 
-The legacy solution is not built in CI. It needs Windows and Visual Studio, so it is built locally whenever a repo-wide build file changes.
-
 GitHub disables the weekly run after 60 days without repository activity. Re-enable it from the Actions tab.
 
-## Building the baseline
+## The legacy app
 
-The legacy app needs Windows and Visual Studio with the **ASP.NET and web development** workload. You also need the **.NET Framework 4.6.1 targeting pack** for `eShopLegacy.Utilities`. The workload doesn't install it, and the build fails with `MSB3644` without it. Open `eShopLegacyMVC.sln` and run the app with IIS Express.
-
-To build from the command line, use the MSBuild that comes with Visual Studio. `dotnet build` fails with `MSB4019`, because the .NET SDK does not ship `Microsoft.WebApplication.targets`.
+The legacy app was deleted at cutover ([ADR-0033](DECISIONS.md#adr-0033-legacy-code-removed-at-cutover)). The tag `legacy-final` marks the last commit with the complete app, the rollback point ([ADR-0032](DECISIONS.md#adr-0032-cutover-and-rollback)). The README at that tag tells how to build and run it on Windows, with Visual Studio's MSBuild and IIS Express:
 
 ```bash
-MSBuild.exe eShopLegacyMVC.sln -restore -p:Configuration=Debug
+git checkout legacy-final
 ```
 
-The Debug and Release builds succeed with MSBuild 18.10 (Visual Studio 2026), with 6 warnings. The warnings are listed in the [audit](docs/legacy-audit.md#8-build-tooling-and-tests).
-
-By default the app uses SQL Server LocalDB (`(localdb)\MSSQLLocalDB`) and creates the database `Microsoft.eShopOnContainers.Services.CatalogDb` on first use. The database name must stay as it is, because the sequence scripts hard-code it. To run the app without a database, set `UseMockData` to `true` in `Web.config`.
+What the app did is recorded in the [audit](docs/legacy-audit.md) and the [characterization](docs/legacy/README.md).
 
 ## License
 

@@ -1,7 +1,6 @@
 # Editor and analyzer settings for eShop.Catalog.slnx (ADR-0006).
-# The legacy project folders (src/eShopLegacyMVC, src/eShopLegacy.Utilities) and the Stage 1.2
-# capture tool (docs/legacy/capture) have their own `root = true` .editorconfig, so nothing here
-# applies to them.
+# The Stage 1.2 capture tool (docs/legacy/capture) has its own `root = true` .editorconfig, so
+# nothing here applies to it.
 
 root = true
 

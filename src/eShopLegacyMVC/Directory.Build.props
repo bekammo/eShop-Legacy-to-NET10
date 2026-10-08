@@ -1,7 +1,0 @@
-<Project>
-  <!--
-    Stop-file (ADR-0006). MSBuild imports the first Directory.Build.props it finds walking up from
-    a project. This empty one keeps the repo-wide settings for the new .NET 10 solution (net10.0,
-    warnings as errors, analyzers) out of the legacy build. Removed at cutover (Stage 11.3).
-  -->
-</Project>
