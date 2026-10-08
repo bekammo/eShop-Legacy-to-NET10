@@ -2,7 +2,6 @@ using System.Net;
 using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Data;
 using eShop.Catalog.Api.IntegrationTests.Logging;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;

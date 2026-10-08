@@ -168,7 +168,7 @@ internal sealed class InMemoryCatalogService : ICatalogService
     }
 
     // As the decimal(18,2) column holds a price: one with at most two decimal places comes back with exactly two, so
-    // 8 reads as 8.00. The API is expected to accept no more than two (Stage 7.6).
+    // 8 reads as 8.00. The API accepts no more than two (Stage 7.6).
     private static decimal AsStored(decimal price) => decimal.Round(price + 0.00m, 2);
 
     private CatalogItem WithBrandAndType(CatalogItem item)

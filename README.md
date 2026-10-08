@@ -21,7 +21,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 8 — Async verification | Done |
 | 9 — OpenAPI docs & Swagger UI | Done |
 | 10 — Test consolidation | Done |
-| 11 — Cutover & cleanup | In progress |
+| 11 — Cutover & cleanup | Done |
 | 12 — Write-endpoint authorization | Not started |
 
 ## Documentation
@@ -65,7 +65,7 @@ tests/
 
 The build files at the repository root reach every project below them. One folder opts out with stop-files (`Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`): the Stage 1.2 capture tool in `docs/legacy/capture` ([ADR-0006](DECISIONS.md#adr-0006-solution-structure-and-build-conventions)).
 
-## Legacy baseline (as-is)
+## Legacy baseline
 
 - **Web framework:** ASP.NET Web API 2 (`System.Web.Http`) + ASP.NET MVC 5 on .NET Framework 4.7.2, hosted in IIS / IIS Express
 - **Data access:** Entity Framework 6 (SQL Server)
@@ -73,9 +73,9 @@ The build files at the repository root reach every project below them. One folde
 - **Logging:** log4net
 - **Configuration:** `Web.config` / `ConfigurationManager`
 
-## Planned modernization
+## Modernization
 
-| Area | Legacy (today) | Target |
+| Area | Legacy | Target |
 |---|---|---|
 | Framework | .NET Framework 4.7.2 (ASP.NET Web API 2 / MVC 5) | .NET 10 / ASP.NET Core Minimal APIs |
 | ORM | Entity Framework 6 | EF Core 10 with code-first migrations |

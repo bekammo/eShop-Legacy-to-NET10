@@ -6,11 +6,11 @@ using System.Text.Json.Nodes;
 
 namespace eShop.Catalog.Api.IntegrationTests.Contract;
 
-// The golden exchanges of the endpoints ported so far, and how the new API must answer them: the comparison rules of
+// The golden exchanges of the ported endpoints, and how the new API must answer them: the comparison rules of
 // docs/legacy/README.md (ADR-0002). LegacyContractTests replays them.
 internal static class LegacyContract
 {
-    // The contract files of the ported and retired endpoints. A file joins when its endpoint is ported or retired.
+    // The contract files of the ported and retired endpoints.
     public static readonly IReadOnlyList<string> Files =
     [
         "api-root.json",

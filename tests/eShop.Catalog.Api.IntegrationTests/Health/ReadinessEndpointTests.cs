@@ -1,6 +1,5 @@
 using System.Net;
 using eShop.Catalog.Api.IntegrationTests.Data;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace eShop.Catalog.Api.IntegrationTests.Health;

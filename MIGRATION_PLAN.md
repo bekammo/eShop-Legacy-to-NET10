@@ -1,7 +1,7 @@
 # Migration plan: eShopLegacyMVC → .NET 10 ASP.NET Core Web API
 
-This is the working plan for moving the legacy catalog app (`src/eShopLegacyMVC`, ASP.NET Web API 2 +
-MVC 5 on .NET Framework 4.7.2, plus `src/eShopLegacy.Utilities`) to a .NET 10 ASP.NET Core Web API.
+This is the working plan for moving the legacy catalog app (`src/eShopLegacyMVC` at the `legacy-final` tag,
+ASP.NET Web API 2 + MVC 5 on .NET Framework 4.7.2, plus `src/eShopLegacy.Utilities`) to a .NET 10 ASP.NET Core Web API.
 
 The migration is incremental. Each sub-task below is roughly one commit, and every commit builds and passes
 its tests on its own. Tests, ADRs (`DECISIONS.md`), behavior-change entries (`docs/behavior-changes.md`) and
@@ -74,7 +74,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 9. **Structure:**
    - One API project organized by folders, plus a unit test project and an integration test project.
    - Central Package Management, a `.slnx` solution, and `global.json`.
-   - Stop-files in the legacy project folders keep the new repo-wide build settings from affecting the legacy build.
+   - Stop-files in the legacy project folders keep the new repo-wide build settings from affecting the legacy build until cutover.
 10. **Order.** Deviations from the usual list, and why:
     - Configuration comes before EF Core.
     - Each typed options class lands with its first consumer.
@@ -234,7 +234,7 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - [x] 11.1 Tag `legacy-final` as the rollback point. ADR: cutover and rollback, including databases adopted with the Stage 4.3 baseline (ADR-0012: rollback by pointing the legacy app at the same database, which holds while migrations stay expand-only).
 - [x] 11.2 Move the pictures into the API project and switch the default `PicturesPath`.
 - [x] 11.3 Delete the legacy projects, `eShopLegacyMVC.sln`, the stop-files in the legacy project folders and all legacy-only assets. `docs/legacy` stays as a reference, with its capture tool and that tool's stop-files. ADR summarizing the removals.
-- [ ] 11.4 Package hygiene, dead-code removal, and a final pass on the README, this plan and `DECISIONS.md`.
+- [x] 11.4 Package hygiene, dead-code removal, and a final pass on the README, this plan and `DECISIONS.md`.
 
 ### Stage 12 — Post-migration: write-endpoint authorization
 - [ ] 12.1 Add JWT bearer auth with a `catalog:write` scope policy on item POST/PUT/DELETE. Tokens for local use come from `dotnet user-jwts`. Call `UseAuthentication` and `UseAuthorization` after the request logging, so that rejected requests are logged too (ADR-0019). Add the OpenAPI security scheme and tests (401/403/2xx). Reads and `/api/brands` stay anonymous. ADR.
@@ -246,7 +246,6 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 - **Before every commit:**
   - `dotnet build eShop.Catalog.slnx` and `dotnet test --solution eShop.Catalog.slnx` pass. From Stage 4.2, Docker must be running for the integration tests.
   - If the commit touches repo-wide build files, `dotnet build docs/legacy/capture/capture.cs` also passes.
-  - Always pass the solution explicitly: two solutions coexist until cutover.
 - **Commits:** an imperative subject of at most 72 characters, and a body that explains what changed and why. One logical change per commit.
 - **No commented-out legacy code.** Git history keeps it, and substantive removals are recorded in `DECISIONS.md`.
 
@@ -254,4 +253,3 @@ The full audit is in `docs/legacy-audit.md` (Stage 1). The findings that shape t
 
 - `dotnet run --project src/eShop.Catalog.Api`, then check `/health/live`, `/health/ready`, `/swagger`, and each endpoint against the golden exchanges in `docs/legacy/contract`.
 - Run again with `Catalog__UseMockData=true` and no database.
-- Until cutover, the legacy MSBuild build stays green.

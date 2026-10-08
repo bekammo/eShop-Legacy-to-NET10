@@ -256,7 +256,7 @@ public abstract class CatalogServiceContractTests
     }
 
     // As the database's foreign keys do. The legacy mock stored such an item, and then failed every read of the
-    // item list (audit D15). The exception is not part of the contract: the endpoints are expected to check the
+    // item list (audit D15). The exception is not part of the contract: the endpoints check the
     // brand and the type first (Stages 7.6 and 7.7).
     [Theory]
     [InlineData(0, 1)]

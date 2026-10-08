@@ -2894,7 +2894,7 @@ Until Stage 12 the new API takes the legacy app's place only where [ADR-0004](#a
 ### Context
 
 - [ADR-0005](#adr-0005-migration-strategy-side-by-side-then-cutover) kept the legacy projects unchanged, as the reference, until Stage 11, and [ADR-0006](#adr-0006-solution-structure-and-build-conventions) gave their folders stop-files. Both planned their deletion in this stage.
-- The `legacy-final` tag keeps the complete legacy app ([ADR-0032](#adr-0032-cutover-and-rollback)). Since Stage 11.2 the API serves the pictures from its own folder. Nothing in the solution, the tests or CI reads a file of the legacy projects: the tests read the characterization data in `docs/legacy`.
+- The `legacy-final` tag keeps the complete legacy app ([ADR-0032](#adr-0032-cutover-and-rollback)). Since Stage 11.2 the API serves the pictures from its own folder, and `ConfigurationTests.Committed_settings_serve_the_pictures_from_the_projects_Pics_folder` replaces the test that [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) names `Committed_settings_serve_the_pictures_from_the_legacy_Pics_folder`. Nothing in the solution, the tests or CI reads a file of the legacy projects: the tests read the characterization data in `docs/legacy`.
 - The legacy app references Newtonsoft.Json 12.0.1 and log4net 2.0.10, which have known vulnerabilities ([audit D5](docs/legacy-audit.md#7-defects-and-risks)). [ADR-0023](#adr-0023-security-fixes-made-during-the-migration) left them in the repository until this stage.
 
 ### Decision

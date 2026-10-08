@@ -39,7 +39,7 @@
   <!--
     The item pictures, moved here from the legacy app's Pics folder at cutover (Stage 11.2). Catalog:PicturesPath
     names the folder relative to the content root: the project folder under dotnet run and in the tests, and the
-    app's own folder once it is published, so the publish copies it.
+    app's folder when the published app starts there, so the publish copies it.
   -->
   <ItemGroup>
     <None Update="Pics\**" CopyToPublishDirectory="PreserveNewest" />

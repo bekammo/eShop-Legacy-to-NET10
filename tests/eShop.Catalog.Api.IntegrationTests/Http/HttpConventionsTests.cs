@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using eShop.Catalog.Api.Http;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
