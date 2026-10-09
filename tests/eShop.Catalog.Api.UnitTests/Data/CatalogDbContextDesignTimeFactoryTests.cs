@@ -4,9 +4,6 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace eShop.Catalog.Api.UnitTests.Data;
 
-// The dotnet-ef tool builds its context with this factory, without the app's host or a connection (ADR-0011), and
-// generates the deployment script from it. The script must come from the app's SQL Server options, as the one that
-// MigrationScriptTests runs does.
 public sealed class CatalogDbContextDesignTimeFactoryTests
 {
     [Fact]

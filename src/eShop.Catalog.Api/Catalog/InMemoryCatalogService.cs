@@ -1,26 +1,19 @@
 namespace eShop.Catalog.Api.Catalog;
 
-// The catalog in memory, for running without a database (ADR-0016). It starts with the legacy sample data, as the
-// legacy CatalogServiceMock did, and loses every change when the process ends. One instance serves every request,
-// so a lock guards the items, and callers get copies. The legacy mock shared a plain list and its objects between
-// concurrent requests, numbered new items after the highest ID, and stored items with unknown brands (audit D15).
 internal sealed class InMemoryCatalogService : ICatalogService
 {
     private readonly Lock _lock = new();
 
-    // Reference data, which nothing changes.
     private readonly SortedDictionary<int, CatalogBrand> _brands = new(PreconfiguredData.CatalogBrands().ToDictionary(brand => brand.Id));
     private readonly SortedDictionary<int, CatalogType> _types = new(PreconfiguredData.CatalogTypes().ToDictionary(type => type.Id));
 
-    // The items by ID, so that pages come in ID order. Guarded by _lock, like _lastId.
+    // Guarded by _lock. Updates change stored items in place, so copy an item only while holding the lock.
     private readonly SortedDictionary<int, CatalogItem> _items = [];
 
-    // The last ID given to an item. A removed item's ID is not given again.
     private int _lastId;
 
     public InMemoryCatalogService()
     {
-        // IDs 1-12 in list order, as a new database gives them.
         foreach (var item in PreconfiguredData.CatalogItems())
         {
             item.Id = ++_lastId;
@@ -37,7 +30,6 @@ internal sealed class InMemoryCatalogService : ICatalogService
 
                 lock (_lock)
                 {
-                    // In long, as in CatalogService: pageSize * pageIndex overflows an int.
                     var offset = (long)pageSize * pageIndex;
                     IReadOnlyList<CatalogItem> itemsOnPage = offset < _items.Count
                         ? [.. _items.Values.Skip((int)offset).Take(pageSize).Select(WithBrandAndType)]
@@ -79,7 +71,6 @@ internal sealed class InMemoryCatalogService : ICatalogService
                 };
                 Apply(fields, item);
 
-                // Copied under the lock: once added, the item is shared, and an update may change it.
                 lock (_lock)
                 {
                     item.Id = checked(++_lastId);
@@ -89,8 +80,8 @@ internal sealed class InMemoryCatalogService : ICatalogService
             },
             cancellationToken);
 
-    // As in CatalogService, an unknown ID wins over an unknown brand or type: the UPDATE matches no row, so no
-    // foreign key is checked.
+    // Keep the ID lookup before the brand and type check: an unknown ID must return false even with an unknown brand
+    // or type, as CatalogService's UPDATE does by matching no row.
     public Task<bool> UpdateCatalogItemAsync(int id, CatalogItemFields fields, CancellationToken cancellationToken) =>
         Run(
             () =>
@@ -120,8 +111,6 @@ internal sealed class InMemoryCatalogService : ICatalogService
             },
             cancellationToken);
 
-    // Runs an operation the way the asynchronous methods of CatalogService end: a token that is already cancelled
-    // stops it before it starts, and its exception is in the task that it returns.
     private static Task<T> Run<T>(Func<T> operation, CancellationToken cancellationToken)
     {
         if (cancellationToken.IsCancellationRequested)
@@ -139,7 +128,6 @@ internal sealed class InMemoryCatalogService : ICatalogService
         }
     }
 
-    // The database refuses such an item with its foreign keys.
     private void ThrowIfUnknownBrandOrType(CatalogItemFields fields)
     {
         if (!_brands.ContainsKey(fields.CatalogBrandId))
@@ -153,7 +141,6 @@ internal sealed class InMemoryCatalogService : ICatalogService
         }
     }
 
-    // The same fields that CatalogService writes.
     private static void Apply(CatalogItemFields fields, CatalogItem item)
     {
         item.Name = fields.Name;
@@ -167,8 +154,8 @@ internal sealed class InMemoryCatalogService : ICatalogService
         item.OnReorder = fields.OnReorder;
     }
 
-    // As the decimal(18,2) column holds a price: one with at most two decimal places comes back with exactly two, so
-    // 8 reads as 8.00. The API accepts no more than two (Stage 7.6).
+    // Adding 0.00m is not a no-op: it gives the price two decimal places, so 8 reads as 8.00, as from the
+    // decimal(18,2) column in database mode.
     private static decimal AsStored(decimal price) => decimal.Round(price + 0.00m, 2);
 
     private CatalogItem WithBrandAndType(CatalogItem item)

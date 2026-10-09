@@ -23,7 +23,6 @@ public sealed class CatalogDbContextRegistrationTests(CatalogApiFactory factory)
         Assert.Equal(expected.InitialCatalog, actual.InitialCatalog);
     }
 
-    // HasDefaultSchema does not reach the history table, so the registration has to place it.
     [Fact]
     public void Migrations_history_table_is_in_dbo()
     {

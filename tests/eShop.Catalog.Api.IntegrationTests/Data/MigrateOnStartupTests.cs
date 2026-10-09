@@ -9,10 +9,6 @@ using Microsoft.Extensions.Hosting;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// Database:MigrateOnStartup (ADR-0013). Each test starts a host of its own, from a CatalogApiFactory that
-// xUnit never initializes: the test names the factory's database, which does not exist until the host
-// creates it. The settings are host settings, which override the Development settings files and a
-// developer's user secrets.
 [Trait("Category", "Docker")]
 public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
 {
@@ -36,7 +32,6 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    // Outside Development the setting comes from appsettings.json, where it is off.
     [Theory]
     [InlineData("Development", "false")]
     [InlineData("Testing", null)]
@@ -52,7 +47,6 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
         Assert.False(await DatabaseExistsAsync(factory.ConnectionString));
     }
 
-    // A stray Database__MigrateOnStartup must not migrate a deployed database or seed sample items into it.
     [Theory]
     [InlineData("Testing")]
     [InlineData("Staging")]
@@ -82,8 +76,6 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
         Assert.False(await DatabaseExistsAsync(factory.ConnectionString));
     }
 
-    // The factory disposes the host with itself. With migrateOnStartup null, the setting comes from the
-    // environment's settings files.
     private static WebApplicationFactory<Program> Host(
         CatalogApiFactory factory, string environment, string? migrateOnStartup, Action<IServiceCollection>? services = null) =>
         factory.WithWebHostBuilder(builder =>
@@ -106,10 +98,8 @@ public sealed class MigrateOnStartupTests(SqlServerFixture sqlServer)
         return await context.Database.CanConnectAsync(CancellationToken);
     }
 
-    // Looks at the database in StartingAsync, after the app's own services, because the tests register it
-    // later. The host calls every StartingAsync before any StartAsync, and the server starts in a StartAsync.
-    // So a migration that is complete here was complete before the server started, and a migration in any
-    // later phase is not complete yet.
+    // Checks in StartingAsync, registered after the app's services: every StartingAsync runs before any StartAsync,
+    // the server's included. Checking any later would pass even if the migration ran after the server started.
     private sealed class StartupProbe(string connectionString) : IHostedLifecycleService
     {
         public IReadOnlyList<string>? PendingMigrationsWhenServicesStart { get; private set; }

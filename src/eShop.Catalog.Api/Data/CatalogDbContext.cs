@@ -3,15 +3,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace eShop.Catalog.Api.Data;
 
-// The model reproduces the schema that the legacy EF6 app creates (docs/legacy/schema.json,
-// ADR-0010): the same tables, columns, constraint names and item-ID sequence.
 internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options) : DbContext(options)
 {
-    // EF6 put every object in dbo explicitly. Naming the schema keeps the tables, the sequence and
-    // the migrations history there, whatever the default schema of the login that applies them.
+    // Naming dbo is not redundant: it keeps the tables, the sequence and the migrations history in dbo, whatever the
+    // default schema of the login that applies the migrations.
     internal const string Schema = "dbo";
 
-    // Item IDs come from this sequence through HiLo, in blocks of 10, as in the legacy app.
     internal const string ItemIdSequence = "catalog_hilo";
 
     public DbSet<CatalogItem> CatalogItems => Set<CatalogItem>();
@@ -22,7 +19,6 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // The history table is not part of the model: UseCatalogSqlServer puts it in the schema.
         modelBuilder.HasDefaultSchema(Schema);
 
         modelBuilder.HasSequence<long>(ItemIdSequence)

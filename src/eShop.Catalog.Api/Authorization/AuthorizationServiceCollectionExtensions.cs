@@ -8,10 +8,6 @@ namespace eShop.Catalog.Api.Authorization;
 
 internal static class AuthorizationServiceCollectionExtensions
 {
-    // JWT bearer tokens, and the catalog:write policy (ADR-0034). The Bearer scheme reads its settings from the
-    // Authentication:Schemes:Bearer section, where dotnet user-jwts writes its issuer and audiences
-    // (appsettings.Development.json) and its signing key (user secrets). Where the section names no signing key and no
-    // authority, no token is valid, and every write is a 401.
     internal static IServiceCollection AddCatalogAuthorization(this IServiceCollection services)
     {
         services.AddAuthentication().AddJwtBearer();
@@ -20,9 +16,6 @@ internal static class AuthorizationServiceCollectionExtensions
                 .RequireAuthenticatedUser()
                 .RequireAssertion(static context => HasScope(context.User, CatalogScopes.Write)));
 
-        // The Bearer scheme in the document that AddCatalogHttp adds, and on each operation whose endpoint requires a
-        // policy, a requirement that names the policy, which is its scope. Swagger UI then asks for a token, and sends it
-        // with those operations.
         services.Configure<OpenApiOptions>("v1", static options => options
             .AddDocumentTransformer(static (document, _, _) =>
             {
@@ -53,8 +46,8 @@ internal static class AuthorizationServiceCollectionExtensions
         return services;
     }
 
-    // A token lists its scopes in scope claims: one claim for each scope, as dotnet user-jwts writes them, or one claim
-    // that separates them with spaces, as RFC 9068 does for the access tokens of an OAuth 2.0 authorization server.
+    // Tokens carry scopes as one claim per scope (dotnet user-jwts) or as one space-separated claim (RFC 9068), and
+    // HasScope must accept both.
     private static bool HasScope(ClaimsPrincipal user, string scope) =>
         user.FindAll("scope").Any(claim => claim.Value.Split(' ').Contains(scope));
 }

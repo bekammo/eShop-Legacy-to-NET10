@@ -3,10 +3,8 @@ using Microsoft.Extensions.Options;
 
 namespace eShop.Catalog.Api.Data;
 
-// Migrates the catalog database while the host starts, when Database:MigrateOnStartup is on (ADR-0013).
-// StartingAsync runs before any hosted service starts, the server included, so no request reaches an old
-// schema. Stopping the host during startup cancels the migration: EF Core rolls back the migration it is
-// applying, and keeps the ones it has committed.
+// StartingAsync runs before any hosted service starts, the server included, so no request reaches an old schema.
+// A plain IHostedService or BackgroundService does not guarantee that.
 internal sealed class MigrateOnStartupService(IServiceScopeFactory scopeFactory, IOptions<DatabaseOptions> options) : IHostedLifecycleService
 {
     public async Task StartingAsync(CancellationToken cancellationToken)

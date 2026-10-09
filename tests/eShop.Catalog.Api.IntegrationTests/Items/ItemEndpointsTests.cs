@@ -4,14 +4,12 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace eShop.Catalog.Api.IntegrationTests.Items;
 
-// The item reads (ADR-0024), on the class's database, which holds the 12 sample items, and in mock mode.
 [Trait("Category", "Docker")]
 public sealed class ItemEndpointsTests(CatalogApiFactory factory, MockModeCatalogApiFactory mockMode)
     : IClassFixture<CatalogApiFactory>, IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // The legacy Index action's defaults: page 0 of 10 items.
     [Fact]
     public async Task First_page_of_ten_items_in_ID_order_is_the_default()
     {
@@ -40,7 +38,6 @@ public sealed class ItemEndpointsTests(CatalogApiFactory factory, MockModeCatalo
         Assert.Equal(12, (long)past["TotalItems"]!);
     }
 
-    // Audit D6: the legacy app answered 0 and negative values with a 500, and read any page size.
     [Theory]
     [InlineData("pageSize=0", "pageSize")]
     [InlineData("pageSize=-1", "pageSize")]
@@ -73,7 +70,6 @@ public sealed class ItemEndpointsTests(CatalogApiFactory factory, MockModeCatalo
         Assert.Equal(12, page["Data"]!.AsArray().Count);
     }
 
-    // The legacy model's properties, without the picture's file name, and the absolute URL of the picture.
     [Fact]
     public async Task Item_has_the_legacy_model_s_properties_and_the_URL_of_its_picture()
     {
@@ -120,7 +116,6 @@ public sealed class ItemEndpointsTests(CatalogApiFactory factory, MockModeCatalo
         Assert.Equal(status, response.StatusCode);
     }
 
-    // Both services hold the same sample items (ADR-0016), so both modes answer the same.
     [Theory]
     [InlineData("/api/items?pageSize=12")]
     [InlineData("/api/items/9")]

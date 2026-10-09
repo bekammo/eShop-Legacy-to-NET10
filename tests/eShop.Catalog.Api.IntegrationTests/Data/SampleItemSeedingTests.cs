@@ -6,8 +6,6 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// The sample-item seeder that ends every Migrate (ADR-0013). Each test migrates a database of its own,
-// because seeding is what they test.
 [Trait("Category", "Docker")]
 public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
 {
@@ -35,7 +33,6 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         Assert.Equal(LegacySeedData.ItemsWithBrandAndType, items);
     }
 
-    // The legacy seeding took two blocks of 10 for its 12 items, and left the sequence at 11.
     [Fact]
     public async Task Item_id_sequence_stands_where_the_legacy_seeding_left_it()
     {
@@ -60,8 +57,8 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         Assert.Equal(sequence, await ItemIdSequenceAsync(database));
     }
 
-    // dotnet ef database update migrates synchronously, so it runs the synchronous seeder. The migrations run in a
-    // synchronous method of their own: CA1849 allows no synchronous Migrate in an async test.
+    // Stays synchronous: dotnet ef database update migrates that way and runs the synchronous seeder.
+    // CA1849 forbids a synchronous Migrate in an async test, hence the local function.
     [Fact]
     public async Task Synchronous_migration_seeds_the_same_items_once()
     {
@@ -81,10 +78,6 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         }
     }
 
-    // EF Core keeps HiLo blocks for the life of the process, even when a revert drops the sequence and the
-    // migrations create it again. The seeder refuses the old block before it draws anything from the new
-    // sequence. EF Core has committed the migrations by then, and the database stays unused, so a new
-    // process seeds it.
     [Fact]
     public async Task Seeding_refuses_hilo_ids_from_before_the_sequence_and_leaves_the_database_unused()
     {
@@ -114,8 +107,6 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         Assert.Equal(LegacySeedData.Items, await CatalogDatabase.ItemsAsync(database, CancellationToken));
     }
 
-    // As in the legacy app, the process that seeded goes on with the rest of its block, from 13, and
-    // every other process starts at the next block, 21. Neither can reach a seeded ID.
     [Fact]
     public async Task Items_added_after_seeding_take_ids_above_the_seeded_ones()
     {
@@ -133,8 +124,6 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
 
     public static TheoryData<string> KeptMarkers => ["all of them", .. LegacyMarkers.Select(marker => marker.Name)];
 
-    // An adopted legacy database must never get the sample items (ADR-0012). Each case strips the database
-    // of every sign of the legacy app but one, which must stop the seeder on its own.
     [Theory]
     [MemberData(nameof(KeptMarkers))]
     public async Task Migrations_seed_nothing_into_an_adopted_legacy_database(string keptMarker)
@@ -159,7 +148,6 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         Assert.Equal(sequence, await ItemIdSequenceAsync(adopted));
     }
 
-    // Each sign that a database is not new, with the SQL that removes it from an adopted database.
     private static readonly IReadOnlyList<(string Name, string Strip)> LegacyMarkers =
     [
         ("items", "DELETE FROM dbo.Catalog"),
@@ -169,7 +157,6 @@ public sealed class SampleItemSeedingTests(SqlServerFixture sqlServer)
         ("catalog_type_hilo", "DROP SEQUENCE dbo.catalog_type_hilo"),
     ];
 
-    // sys.sequences.current_value, the value that seed-data.json records.
     private static async Task<long> ItemIdSequenceAsync(string database)
     {
         await using var connection = await LegacyDatabase.OpenAsync(database, CancellationToken);

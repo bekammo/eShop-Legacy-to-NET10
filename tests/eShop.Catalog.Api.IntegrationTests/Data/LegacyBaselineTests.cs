@@ -9,14 +9,11 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// docs/legacy/baseline.sql, which adopts a database that the legacy app created (ADR-0012). Each
-// test builds its own legacy database, because the baseline and the tests change it.
 [Trait("Category", "Docker")]
 public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // What the baseline keeps in an adopted database, beyond what a migrated database has.
     private static readonly IReadOnlyList<string> LegacyExtras =
     [
         .. LegacySchema.TableFacts("dbo.__MigrationHistory").Select(fact => $"dbo.__MigrationHistory: {fact}"),
@@ -45,7 +42,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         Assert.Equal(ef6History, await Ef6HistoryAsync(connection));
     }
 
-    // Deployments apply the migrations with the idempotent script (ADR-0011).
     [Fact]
     public async Task Adopted_database_takes_the_idempotent_migrations_script()
     {
@@ -77,14 +73,12 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         Assert.Equal(LegacySeedData.Items, items.Select(LegacySeedData.Item));
         Assert.All(items, item => Assert.Equal((item.CatalogBrandId, item.CatalogTypeId), (item.CatalogBrand!.Id, item.CatalogType!.Id)));
 
-        // The legacy seeding left catalog_hilo at 11, so EF Core's first block starts at 21.
         var added = new CatalogItem { Name = "Adopted", PictureFileName = "dummy.png", Price = 1.50m, CatalogBrandId = 1, CatalogTypeId = 1 };
         context.CatalogItems.Add(added);
         await context.SaveChangesAsync(CancellationToken);
         Assert.Equal(21, added.Id);
         Assert.Equal(21L, await LastUsedItemIdAsync(connection));
 
-        // The legacy app, still running against the database, would take the next block.
         Assert.Equal(31L, await LegacyDatabase.ScalarAsync<long>(connection, "SELECT NEXT VALUE FOR dbo.catalog_hilo", CancellationToken));
 
         added.Price = 2.50m;
@@ -121,8 +115,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         Assert.Equal(state, await StateAsync(migrated));
     }
 
-    // A migration run against a legacy database fails on the existing legacy objects, the catalog_hilo
-    // sequence first, but EF Core has created its history table by then, outside the migration's transaction.
     [Fact]
     public async Task Baseline_adopts_a_database_that_a_failed_migration_left_behind()
     {
@@ -139,8 +131,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
 
     public static TheoryData<string> Refusals => [.. Changes.Keys];
 
-    // Changes to a legacy database that the baseline must refuse, with the error number it reports.
-    // Each check has cases for both directions (missing and unexpected) where it compares lists.
     private static readonly Dictionary<string, (string Sql, int Error)> Changes = new()
     {
         ["history table of another shape"] = ("CREATE TABLE dbo.__EFMigrationsHistory (MigrationId nvarchar(150) NOT NULL PRIMARY KEY)", 50004),
@@ -174,9 +164,7 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         ["schema-bound view"] = ("CREATE VIEW dbo.ItemNames WITH SCHEMABINDING AS SELECT Id, Name FROM dbo.Catalog", 50008),
         ["sequence increment 1"] = ("ALTER SEQUENCE dbo.catalog_hilo INCREMENT BY 1", 50009),
         ["sequence cycles"] = ("ALTER SEQUENCE dbo.catalog_hilo CYCLE", 50009),
-        // Never drawn since the restart, so the next value is 12 itself, the highest item ID.
         ["sequence restarted at the highest ID"] = ("ALTER SEQUENCE dbo.catalog_hilo RESTART WITH 12", 50010),
-        // The next value is 21, the ID of the imported item.
         ["item imported at the sequence's next value"] = (
             "INSERT INTO dbo.Catalog (Id, Name, Price, PictureFileName, CatalogTypeId, CatalogBrandId, AvailableStock, RestockThreshold, " +
             "MaxStockThreshold, OnReorder) VALUES (21, N'Imported', 1, N'dummy.png', 1, 1, 0, 0, 0, 0)", 50010),
@@ -210,7 +198,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         await AssertRefusedAsync(empty, 50006);
     }
 
-    // A refusal leaves the caller's own transaction as it was: still open, for the caller to end.
     [Fact]
     public async Task Baseline_refuses_to_run_inside_a_transaction()
     {
@@ -227,8 +214,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         Assert.Equal(state, await StateAsync(database));
     }
 
-    // With implicit transactions, BEGIN TRANSACTION would nest, and the final COMMIT would leave the
-    // adoption uncommitted although the script reports success.
     [Fact]
     public async Task Baseline_refuses_to_run_with_implicit_transactions()
     {
@@ -239,8 +224,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         await AssertRefusedAsync(database, 50001, connection);
     }
 
-    // Without VIEW DEFINITION, the catalog views hide schema-bound objects from the login, so the
-    // baseline would adopt a database with one.
     [Fact]
     public async Task Baseline_refuses_a_login_without_VIEW_DEFINITION()
     {
@@ -251,7 +234,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         await AssertRefusedAsync(database, 50012, connection);
     }
 
-    // The rights docs/legacy/README.md documents: db_ddladmin, db_datareader, db_datawriter and VIEW DEFINITION.
     [Fact]
     public async Task Baseline_adopts_with_the_documented_rights_and_still_sees_schema_bound_objects()
     {
@@ -275,7 +257,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         await AssertRefusedAsync(withView, 50008, viewConnection);
     }
 
-    // The documented procedure runs the script with sqlcmd -b, and the exit code tells success from refusal.
     [Fact]
     public async Task Sqlcmd_exits_with_0_when_the_baseline_adopts_a_database_and_with_1_when_it_refuses()
     {
@@ -295,8 +276,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         Assert.Contains("Msg 50006", refused.Stdout + refused.Stderr, StringComparison.Ordinal);
     }
 
-    // A refusal reports its number, leaves no transaction open, and changes nothing.
-    // Runs the baseline on the given connection, or on a new one, and checks the refusal.
     private static async Task AssertRefusedAsync(string database, int error, SqlConnection? connection = null)
     {
         var state = await StateAsync(database);
@@ -310,8 +289,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         Assert.Equal(state, await StateAsync(database));
     }
 
-    // Makes the connection run as a database user with exactly the documented roles. Such connections
-    // are not pooled (LegacyDatabase.OpenAsync with pooling off), so the impersonation ends with them.
     private static async Task ImpersonateMigratorAsync(SqlConnection connection, bool viewDefinition)
     {
         await LegacyDatabase.ExecuteAsync(
@@ -323,9 +300,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
         await LegacyDatabase.ExecuteAsync(connection, "EXECUTE AS USER = N'migrator';", CancellationToken);
     }
 
-    // Everything the baseline could change, read on a connection of its own: the schema, the object
-    // counts, the rows of both history tables and of the catalog tables, the sequences' positions and
-    // the identity values.
     private static async Task<IReadOnlyList<string>> StateAsync(string database)
     {
         await using var connection = await LegacyDatabase.OpenAsync(database, CancellationToken);
@@ -363,8 +337,6 @@ public sealed class LegacyBaselineTests(SqlServerFixture sqlServer)
 
     private static Task<IReadOnlyList<string>> Ef6HistoryAsync(SqlConnection connection) => RowsAsync(connection, "__MigrationHistory");
 
-    // Every column of every row of a dbo table as text, sorted; binary values as their SHA-256.
-    // None when the table does not exist.
     private static async Task<IReadOnlyList<string>> RowsAsync(SqlConnection connection, string table)
     {
         if (await LegacyDatabase.ScalarAsync<int>(connection, $"SELECT COUNT(*) FROM sys.tables WHERE name = N'{table}'", CancellationToken) == 0)

@@ -8,9 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Catalog.Api.IntegrationTests.Pictures;
 
-// GET /items/{catalogItemId:int}/pic beyond the golden exchanges, which LegacyContractTests replays (ADR-0023): the
-// legacy defects that the evidence shows, on items with the picture names that the legacy app let clients store. The
-// host serves a pictures folder of the test's own, and secret.txt sits beside that folder, outside it.
 [Trait("Category", "Docker")]
 public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>, IDisposable
 {
@@ -24,8 +21,6 @@ public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFix
 
     public void Dispose() => _directory.Delete(recursive: true);
 
-    // Audit D1 (pic-path-traversal-relative, pic-path-traversal-absolute): the legacy app served such files. null stands
-    // for the absolute path of secret.txt, which only the test knows.
     [Theory]
     [InlineData("../secret.txt")]
     [InlineData(@"..\secret.txt")]
@@ -43,7 +38,6 @@ public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFix
         Assert.DoesNotContain("secret", await response.Content.ReadAsStringAsync(CancellationToken), StringComparison.Ordinal);
     }
 
-    // Audit D7 (pic-missing-file): the legacy app answered 500. The warning tells an operator which item it was.
     [Fact]
     public async Task Missing_picture_file_is_a_404_and_a_warning()
     {
@@ -61,7 +55,6 @@ public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFix
         Assert.Equal("missing.png", LogFile.String(warning, "PictureFileName"));
     }
 
-    // The file result sends the file's time, and answers a request that has the picture already with 304 (BC-010).
     [Fact]
     public async Task Picture_has_its_last_modified_time_and_a_conditional_request_gets_304()
     {
@@ -80,7 +73,6 @@ public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFix
         Assert.Empty(await response.Content.ReadAsByteArrayAsync(CancellationToken));
     }
 
-    // The item endpoints of Stage 7.5 build PictureUri from the legacy route name.
     [Fact]
     public void Legacy_route_name_builds_the_picture_path()
     {
@@ -89,7 +81,6 @@ public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFix
         Assert.Equal("/items/7/pic", links.GetPathByName("GetPicRouteTemplate", new { catalogItemId = 7 }));
     }
 
-    // Without its folder, every picture would be a 404 (ADR-0023).
     [Theory]
     [InlineData("", "The PicturesPath field is required.")]
     [InlineData("no-such-folder", "Catalog:PicturesPath must name a folder that exists.")]
@@ -102,7 +93,6 @@ public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFix
         Assert.Contains(message, exception.Message, StringComparison.Ordinal);
     }
 
-    // A host that serves the test's pictures folder, and writes its log to the file given, if one is.
     private WebApplicationFactory<Program> Host(string? logFile = null) =>
         factory.WithWebHostBuilder(builder =>
         {
@@ -113,7 +103,6 @@ public sealed class PictureEndpointsTests(CatalogApiFactory factory) : IClassFix
             }
         });
 
-    // An item with the picture name given, written to the class's database as the legacy app let a client write it.
     private async Task<int> AddItemAsync(string pictureFileName)
     {
         await using var scope = factory.Services.CreateAsyncScope();

@@ -6,7 +6,6 @@ namespace eShop.Catalog.Api.UnitTests.Data;
 
 public sealed class CatalogDbContextRegistrationTests
 {
-    // The production case: no source sets the key at all. The integration tests cover empty and blank values.
     [Fact]
     public void Registration_fails_when_the_connection_string_is_missing()
     {

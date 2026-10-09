@@ -3,8 +3,6 @@ using eShop.Catalog.Api.Tests.Legacy;
 
 namespace eShop.Catalog.Api.UnitTests.Catalog;
 
-// The legacy sample data, which the migrations, the seeder and the in-memory catalog share (ADR-0016). The brands
-// and types are also checked as the model's seed data, in CatalogModelTests.
 public sealed class PreconfiguredDataTests
 {
     [Fact]
@@ -15,8 +13,6 @@ public sealed class PreconfiguredDataTests
     public void Types_are_the_legacy_ones() =>
         Assert.Equal(LegacySeedData.Types, PreconfiguredData.CatalogTypes().Select(type => LegacySeedData.Row(type.Id, type.Type)));
 
-    // HiLo numbers the items in the order they are added, from 1 in a new database (ADR-0013), and the in-memory
-    // catalog numbers them the same way.
     [Fact]
     public void Sample_items_are_the_legacy_ones_in_id_order()
     {
@@ -29,7 +25,6 @@ public sealed class PreconfiguredDataTests
         Assert.Equal(LegacySeedData.Items, items.Select(LegacySeedData.Item));
     }
 
-    // The callers track or change what they get.
     [Fact]
     public void Each_call_returns_new_instances()
     {

@@ -12,15 +12,13 @@ using Serilog.Debugging;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// In every environment, not only in Development (ADR-0017): no scoped service is resolved from the root provider,
-// and every registration is checked when the container is built.
 builder.Host.UseDefaultServiceProvider(static options =>
 {
     options.ValidateScopes = true;
     options.ValidateOnBuild = true;
 });
 
-// Serilog reports its own failures, such as a log file that it cannot open, on the standard error output (ADR-0018).
+// Not debug code: Serilog reports its own failures, such as a log file that it cannot open, only to SelfLog.
 SelfLog.Enable(Console.Error);
 builder.Services.AddCatalogLogging();
 builder.Services.AddCatalogHttp();
@@ -32,17 +30,16 @@ builder.Services.AddCatalogAuthorization();
 var app = builder.Build();
 
 app.UseCatalogRequestLogging();
+
+// After the request logging, so that the request event has the status that the error handling gives the client.
 app.UseCatalogErrorHandling();
 
-// After the request logging, so that a request that they reject is logged too (ADR-0019), and inside the error
-// handling, whose status code pages give their 401 and 403 a problem body (ADR-0021). After routing, so that
-// authorization knows the endpoint and its policy (ADR-0034). WebApplication would otherwise add both before the app's
-// middleware.
+// Called explicitly, after routing and inside the request logging and error handling. WebApplication would
+// otherwise add them before the app's middleware: a 401 or 403 would go unlogged, without a problem body,
+// and authorization would not know the endpoint.
 app.UseAuthentication();
 app.UseAuthorization();
 
-// The OpenAPI document, /openapi/v1.json, in every environment (ADR-0020), and Swagger UI over it, at /swagger, in
-// Development only (ADR-0028).
 app.MapOpenApi();
 if (app.Environment.IsDevelopment())
 {

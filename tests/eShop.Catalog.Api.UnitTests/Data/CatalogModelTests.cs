@@ -7,11 +7,9 @@ using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace eShop.Catalog.Api.UnitTests.Data;
 
-// The EF Core model against the schema the legacy app creates (docs/legacy/schema.json). Stage 4.2
-// checks the database that the migrations create against the same file.
 public sealed class CatalogModelTests
 {
-    // The design-time model keeps what migrations use and the runtime model drops, such as seed data.
+    // The design-time model, not context.Model: the runtime model drops seed data, and its GetSeedData throws.
     private static readonly IModel Model = CreateDesignTimeModel();
 
     public static TheoryData<string> LegacyTables => [.. LegacySchema.Tables];
@@ -51,7 +49,6 @@ public sealed class CatalogModelTests
 
     private static IModel CreateDesignTimeModel()
     {
-        // The app's SQL Server options. Building the model needs the provider, not a connection.
         var options = new DbContextOptionsBuilder<CatalogDbContext>();
         options.UseCatalogSqlServer();
         using var context = new CatalogDbContext(options.Options);

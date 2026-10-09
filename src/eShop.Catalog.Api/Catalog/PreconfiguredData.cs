@@ -1,13 +1,7 @@
 namespace eShop.Catalog.Api.Catalog;
 
-// The legacy app's PreconfiguredData: the brands, types and sample items with which it seeded both its database and
-// its mock (docs/legacy/seed-data.json). The database gets the brands and types from the migrations (ADR-0010) and
-// the items from SampleItemSeeder (ADR-0013); InMemoryCatalogService starts with all three (ADR-0016). Each call
-// returns new instances, because the callers track or change them.
 internal static class PreconfiguredData
 {
-    // Reference data with the IDs that the legacy app assigns: GET /api/brands returns them, and the sample items
-    // refer to them.
     public static IReadOnlyList<CatalogBrand> CatalogBrands() =>
     [
         new() { Id = 1, Brand = "Azure" },
@@ -17,7 +11,6 @@ internal static class PreconfiguredData
         new() { Id = 5, Brand = "Other" },
     ];
 
-    // Reference data with the IDs that the legacy app assigns: the sample items refer to them.
     public static IReadOnlyList<CatalogType> CatalogTypes() =>
     [
         new() { Id = 1, Type = "Mug" },
@@ -26,8 +19,6 @@ internal static class PreconfiguredData
         new() { Id = 4, Type = "USB Memory Stick" },
     ];
 
-    // The sample items without IDs, in the order in which they get IDs 1-12: from HiLo in a new database, as the
-    // legacy seeding gave them, and in memory from InMemoryCatalogService.
     public static IReadOnlyList<CatalogItem> CatalogItems() =>
     [
         Item(".NET Bot Black Hoodie", 19.50m, "1.png", catalogTypeId: 2, catalogBrandId: 2),

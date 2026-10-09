@@ -3,8 +3,6 @@ using Microsoft.Data.SqlClient;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// Runs a T-SQL script the way sqlcmd does: batch by batch, split on GO lines, which only client
-// tools understand.
 internal static partial class SqlScripts
 {
     public static async Task RunAsync(SqlConnection connection, string script, CancellationToken cancellationToken)

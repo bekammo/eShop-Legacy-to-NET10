@@ -6,9 +6,6 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// The idempotent script is how deployed environments apply the migrations (ADR-0011). EF Core wraps
-// every step in IF NOT EXISTS, and some hand-written SQL, such as CREATE VIEW, cannot run inside
-// such a block, so the script is tested as well as the migrations.
 [Trait("Category", "Docker")]
 public sealed class MigrationScriptTests(SqlServerFixture sqlServer)
 {
@@ -20,8 +17,6 @@ public sealed class MigrationScriptTests(SqlServerFixture sqlServer)
         await using var context = CatalogDatabase.CreateContext(connectionString);
         var script = context.GetService<IMigrator>().GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
 
-        // The script expects an existing, empty database, which a deployment creates first, with
-        // READ_COMMITTED_SNAPSHOT on as EF Core's creator does (ADR-0011).
         await context.GetService<IRelationalDatabaseCreator>().CreateAsync(cancellationToken);
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);

@@ -8,13 +8,10 @@ using Microsoft.Extensions.Options;
 
 namespace eShop.Catalog.Api.UnitTests.Catalog;
 
-// What AddCatalogServices registers in each mode (ADR-0017), without a host or a database.
 public sealed class CatalogServiceCollectionExtensionsTests
 {
     private const string ConnectionString = "Data Source=unused;Initial Catalog=unused";
 
-    // Database mode is the default. Registration chooses it without a Catalog section too, and the host then stops on the
-    // required PicturesPath.
     [Fact]
     public void Database_mode_registers_a_scoped_catalog_service_and_the_database()
     {
@@ -27,8 +24,6 @@ public sealed class CatalogServiceCollectionExtensionsTests
         Assert.Equal(["catalog-database"], HealthChecks(services));
     }
 
-    // A mock-mode host needs no connection string, and reads no Database section. Its one hosted service warns that
-    // it runs in mock mode (ADR-0019).
     [Fact]
     public void Mock_mode_registers_one_in_memory_catalog_and_nothing_of_the_database()
     {
@@ -63,7 +58,6 @@ public sealed class CatalogServiceCollectionExtensionsTests
         Assert.Contains("'Catalog:UseMockData'", exception.Message, StringComparison.Ordinal);
     }
 
-    // A null leaves the setting out, as when no source sets it: without UseMockData there is no Catalog section at all.
     private static ServiceCollection Register(string? useMockData, string? connectionString)
     {
         var settings = new Dictionary<string, string?>
@@ -86,7 +80,6 @@ public sealed class CatalogServiceCollectionExtensionsTests
         Assert.Equal(lifetime, catalogService.Lifetime);
     }
 
-    // The names of the registered health checks.
     private static IReadOnlyList<string> HealthChecks(ServiceCollection services)
     {
         using var provider = services.BuildServiceProvider();

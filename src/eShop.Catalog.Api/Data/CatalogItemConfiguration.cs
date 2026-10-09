@@ -16,8 +16,6 @@ internal sealed class CatalogItemConfiguration : IEntityTypeConfiguration<Catalo
         builder.Property(item => item.Name).HasMaxLength(50);
         builder.Property(item => item.Price).HasPrecision(18, 2);
 
-        // Required relationships with the EF6 constraint and index names. Deleting a brand or a
-        // type would delete its items, as in the legacy schema; nothing deletes either.
         builder.HasOne(item => item.CatalogBrand)
             .WithMany()
             .HasForeignKey(item => item.CatalogBrandId)

@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace eShop.Catalog.Api.UnitTests.Data;
 
-// The schema an EF Core model maps to, as schema facts.
 internal static class EfModelSchema
 {
     public static IReadOnlyList<string> Tables(IModel model) =>
@@ -33,7 +32,6 @@ internal static class EfModelSchema
                 computed: column.ComputedColumnSql is not null));
         }
 
-        // Keys have no sort order in EF Core, so every key column is ascending.
         var primaryKey = mapped.PrimaryKey!;
         facts.Add(SchemaFacts.PrimaryKey(
             primaryKey.Name,
@@ -66,7 +64,6 @@ internal static class EfModelSchema
                 filter: null));
         }
 
-        // EF Core has no update action and always creates enabled, trusted foreign keys.
         foreach (var foreignKey in mapped.ForeignKeyConstraints)
         {
             facts.Add(SchemaFacts.ForeignKey(
@@ -85,7 +82,6 @@ internal static class EfModelSchema
         return SchemaFacts.Sorted(facts);
     }
 
-    // EF Core has no cache setting for sequences, so it creates them with the server's default cache.
     public static IReadOnlyList<string> SequenceFacts(IModel model) =>
         SchemaFacts.Sorted(model.GetSequences().Select(sequence =>
         {
@@ -97,8 +93,7 @@ internal static class EfModelSchema
 
     private static string QualifiedName(ITable table) => $"{table.Schema}.{table.Name}";
 
-    // sys.foreign_keys reports NO_ACTION, SET_NULL and so on. schema.json, written by
-    // docs/legacy/capture/capture.cs, replaces the underscore with a space, and so do the facts.
+    // A space, not sys.foreign_keys' underscore (NO_ACTION): schema.json writes NO ACTION, and the facts must match it.
     private static string OnDelete(ReferentialAction action) => action switch
     {
         ReferentialAction.Cascade => "CASCADE",
@@ -108,7 +103,6 @@ internal static class EfModelSchema
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
     };
 
-    // A sequence without explicit bounds gets its type's range.
     private static (string Type, long Min, long Max) StoreType(Type type) =>
         type == typeof(long) ? ("bigint", long.MinValue, long.MaxValue)
         : type == typeof(int) ? ("int", int.MinValue, int.MaxValue)

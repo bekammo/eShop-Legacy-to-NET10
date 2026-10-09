@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// Contexts on a test database outside a host, with the app's SQL Server options.
 internal static class CatalogDatabase
 {
     public static CatalogDbContext CreateContext(string connectionString)
@@ -14,8 +13,8 @@ internal static class CatalogDatabase
         return new CatalogDbContext(options.Options);
     }
 
-    // A context with EF Core's internal services to itself, so without the HiLo blocks that earlier contexts
-    // in this process drew: it stands in for a context in a new process.
+    // EnableServiceProviderCaching(false) keeps this context off the HiLo blocks that earlier contexts in this process
+    // drew, as in a new process; without it the seeder refuses the stale IDs after a migration revert.
     public static CatalogDbContext CreateContextAsInANewProcess(string connectionString)
     {
         var options = new DbContextOptionsBuilder<CatalogDbContext>();
@@ -23,7 +22,6 @@ internal static class CatalogDatabase
         return new CatalogDbContext(options.Options);
     }
 
-    // A database created and migrated the way CatalogApiFactory does it, sample items included.
     public static async Task<string> CreateMigratedAsync(SqlServerFixture sqlServer, CancellationToken cancellationToken)
     {
         var connectionString = await sqlServer.NewDatabaseAsync("migrated");
@@ -32,7 +30,6 @@ internal static class CatalogDatabase
         return connectionString;
     }
 
-    // Every item, as LegacySeedData.Items lines, in ID order.
     public static async Task<IReadOnlyList<string>> ItemsAsync(string connectionString, CancellationToken cancellationToken)
     {
         await using var context = CreateContext(connectionString);

@@ -2,8 +2,6 @@ using eShop.Catalog.Api.Catalog;
 
 namespace eShop.Catalog.Api.UnitTests.Catalog;
 
-// The page that replaces the legacy PaginatedItemsViewModel (ADR-0015), which divided by a pageSize of 0 and took
-// negative values (audit D6).
 public sealed class PaginatedItemsTests
 {
     [Fact]
@@ -17,7 +15,6 @@ public sealed class PaginatedItemsTests
         Assert.Equal([11, 12], page.Data);
     }
 
-    // The legacy ceil(count / pageSize), without its int overflow.
     [Theory]
     [InlineData(0L, 10, 0L)]
     [InlineData(1L, 10, 1L)]
@@ -54,7 +51,6 @@ public sealed class PaginatedItemsTests
     public void Page_larger_than_its_size_is_refused() =>
         Assert.Throws<ArgumentOutOfRangeException>("data", () => new PaginatedItems<int>(0, 2, 3L, [1, 2, 3]));
 
-    // The count and the page are two reads, which a concurrent write can put out of step.
     [Fact]
     public void Page_may_disagree_with_the_count() =>
         Assert.Equal(3, new PaginatedItems<int>(0, 5, 1L, [1, 2, 3]).Data.Count);

@@ -5,16 +5,12 @@ using eShop.Catalog.Api.Tests.Legacy;
 
 namespace eShop.Catalog.Api.UnitTests.Catalog;
 
-// The in-memory catalog (ADR-0016): the shared contract, without Docker, and what only this implementation has to
-// show. xUnit creates the class for each test, so each test gets a catalog of its own.
 public sealed class InMemoryCatalogServiceTests : CatalogServiceContractTests
 {
     private const int Writers = 200;
 
     private protected override ICatalogService Service { get; } = new InMemoryCatalogService();
 
-    // In mock mode one instance serves every request, so writes and reads arrive at the same time. The legacy mock's
-    // plain list was not safe for that (audit D15).
     [Fact]
     public async Task Concurrent_writes_and_reads_keep_the_catalog_consistent()
     {

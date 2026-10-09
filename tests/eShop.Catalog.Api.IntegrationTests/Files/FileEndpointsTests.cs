@@ -4,8 +4,6 @@ using System.Text.Json.Nodes;
 
 namespace eShop.Catalog.Api.IntegrationTests.Files;
 
-// GET /api/files, retired (ADR-0022): 410 Gone with a problem that points to GET /api/brands. LegacyContractTests
-// replays its golden exchanges against BC-006.
 public sealed class FileEndpointsTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;

@@ -4,24 +4,19 @@ using eShop.Catalog.Api.Catalog;
 
 namespace eShop.Catalog.Api.Tests.Legacy;
 
-// The rows the legacy app seeds into a fresh database, from docs/legacy/seed-data.json (Stage 1.2).
 internal static class LegacySeedData
 {
     private static readonly JsonNode SeedData = LegacyFiles.ReadJson("seed-data.json");
 
-    // One "<Id> <name>" line per brand, in ID order.
     public static IReadOnlyList<string> Brands => [.. Table("CatalogBrand").Select(row => Row((int)row["Id"]!, (string)row["Brand"]!))];
 
-    // One "<Id> <name>" line per type, in ID order.
     public static IReadOnlyList<string> Types => [.. Table("CatalogType").Select(row => Row((int)row["Id"]!, (string)row["Type"]!))];
 
-    // One line per item, in ID order, with every column.
     public static IReadOnlyList<string> Items => [.. Table("Catalog").Select(row => Item(
         (int)row["Id"]!, (string)row["Name"]!, (string?)row["Description"], (decimal)row["Price"]!, (string)row["PictureFileName"]!,
         (int)row["CatalogTypeId"]!, (int)row["CatalogBrandId"]!, (int)row["AvailableStock"]!, (int)row["RestockThreshold"]!,
         (int)row["MaxStockThreshold"]!, (bool)row["OnReorder"]!))];
 
-    // One "<name> | <brand> | <type>" line per item, in ID order, with the names of its brand and type.
     public static IReadOnlyList<string> ItemsWithBrandAndType
     {
         get
@@ -36,22 +31,17 @@ internal static class LegacySeedData
         }
     }
 
-    // The last value the legacy seeding drew from each sequence (sys.sequences.current_value).
     public static IReadOnlyDictionary<string, long> SequenceCurrentValues =>
         SeedData["sequenceCurrentValues"]!.AsObject().ToDictionary(p => p.Key, p => (long)p.Value!);
 
-    // The rows of one table, as seed-data.json records them.
     public static IReadOnlyList<JsonObject> Table(string table) => [.. SeedData[table]!.AsArray().Select(row => row!.AsObject())];
 
     public static string Row(int id, string name) => $"{id.ToString(CultureInfo.InvariantCulture)} {name}";
 
-    // The same line for an item of the new API, to compare it with Items.
     public static string Item(CatalogItem item) => Item(
         item.Id, item.Name, item.Description, item.Price, item.PictureFileName, item.CatalogTypeId, item.CatalogBrandId,
         item.AvailableStock, item.RestockThreshold, item.MaxStockThreshold, item.OnReorder);
 
-    // The same line for an item of the new API, to compare it with ItemsWithBrandAndType. A brand or type that
-    // was not loaded shows as "(not loaded)".
     public static string ItemWithBrandAndType(CatalogItem item) =>
         ItemWithBrandAndType(item.Name, item.CatalogBrand?.Brand ?? "(not loaded)", item.CatalogType?.Type ?? "(not loaded)");
 

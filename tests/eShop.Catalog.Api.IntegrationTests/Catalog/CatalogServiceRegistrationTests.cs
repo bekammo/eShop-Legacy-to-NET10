@@ -10,12 +10,9 @@ using Microsoft.Extensions.Hosting;
 
 namespace eShop.Catalog.Api.IntegrationTests.Catalog;
 
-// AddCatalogServices in the host (ADR-0017): Catalog:UseMockData chooses the catalog service, mock mode needs no
-// database, and the container validates scopes in every environment.
 [Trait("Category", "Docker")]
 public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, SqlServerFixture sqlServer) : IClassFixture<CatalogApiFactory>
 {
-    // The name of the warning event: the name of its [LoggerMessage] method.
     private const string MockModeEvent = "MockModeIsOn";
 
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
@@ -34,9 +31,6 @@ public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, S
         Assert.Equal(LegacySeedData.Items, (await service.GetCatalogItemsPaginatedAsync(12, 0, CancellationToken)).Data.Select(LegacySeedData.Item));
     }
 
-    // Settings that stop a host in database mode, and that mock mode does not read: a blank connection string, and
-    // migrate-on-startup, which is allowed only in Development. The factory is never initialized, so it has no database
-    // either.
     [Theory]
     [InlineData("Development")]
     [InlineData("Testing")]
@@ -65,7 +59,6 @@ public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, S
         Assert.Equal("Healthy", await response.Content.ReadAsStringAsync(CancellationToken));
     }
 
-    // A host in mock mode is ready at once, so it says what it serves when it starts (ADR-0019).
     [Fact]
     public async Task Mock_mode_warns_at_startup_that_changes_are_lost()
     {
@@ -100,7 +93,6 @@ public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, S
         Assert.Contains("'Catalog:UseMockData'", exception.Message, StringComparison.Ordinal);
     }
 
-    // ASP.NET Core validates scopes only in Development by default. The factory's host runs in Testing.
     [Fact]
     public void Scoped_services_cannot_be_resolved_from_the_root_provider()
     {
@@ -109,8 +101,6 @@ public sealed class CatalogServiceRegistrationTests(CatalogApiFactory factory, S
         Assert.Contains("from root provider", exception.Message, StringComparison.Ordinal);
     }
 
-    // The container checks every registration when it is built, so a singleton that would hold a scoped service
-    // stops the host at startup, before anything resolves it.
     [Fact]
     public void Host_does_not_start_with_a_singleton_that_holds_a_scoped_service()
     {

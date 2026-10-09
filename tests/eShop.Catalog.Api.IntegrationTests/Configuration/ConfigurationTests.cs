@@ -14,8 +14,6 @@ public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : ICla
     [Fact]
     public void Testing_host_gets_no_connection_string_from_settings_files()
     {
-        // Only file sources: an environment variable or a value that the factory sets in code
-        // is allowed to supply the connection string.
         var configuration = (IConfigurationRoot)factory.Services.GetRequiredService<IConfiguration>();
         var settingsFiles = configuration.Providers.OfType<FileConfigurationProvider>().ToList();
 
@@ -40,7 +38,6 @@ public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : ICla
             ApplicationName = typeof(Program).Assembly.GetName().Name,
             EnvironmentName = Environments.Development,
             ContentRootPath = ContentRoot,
-            // The test only inspects the sources, so no file watchers.
             Args = ["--hostBuilder:reloadConfigOnChange=false"],
         }).Configuration;
 
@@ -50,15 +47,12 @@ public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : ICla
     [Fact]
     public void Development_settings_point_at_a_LocalDB_database_of_their_own_without_MARS()
     {
-        // Only the committed files: a developer may override the value with user secrets or an
-        // environment variable, and that must not fail the test.
         var configuration = new ConfigurationBuilder()
             .SetBasePath(ContentRoot)
             .AddJsonFile("appsettings.json", optional: false)
             .AddJsonFile("appsettings.Development.json", optional: false)
             .Build();
 
-        // SqlConnectionStringBuilder knows the keyword synonyms, such as Server or MARS Connection.
         var connectionString = new SqlConnectionStringBuilder(configuration.GetConnectionString("CatalogDb"));
 
         Assert.Equal(@"(localdb)\MSSQLLocalDB", connectionString.DataSource);
@@ -66,7 +60,6 @@ public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : ICla
         Assert.False(connectionString.MultipleActiveResultSets);
     }
 
-    // Only the committed files, as above. Migrating on startup is a Development convenience (ADR-0013).
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, true)]
@@ -85,7 +78,6 @@ public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : ICla
         Assert.Equal(expected, configuration.GetValue<bool?>("Database:MigrateOnStartup"));
     }
 
-    // Only the committed files, as above. The legacy Web.config had UseMockData false (ADR-0017).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -104,7 +96,6 @@ public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : ICla
         Assert.False(configuration.GetValue<bool?>("Catalog:UseMockData"));
     }
 
-    // Only the committed files, as above: the API project's Pics folder, relative to the content root (ADR-0023).
     [Fact]
     public void Committed_settings_serve_the_pictures_from_the_projects_Pics_folder()
     {
@@ -116,7 +107,6 @@ public sealed class ConfigurationTests(MockModeCatalogApiFactory factory) : ICla
         Assert.Equal("Pics", configuration["Catalog:PicturesPath"]);
     }
 
-    // User secrets are a JSON source for secrets.json, added whether or not the file exists yet.
     private static bool IsUserSecrets(IConfigurationProvider provider) =>
         provider is JsonConfigurationProvider { Source.Path: "secrets.json" };
 }

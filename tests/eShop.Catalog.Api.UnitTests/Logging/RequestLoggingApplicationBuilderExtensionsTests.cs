@@ -5,7 +5,6 @@ using Serilog.Events;
 
 namespace eShop.Catalog.Api.UnitTests.Logging;
 
-// The level of the request event (ADR-0019).
 public sealed class RequestLoggingApplicationBuilderExtensionsTests
 {
     [Theory]
@@ -19,7 +18,6 @@ public sealed class RequestLoggingApplicationBuilderExtensionsTests
         Assert.Equal(expected, Level(Request(status, endpointLevel: null), exception: null));
     }
 
-    // Readiness answers 503 when the database is down. The failing check itself is logged at Error.
     [Theory]
     [InlineData(200)]
     [InlineData(503)]
@@ -36,7 +34,6 @@ public sealed class RequestLoggingApplicationBuilderExtensionsTests
         Assert.Equal(LogEventLevel.Error, Level(Request(200, endpointLevel), new InvalidOperationException()));
     }
 
-    // The client went away, for example a probe that gave up: not the server's error. The other rules decide.
     [Theory]
     [InlineData(null, LogEventLevel.Information)]
     [InlineData(LogEventLevel.Debug, LogEventLevel.Debug)]
@@ -48,7 +45,6 @@ public sealed class RequestLoggingApplicationBuilderExtensionsTests
         Assert.Equal(expected, Level(request, new OperationCanceledException(request.RequestAborted)));
     }
 
-    // A cancellation that the client did not cause, such as a timeout inside the app, is the server's.
     [Fact]
     public void Request_cancelled_while_the_client_waits_is_an_Error()
     {

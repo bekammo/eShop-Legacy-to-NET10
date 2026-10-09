@@ -4,17 +4,12 @@ using eShop.Catalog.Api.Tests.Legacy;
 
 namespace eShop.Catalog.Api.Tests.Catalog;
 
-// The behaviour that every ICatalogService implementation shares (ADR-0015). One test class per implementation
-// derives from this one, and gives each test a service over a catalog of its own that holds the legacy sample data:
-// the brands, types and 12 items of seed-data.json, with which the legacy app seeded both its database and its mock.
 public abstract class CatalogServiceContractTests
 {
-    // The sample items have IDs 1-12, in the order of LegacySeedData.Items.
     private static readonly IReadOnlyList<int> SampleItemIds = [.. LegacySeedData.Table("Catalog").Select(row => (int)row["Id"]!)];
 
     private protected static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // A service over a catalog that no other test uses.
     private protected abstract ICatalogService Service { get; }
 
     [Fact]
@@ -54,7 +49,6 @@ public abstract class CatalogServiceContractTests
     public async Task Unknown_brand_is_not_found(int id) =>
         Assert.Null(await Service.FindCatalogBrandAsync(id, CancellationToken));
 
-    // The IDs on the page and the number of pages, for the 12 sample items.
     [Theory]
     [InlineData(10, 0, new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, 2L)]
     [InlineData(10, 1, new[] { 11, 12 }, 2L)]
@@ -63,7 +57,7 @@ public abstract class CatalogServiceContractTests
     [InlineData(100, 0, new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, 1L)]
     [InlineData(1, 11, new[] { 12 }, 12L)]
     [InlineData(10, 2, new int[] { }, 2L)]
-    [InlineData(100, int.MaxValue, new int[] { }, 1L)] // pageSize * pageIndex overflows an int
+    [InlineData(100, int.MaxValue, new int[] { }, 1L)]
     public async Task Page_holds_the_items_at_its_place_in_id_order(int pageSize, int pageIndex, int[] ids, long totalPages)
     {
         var page = await Service.GetCatalogItemsPaginatedAsync(pageSize, pageIndex, CancellationToken);
@@ -136,7 +130,6 @@ public abstract class CatalogServiceContractTests
         Assert.Equal([.. LegacySeedData.Items, expected], await AllItemsAsync());
     }
 
-    // The legacy mock numbered a new item after the highest ID, so it gave a deleted item's ID to the next one (audit D15).
     [Fact]
     public async Task Ids_are_never_given_again()
     {
@@ -149,7 +142,6 @@ public abstract class CatalogServiceContractTests
         Assert.DoesNotContain(second.Id, SampleItemIds.Append(first.Id));
     }
 
-    // Every field is written, a null description too, and nothing else changes.
     [Fact]
     public async Task Update_writes_every_field_and_keeps_the_id_and_the_picture()
     {
@@ -175,7 +167,6 @@ public abstract class CatalogServiceContractTests
         Assert.Equal(LegacySeedData.Items, await AllItemsAsync());
     }
 
-    // The unknown item wins: the database's UPDATE matches no row, so no foreign key is checked.
     [Fact]
     public async Task Update_of_an_unknown_item_with_an_unknown_brand_returns_false()
     {
@@ -186,8 +177,6 @@ public abstract class CatalogServiceContractTests
         Assert.Equal(LegacySeedData.Items, await AllItemsAsync());
     }
 
-    // As the decimal(18,2) column holds them: 8 reads back as 8.00, which JSON shows. What create returns is not
-    // read back, so it is not compared.
     [Fact]
     public async Task Prices_are_read_back_with_two_decimal_places()
     {
@@ -202,7 +191,6 @@ public abstract class CatalogServiceContractTests
         static string Price(CatalogItem item) => item.Price.ToString(CultureInfo.InvariantCulture);
     }
 
-    // The legacy mock numbered a new item after the highest ID, which threw on an empty catalog (audit D15).
     [Fact]
     public async Task Emptied_catalog_takes_new_items()
     {
@@ -222,7 +210,6 @@ public abstract class CatalogServiceContractTests
         Assert.Equal([ItemLine(created.Id, NewFields("Created"), "dummy.png")], await AllItemsAsync());
     }
 
-    // A store that keeps items in insertion order, or reuses a removed item's slot, would put the new item first.
     [Fact]
     public async Task Pages_stay_in_id_order_after_removes_and_creates()
     {
@@ -255,9 +242,6 @@ public abstract class CatalogServiceContractTests
         Assert.Equal(LegacySeedData.Items, await AllItemsAsync());
     }
 
-    // As the database's foreign keys do. The legacy mock stored such an item, and then failed every read of the
-    // item list (audit D15). The exception is not part of the contract: the endpoints check the
-    // brand and the type first (Stages 7.6 and 7.7).
     [Theory]
     [InlineData(0, 1)]
     [InlineData(6, 1)]
@@ -274,7 +258,6 @@ public abstract class CatalogServiceContractTests
         Assert.Equal(LegacySeedData.ItemsWithBrandAndType, (await Service.GetCatalogItemsPaginatedAsync(12, 0, CancellationToken)).Data.Select(LegacySeedData.ItemWithBrandAndType));
     }
 
-    // A token that is already cancelled stops every operation, and nothing changes.
     [Fact]
     public async Task Cancelled_operations_change_nothing()
     {
@@ -292,8 +275,6 @@ public abstract class CatalogServiceContractTests
         Assert.Equal(LegacySeedData.Items, await AllItemsAsync());
     }
 
-    // Whatever the service returns is the caller's: changing it changes nothing in the catalog, not even after a
-    // later write.
     [Fact]
     public async Task Changing_what_the_service_returned_changes_nothing()
     {
@@ -336,8 +317,6 @@ public abstract class CatalogServiceContractTests
         }
     }
 
-    // Fields that differ from every sample item's in every column: brand 4 (SQL Server) and type 4 (USB Memory
-    // Stick), which no sample item has, and a price, stock fields and OnReorder unlike theirs.
     private protected static CatalogItemFields NewFields(string name) => new()
     {
         Name = name,
@@ -357,7 +336,6 @@ public abstract class CatalogServiceContractTests
 
     private static string SampleItem(int id) => LegacySeedData.Items[id - 1];
 
-    // Every item, as LegacySeedData.Items lines, in ID order.
     private async Task<IReadOnlyList<string>> AllItemsAsync()
     {
         var page = await Service.GetCatalogItemsPaginatedAsync(100, 0, CancellationToken);

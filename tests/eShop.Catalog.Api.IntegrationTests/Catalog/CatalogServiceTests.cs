@@ -9,9 +9,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Catalog.Api.IntegrationTests.Catalog;
 
-// The EF Core CatalogService against SQL Server (ADR-0015): the shared contract, and what only this implementation has
-// to show. CatalogApiFactory migrates the class's database, so it holds the sample data. Each test works on the host's
-// context in a transaction that it never commits, so the next test finds the sample data again.
 [Trait("Category", "Docker")]
 public sealed class CatalogServiceTests : CatalogServiceContractTests, IClassFixture<CatalogApiFactory>, IAsyncLifetime
 {
@@ -33,7 +30,6 @@ public sealed class CatalogServiceTests : CatalogServiceContractTests, IClassFix
 
     public ValueTask DisposeAsync() => _scope.DisposeAsync();
 
-    // Nothing that the service reads or writes stays in the change tracker, not even an item that the database refused.
     [Fact]
     public async Task Service_leaves_nothing_tracked()
     {
@@ -52,7 +48,6 @@ public sealed class CatalogServiceTests : CatalogServiceContractTests, IClassFix
         Assert.Empty(_context.ChangeTracker.Entries());
     }
 
-    // The legacy controller read every brand and searched them in memory (audit D17).
     [Fact]
     public async Task Brand_lookup_asks_the_database_for_the_one_brand()
     {
@@ -63,7 +58,6 @@ public sealed class CatalogServiceTests : CatalogServiceContractTests, IClassFix
         Assert.Contains("WHERE", command, StringComparison.Ordinal);
     }
 
-    // A count, then only the rows of the page, in ID order, as in the legacy service.
     [Fact]
     public async Task Paging_reads_only_the_rows_of_the_page_in_id_order()
     {
@@ -76,8 +70,8 @@ public sealed class CatalogServiceTests : CatalogServiceContractTests, IClassFix
         Assert.Contains("FETCH NEXT", commands[1], StringComparison.Ordinal);
     }
 
-    // SQL Server returns small tables in key order without an ORDER BY too, so only the SQL shows that the order is
-    // asked for.
+    // Asserts on the SQL, not the rows: SQL Server returns small tables in key order without ORDER BY too, so a check
+    // of the rows would still pass with the ordering removed.
     [Fact]
     public async Task Brands_and_types_are_read_in_id_order()
     {
@@ -91,7 +85,6 @@ public sealed class CatalogServiceTests : CatalogServiceContractTests, IClassFix
         Assert.All(commands, command => Assert.Contains("ORDER BY [c].[Id]", command, StringComparison.Ordinal));
     }
 
-    // The text of each query that the service sends on a context of its own.
     private async Task<IReadOnlyList<string>> CommandsAsync(Func<ICatalogService, Task> use)
     {
         var recorder = new CommandRecorder();
