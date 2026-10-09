@@ -3,14 +3,14 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace eShop.Catalog.Api.Brands;
 
-// The legacy Web API 2 BrandsController, drop-in (ADR-0002): the same routes, statuses and JSON (ADR-0020). Deltas
-// BC-002 to BC-005 record where the new API answers differently, and why.
 internal static class BrandEndpoints
 {
     internal static IEndpointRouteBuilder MapBrandEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var brands = endpoints.MapGroup("/api/brands").WithTags("Brands");
         brands.MapGet("", GetBrandsAsync);
+        // The {id} routes have no route constraint on purpose: an ID that is not an int fails to bind, which is a 400.
+        // Adding :int would turn that 400 into a 404.
         brands.MapGet("/{id}", GetBrandAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -29,8 +29,6 @@ internal static class BrandEndpoints
         return TypedResults.Ok<IReadOnlyList<CatalogBrandResponse>>([.. brands.Select(CatalogBrandResponse.From)]);
     }
 
-    // {id} has no route constraint, so an ID that is not an int, such as abc, matches the route and fails to bind,
-    // which is a 400, as in the legacy app (ADR-0020).
     /// <summary>Gets a brand.</summary>
     /// <param name="id">The brand's ID.</param>
     /// <response code="200">The brand.</response>
@@ -41,7 +39,6 @@ internal static class BrandEndpoints
             ? TypedResults.Ok(CatalogBrandResponse.From(brand))
             : TypedResults.NotFound();
 
-    // Deletes nothing, as the legacy action did ("demo only") (ADR-0002, decision 1).
     /// <summary>Deletes nothing.</summary>
     /// <remarks>The answer only says whether the brand exists.</remarks>
     /// <param name="id">The brand's ID.</param>

@@ -3,11 +3,8 @@ using eShop.Catalog.Api.Catalog;
 
 namespace eShop.Catalog.Api.Items;
 
-// The fields of an item that a client writes, to create or to replace one (ADR-0025): the legacy form's fields with
-// their rules, and OnReorder. Not the ID, which the API assigns, nor the picture (ADR-0015). Every field but the
-// description is required: a value type is nullable here only so that a missing value is not read as zero. Public,
-// because .NET 10's validation skips internal types (ADR-0020). The rules are on the properties, where the OpenAPI
-// document shows them too, and the description has a default, so that the document does not require it.
+// Public, because .NET 10's validation skips internal types. A value type is nullable only so that a missing
+// value fails [Required] instead of binding as 0 or false.
 /// <summary>The fields of an item that a client writes.</summary>
 /// <param name="Name">The item's name.</param>
 /// <param name="Price">The item's price, with at most two decimal places.</param>
@@ -29,7 +26,6 @@ public sealed record CatalogItemRequest(
     [property: Required] bool? OnReorder,
     string? Description = null)
 {
-    // The fields, once validation has passed.
     internal CatalogItemFields ToFields() => new()
     {
         Name = Name!,

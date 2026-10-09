@@ -4,9 +4,6 @@ using eShop.Catalog.Api.Types;
 
 namespace eShop.Catalog.Api.Items;
 
-// An item as the API writes it (ADR-0024): the properties of the legacy CatalogItem model, with its brand and type as
-// objects, as the model's navigation properties held them. The item must have them loaded. PictureUri is the absolute URL of the item's picture, as the
-// legacy controller built it. The picture's file name stays inside the API.
 /// <summary>A catalog item.</summary>
 /// <param name="Id">The item's ID.</param>
 /// <param name="Name">The item's name.</param>

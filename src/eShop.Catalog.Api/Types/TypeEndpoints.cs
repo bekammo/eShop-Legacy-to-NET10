@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace eShop.Catalog.Api.Types;
 
-// The item types, which the legacy app offered only as a dropdown of its Razor forms (ADR-0001, ADR-0024).
 internal static class TypeEndpoints
 {
     internal static IEndpointRouteBuilder MapTypeEndpoints(this IEndpointRouteBuilder endpoints)

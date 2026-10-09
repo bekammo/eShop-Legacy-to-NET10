@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace eShop.Catalog.Api.Items;
 
-// The catalog items, which the legacy app offered only through its Razor UI, as REST endpoints (ADR-0001, ADR-0024).
 internal static class ItemEndpoints
 {
     internal static IEndpointRouteBuilder MapItemEndpoints(this IEndpointRouteBuilder endpoints)
@@ -14,11 +13,12 @@ internal static class ItemEndpoints
         var items = endpoints.MapGroup("/api/items").WithTags("Items");
         items.MapGet("", GetItemsAsync)
             .ProducesValidationProblem();
+        // No {id} route has a route constraint, so a non-int ID is a 400, as the legacy app answered.
+        // {id:int} would make it a 404.
         items.MapGet("/{id}", GetItemAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        // The writes need an access token with the catalog:write scope (ADR-0034). The reads stay anonymous.
         var writes = items.MapGroup("")
             .RequireAuthorization(CatalogScopes.Write)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -32,7 +32,6 @@ internal static class ItemEndpoints
         return endpoints;
     }
 
-    // The legacy Index action's defaults: page 0 of 10 items. It did not check either value (audit D6).
     /// <summary>Gets a page of items.</summary>
     /// <remarks>The items are in ID order, each with its brand, its type and the URL of its picture. A page after the last is empty.</remarks>
     /// <param name="pageSize">The number of items on a page, from 1 to 100.</param>
@@ -52,7 +51,6 @@ internal static class ItemEndpoints
             page.ActualPage, page.ItemsPerPage, page.TotalItems, [.. page.Data.Select(item => Response(item, links, httpContext))]));
     }
 
-    // {id} has no route constraint, so an ID that is not an int is a 400, as the legacy Details action answered.
     /// <summary>Gets an item.</summary>
     /// <param name="id">The item's ID.</param>
     /// <response code="200">The item, with its brand, its type and the URL of its picture.</response>
@@ -64,8 +62,6 @@ internal static class ItemEndpoints
             ? TypedResults.Ok(Response(item, links, httpContext))
             : TypedResults.NotFound();
 
-    // The body is validated before the handler runs (ADR-0025). An unknown brand or type is a 400 too, where the legacy
-    // app answered 500 (audit D10).
     /// <summary>Creates an item.</summary>
     /// <remarks>The API gives the item its ID, and the default picture.</remarks>
     /// <param name="request">The item's fields.</param>
@@ -83,12 +79,10 @@ internal static class ItemEndpoints
 
         var created = await service.CreateCatalogItemAsync(request.ToFields(), cancellationToken);
 
-        // Read back with its brand and type, which the service does not return with a new item.
         var item = (await service.FindCatalogItemAsync(created.Id, cancellationToken))!;
         return TypedResults.Created($"/api/items/{item.Id}", Response(item, links, httpContext));
     }
 
-    // An unknown item is a 404, where the legacy edit answered 500 (audit D11, ADR-0026).
     /// <summary>Replaces an item's fields.</summary>
     /// <remarks>The fields have the rules of a new item. The item keeps its ID and its picture.</remarks>
     /// <param name="id">The item's ID.</param>
@@ -109,7 +103,6 @@ internal static class ItemEndpoints
         return await service.UpdateCatalogItemAsync(id, request.ToFields(), cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();
     }
 
-    // The legacy delete, except for an unknown item, for which the legacy app answered 500 (audit D11).
     /// <summary>Deletes an item.</summary>
     /// <param name="id">The item's ID.</param>
     /// <response code="204">The item is deleted.</response>
@@ -120,7 +113,6 @@ internal static class ItemEndpoints
     internal static async Task<Results<NoContent, NotFound>> DeleteItemAsync(int id, ICatalogService service, CancellationToken cancellationToken) =>
         await service.RemoveCatalogItemAsync(id, cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();
 
-    // The brand and the type are reference data, which nothing deletes, so checking them first is enough.
     private static async Task<Dictionary<string, string[]>?> UnknownBrandOrTypeAsync(
         CatalogItemRequest request, ICatalogService service, CancellationToken cancellationToken)
     {
@@ -138,7 +130,6 @@ internal static class ItemEndpoints
         return errors.Count == 0 ? null : errors;
     }
 
-    // The item, with the absolute URL of its picture from the picture route's name, as the legacy controller built it.
     private static CatalogItemResponse Response(CatalogItem item, LinkGenerator links, HttpContext httpContext) =>
         CatalogItemResponse.From(item, links.GetUriByName(httpContext, PictureEndpoints.RouteName, new { catalogItemId = item.Id })!);
 }

@@ -3,9 +3,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace eShop.Catalog.Api.Catalog;
 
-// The catalog in SQL Server, through EF Core (ADR-0015). It works on the scoped CatalogDbContext, so it is scoped
-// too. Reads do not track, and a write leaves nothing tracked, so no later SaveChanges on the context writes back a
-// change that a caller makes to a returned item.
 internal sealed class CatalogService(CatalogDbContext context) : ICatalogService
 {
     public async Task<PaginatedItems<CatalogItem>> GetCatalogItemsPaginatedAsync(int pageSize, int pageIndex, CancellationToken cancellationToken)
@@ -15,9 +12,8 @@ internal sealed class CatalogService(CatalogDbContext context) : ICatalogService
 
         var totalItems = await context.CatalogItems.LongCountAsync(cancellationToken);
 
-        // pageSize * pageIndex overflows an int (audit D6), so the offset is a long. A page that starts after the
-        // last item is empty without the page query, so an offset that reaches Skip is below the count. It fits an
-        // int unless the table holds more than int.MaxValue rows, and then the checked cast throws.
+        // The offset is a long because pageSize * pageIndex overflows an int. Keep the offset < totalItems guard: it
+        // stops the checked cast to int from throwing for a page far past the end.
         var offset = (long)pageSize * pageIndex;
         IReadOnlyList<CatalogItem> itemsOnPage = offset < totalItems
             ? await ItemsWithBrandAndType()
@@ -36,7 +32,6 @@ internal sealed class CatalogService(CatalogDbContext context) : ICatalogService
     public async Task<IReadOnlyList<CatalogBrand>> GetCatalogBrandsAsync(CancellationToken cancellationToken) =>
         await context.CatalogBrands.AsNoTracking().OrderBy(brand => brand.Id).ToListAsync(cancellationToken);
 
-    // One query for the one brand. The legacy controller read every brand and searched them in memory (audit D17).
     public Task<CatalogBrand?> FindCatalogBrandAsync(int id, CancellationToken cancellationToken) =>
         context.CatalogBrands.AsNoTracking().FirstOrDefaultAsync(brand => brand.Id == id, cancellationToken);
 
@@ -61,21 +56,17 @@ internal sealed class CatalogService(CatalogDbContext context) : ICatalogService
 
         try
         {
-            // HiLo assigns the ID as the item is added. AddAsync lets it draw a new block from the sequence
-            // without blocking.
             await context.CatalogItems.AddAsync(item, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
         finally
         {
-            // Saved or refused, the item is not left for a later SaveChanges to write.
             context.Entry(item).State = EntityState.Detached;
         }
 
         return item;
     }
 
-    // One UPDATE that sets exactly these fields. The ID and the picture are not among them.
     public async Task<bool> UpdateCatalogItemAsync(int id, CatalogItemFields fields, CancellationToken cancellationToken) =>
         await context.CatalogItems
             .Where(item => item.Id == id)

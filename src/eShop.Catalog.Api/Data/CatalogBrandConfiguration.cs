@@ -15,8 +15,6 @@ internal sealed class CatalogBrandConfiguration : IEntityTypeConfiguration<Catal
 
         builder.Property(brand => brand.Brand).HasMaxLength(100);
 
-        // Reference data with the IDs the legacy app assigns: GET /api/brands returns them, and
-        // the sample items refer to them.
         builder.HasData(PreconfiguredData.CatalogBrands());
     }
 }
