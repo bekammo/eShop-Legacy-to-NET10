@@ -16,7 +16,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [Fact]
     public async Task Created_item_gets_a_new_ID_the_default_picture_and_its_location()
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
 
         using var response = await client.PostAsJsonAsync("/api/items", ValidBody(), CancellationToken);
 
@@ -34,7 +34,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [Fact]
     public async Task Posted_ID_and_picture_name_are_ignored()
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
         var body = ValidBody();
         body["Id"] = 1;
         body["PictureFileName"] = "../Global.asax";
@@ -75,7 +75,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [InlineData("OnReorder", null)]
     public async Task Field_that_breaks_its_rule_is_a_400_problem_that_names_it(string field, string? value)
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
 
         using var response = await client.PostAsJsonAsync("/api/items", ValidBody(field, value), CancellationToken);
 
@@ -96,7 +96,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [InlineData("MaxStockThreshold", "10000000")]
     public async Task Value_at_the_edge_of_its_rule_is_accepted(string field, string? value)
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
 
         using var response = await client.PostAsJsonAsync("/api/items", ValidBody(field, value), CancellationToken);
 
@@ -109,7 +109,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [InlineData("CatalogTypeId")]
     public async Task Unknown_brand_or_type_is_a_400_problem_that_names_it(string field)
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
 
         using var response = await client.PostAsJsonAsync("/api/items", ValidBody(field, "999"), CancellationToken);
 
@@ -119,7 +119,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [Fact]
     public async Task Body_that_is_not_JSON_is_a_400_problem()
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
         using var body = new StringContent("{", System.Text.Encoding.UTF8, "application/json");
 
         using var response = await client.PostAsync("/api/items", body, CancellationToken);
@@ -141,7 +141,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [Fact]
     public async Task Update_writes_every_field_and_keeps_the_ID_and_the_picture()
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
         var id = await CreateAsync(client);
         var changed = ValidBody();
         changed["Name"] = "Changed mug";
@@ -179,7 +179,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [Fact]
     public async Task Update_without_a_required_field_is_a_400_and_changes_nothing()
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
         var id = await CreateAsync(client);
         var before = await client.GetStringAsync($"/api/items/{id}", CancellationToken);
 
@@ -192,7 +192,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [Fact]
     public async Task Update_with_an_unknown_brand_is_a_400_problem_that_names_it()
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
         var id = await CreateAsync(client);
 
         using var response = await client.PutAsJsonAsync($"/api/items/{id}", ValidBody("CatalogBrandId", "999"), CancellationToken);
@@ -204,7 +204,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [Fact]
     public async Task Delete_removes_the_item_and_its_picture()
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
         var id = await CreateAsync(client);
 
         using var response = await client.DeleteAsync($"/api/items/{id}", CancellationToken);
@@ -224,7 +224,7 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
     [InlineData("DELETE", "abc", HttpStatusCode.BadRequest)]
     public async Task Write_to_an_unknown_item_is_a_404_and_to_an_ID_that_is_not_an_integer_a_400(string method, string id, HttpStatusCode status)
     {
-        using var client = factory.CreateClient();
+        using var client = CreateClient();
         using var request = new HttpRequestMessage(new HttpMethod(method), $"/api/items/{id}")
         {
             Content = method == "PUT" ? JsonContent.Create(ValidBody()) : null,
@@ -233,6 +233,14 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         using var response = await client.SendAsync(request, CancellationToken);
 
         Assert.Equal(status, response.StatusCode);
+    }
+
+    // A client with a token that has the catalog:write scope (ADR-0034), which WriteAuthorizationTests checks.
+    private HttpClient CreateClient()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = AccessTokens.Writer;
+        return client;
     }
 
     private static async Task<int> CreateAsync(HttpClient client)

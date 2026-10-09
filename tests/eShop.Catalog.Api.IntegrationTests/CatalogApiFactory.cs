@@ -72,6 +72,8 @@ public class CatalogApiFactory(SqlServerFixture sqlServer) : WebApplicationFacto
     // The first host, which InitializeAsync builds, writes to LogFilePath, and every later host to a file of its own
     // beside it: two hosts writing to one file overwrite each other's lines on Linux, and on Windows the second one
     // moves to another file. A test can still choose the path with UseLogFile, which comes later and wins.
+    // Every host accepts the tests' access tokens (ADR-0034), whose settings the Bearer scheme reads on the host's first
+    // request, so a configuration source is enough.
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         var host = Interlocked.Increment(ref _hosts);
@@ -79,7 +81,8 @@ public class CatalogApiFactory(SqlServerFixture sqlServer) : WebApplicationFacto
         UseLogFile(
             builder.UseEnvironment(EnvironmentName)
                 .UseSetting("ConnectionStrings:CatalogDb", ConnectionString)
-                .UseSetting("Catalog:UseMockData", "false"),
+                .UseSetting("Catalog:UseMockData", "false")
+                .ConfigureAppConfiguration(static (_, configuration) => configuration.AddInMemoryCollection(AccessTokens.Settings)),
             logFilePath);
     }
 }

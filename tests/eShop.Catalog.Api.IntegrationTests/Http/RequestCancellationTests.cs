@@ -77,6 +77,9 @@ public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClass
     {
         var request = new HttpRequestMessage(new HttpMethod(method), path);
         request.Headers.Add("traceparent", $"00-{traceId}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
+
+        // A token for the item writes (ADR-0034), which the other endpoints ignore.
+        request.Headers.Authorization = AccessTokens.Writer;
         if (method is "POST" or "PUT")
         {
             // A valid item, so that the request reaches the database.

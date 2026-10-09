@@ -1,3 +1,4 @@
+using eShop.Catalog.Api.Authorization;
 using eShop.Catalog.Api.Brands;
 using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Files;
@@ -26,11 +27,19 @@ builder.Services.AddCatalogHttp();
 builder.Services.AddHealthChecks();
 builder.Services.AddCatalogServices(builder.Configuration);
 builder.Services.AddCatalogPictures();
+builder.Services.AddCatalogAuthorization();
 
 var app = builder.Build();
 
 app.UseCatalogRequestLogging();
 app.UseCatalogErrorHandling();
+
+// After the request logging, so that a request that they reject is logged too (ADR-0019), and inside the error
+// handling, whose status code pages give their 401 and 403 a problem body (ADR-0021). After routing, so that
+// authorization knows the endpoint and its policy (ADR-0034). WebApplication would otherwise add both before the app's
+// middleware.
+app.UseAuthentication();
+app.UseAuthorization();
 
 // The OpenAPI document, /openapi/v1.json, in every environment (ADR-0020), and Swagger UI over it, at /swagger, in
 // Development only (ADR-0028).

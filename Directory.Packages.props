@@ -33,6 +33,13 @@
   </ItemGroup>
 
   <!--
+    Bearer tokens for the item writes (ADR-0034). It shares the ASP.NET Core version of the runtime it runs on.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+  </ItemGroup>
+
+  <!--
     The OpenAPI document (ADR-0020). It shares the ASP.NET Core version of the runtime it runs on.
     Swashbuckle.AspNetCore.SwaggerUI is only the UI over it, without Swashbuckle's generator (ADR-0028).
   -->

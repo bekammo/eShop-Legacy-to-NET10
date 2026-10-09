@@ -22,7 +22,7 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 | 9 — OpenAPI docs & Swagger UI | Done |
 | 10 — Test consolidation | Done |
 | 11 — Cutover & cleanup | Done |
-| 12 — Write-endpoint authorization | Not started |
+| 12 — Write-endpoint authorization | Done |
 
 ## Documentation
 
@@ -113,7 +113,7 @@ The app listens on `http://localhost:5043`. In Development it first creates or u
 | `GET /items/{id}/pic` | The picture of an item, from the folder that `Catalog:PicturesPath` names: 400 for an ID below 1, 404 for an unknown item or a picture that is not in the folder. A `Range` request gets the part it asks for (206) ([ADR-0023](DECISIONS.md#adr-0023-security-fixes-made-during-the-migration)). |
 | `GET /api/items?pageSize=10&pageIndex=0` | One page of items, in ID order: `ActualPage`, `ItemsPerPage`, `TotalItems`, `TotalPages` and `Data`. `pageSize` is 1–100 and `pageIndex` 0 or more; anything else is a 400 ([ADR-0024](DECISIONS.md#adr-0024-item-and-type-reads)). |
 | `GET /api/items/{id}` | One item, with its brand, its type and the URL of its picture, or 404. An ID that is not an integer is a 400. |
-| `POST /api/items` | Creates an item from a JSON body: 201, with its location and the item. A field that breaks its rule, or an unknown brand or type, is a 400 that names it ([ADR-0025](DECISIONS.md#adr-0025-creating-items)). Request bodies are limited to 4 MB. |
+| `POST /api/items` | Creates an item from a JSON body: 201, with its location and the item. A field that breaks its rule, or an unknown brand or type, is a 400 that names it ([ADR-0025](DECISIONS.md#adr-0025-creating-items)). Request bodies are limited to 4 MB. This and the next two need an access token with the `catalog:write` scope (see [Authorization](#authorization)). |
 | `PUT /api/items/{id}` | Replaces the item's fields, with the rules of the create: 204, 404 for an unknown item ([ADR-0026](DECISIONS.md#adr-0026-updating-and-deleting-items)). |
 | `DELETE /api/items/{id}` | Deletes the item: 204, or 404 for an unknown item. |
 | `GET /api/types` | Every item type, in ID order. |
@@ -155,12 +155,33 @@ Settings follow the ASP.NET Core defaults ([ADR-0009](DECISIONS.md#adr-0009-conf
 | `Database:MigrateOnStartup` | `true`: the migrations are applied, and a new database seeded, before the app accepts requests | `false`. The host refuses to start with `true` outside Development. |
 | `Catalog:UseMockData` | `false` (`appsettings.json`). `true` serves the catalog from memory, and the two settings above are not read. | `false`, as in Development |
 | `Catalog:PicturesPath` | `Pics`, the pictures in the API project, relative to the content root (`appsettings.json`) | The same: `dotnet publish` copies the `Pics` folder with the app. Set it, for example as `Catalog__PicturesPath`, to serve the pictures from another folder. The host does not start when the folder does not exist. |
+| `Authentication:Schemes:Bearer` | The issuer and the audiences of the tokens that `dotnet user-jwts` makes (`appsettings.Development.json`), and the tool's signing key in user secrets (see [Authorization](#authorization)) | `Authority`, the HTTPS URL of the authorization server, and `ValidAudiences`, the API's audience there, for example as `Authentication__Schemes__Bearer__Authority` and `Authentication__Schemes__Bearer__ValidAudiences__0`. Without them no token is valid, and every write is a 401. |
 
-The host does not start with an invalid setting, or without a connection string unless mock mode is on. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
+The host does not start with an invalid setting, `Authentication:Schemes:Bearer` excepted, or without a connection string unless mock mode is on. To point Development at another SQL Server, override the connection string with user secrets, which are stored in your user profile, outside the repository:
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:CatalogDb" "<connection string>" --project src/eShop.Catalog.Api
 ```
+
+## Authorization
+
+The item writes, `POST /api/items`, `PUT /api/items/{id}` and `DELETE /api/items/{id}`, need an access token: a JWT with the `catalog:write` scope, sent as `Authorization: Bearer <token>`. Without a valid token they answer 401, and with a token without the scope 403, both as problems. Every other endpoint is anonymous ([ADR-0034](DECISIONS.md#adr-0034-write-endpoint-authorization-with-jwt-bearer-tokens)).
+
+In Development, make a token with `dotnet user-jwts`, which comes with the SDK:
+
+```bash
+dotnet user-jwts create --project src/eShop.Catalog.Api --scope catalog:write
+```
+
+It prints a token, valid for three months. Its first run also puts a signing key in your user secrets, which the API reads in Development only. The tool also rewrites `appsettings.Development.json`, but only drops its final newline: discard that change. Send the token with each write, for example:
+
+```bash
+curl -i -X DELETE http://localhost:5043/api/items/12 -H "Authorization: Bearer <token>"
+```
+
+In Swagger UI, choose **Authorize** and paste the token: "Try it out" then sends it with the writes.
+
+In other environments the API trusts the authorization server that `Authentication:Schemes:Bearer:Authority` names, whose metadata gives the issuer and the signing keys (see [Configuration](#configuration)). Its tokens for the API carry the `catalog:write` scope in their `scope` claim, alone or among other scopes separated by spaces.
 
 ## Logging
 
@@ -284,7 +305,7 @@ The tests use xUnit v3 on Microsoft.Testing.Platform, which `global.json` select
 | Project | What it tests | Needs |
 |---|---|---|
 | `tests/eShop.Catalog.Api.UnitTests` | Logic without a host, such as the in-memory catalog service, paging, the service registrations and health-check policies, the problem writer, the EF Core model against the legacy schema and the migrations' snapshot, the baseline script and `compose.yaml`. | The SDK |
-| `tests/eShop.Catalog.Api.IntegrationTests` | The API hosted in memory: every endpoint, the error contract, the logs and the OpenAPI document, the golden exchanges of the legacy app, and the database: migrations, seeding, readiness and the adoption of a legacy database. | Docker, for the test classes with the Docker trait |
+| `tests/eShop.Catalog.Api.IntegrationTests` | The API hosted in memory: every endpoint and who may call it, the error contract, the logs and the OpenAPI document, the golden exchanges of the legacy app, and the database: migrations, seeding, readiness and the adoption of a legacy database. | Docker, for the test classes with the Docker trait |
 
 The integration test classes that reach SQL Server have the trait `Category=Docker`. They share one SQL Server container, which the first of them starts, and each test class, or each test that needs one, gets a database of its own in it. The first run pulls the pinned image `mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04`, which `compose.yaml` also runs for [local development](#sql-server-in-a-container). The other integration test classes need no database: they host the API in mock mode, or, in `HttpConventionsTests`, endpoints of their own ([ADR-0031](DECISIONS.md#adr-0031-docker-trait-and-published-test-results)).
 

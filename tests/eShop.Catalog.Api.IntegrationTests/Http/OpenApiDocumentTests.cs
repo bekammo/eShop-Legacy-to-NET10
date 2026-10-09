@@ -90,6 +90,23 @@ public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IC
             Assert.Equal("string", (string?)document["components"]!["schemas"]![problem]!["properties"]!["traceId"]!["type"]));
     }
 
+    // Swagger UI and generated clients learn from the document which operations need a token, and of which scope
+    // (ADR-0034): the item writes, and nothing else.
+    [Fact]
+    public async Task Only_the_item_writes_ask_for_a_bearer_token_with_the_write_scope()
+    {
+        var document = await ServedDocumentAsync();
+
+        var scheme = document["components"]!["securitySchemes"]!["Bearer"]!;
+        Assert.Equal("http", (string?)scheme["type"]);
+        Assert.Equal("bearer", (string?)scheme["scheme"]);
+        Assert.Equal("JWT", (string?)scheme["bearerFormat"]);
+        var secured = Operations(document).Where(static operation => operation.Operation["security"] is not null).ToList();
+        Assert.Equal(["POST /api/items", "PUT /api/items/{id}", "DELETE /api/items/{id}"], secured.Select(static operation => operation.Name));
+        Assert.All(secured, static operation =>
+            Assert.Equal("""[{"Bearer":["catalog:write"]}]""", operation.Operation["security"]!.ToJsonString()));
+    }
+
     // The document describes the contract, which is public, so it is not a Development-only feature. Swagger UI is
     // (ADR-0028).
     [Theory]

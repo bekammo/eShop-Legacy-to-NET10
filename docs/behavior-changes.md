@@ -208,6 +208,17 @@ The register has two parts:
 - **Test:** `ItemWriteEndpointsTests.Write_to_an_unknown_item_is_a_404_and_to_an_ID_that_is_not_an_integer_a_400`.
 - **Decision:** [ADR-0026](../DECISIONS.md#adr-0026-updating-and-deleting-items).
 
+### BC-017: Item writes need an access token
+
+- **Kind:** Business-rule change
+- **Forced by:** Security
+- **Stage / commit:** 12.1, "Require a catalog:write bearer token for item writes (Stage 12.1)"
+- **Legacy behaviour:** Anyone who could reach the MVC forms could create, edit and delete items. The app had no authentication at all (audit D3).
+- **New behaviour:** `POST /api/items`, `PUT /api/items/{id}` and `DELETE /api/items/{id}` need a bearer token, a JWT with the `catalog:write` scope. Without a valid token they answer 401, with `WWW-Authenticate: Bearer`, and with a token without the scope 403, both as problems. The reads, the picture and `/api/brands`, its no-op `DELETE` included, stay anonymous.
+- **Client impact:** A client that writes items gets a token with the scope from the authorization server that the API trusts. A client that only reads sees no change.
+- **Test:** `WriteAuthorizationTests`.
+- **Decision:** [ADR-0034](../DECISIONS.md#adr-0034-write-endpoint-authorization-with-jwt-bearer-tokens), and [ADR-0004](../DECISIONS.md#adr-0004-write-endpoints-stay-anonymous-until-after-cutover).
+
 ## Known upcoming deltas
 
 Every delta that the Stage 1 audit and characterization foresaw is now an entry above, with its test (Stage 7).
