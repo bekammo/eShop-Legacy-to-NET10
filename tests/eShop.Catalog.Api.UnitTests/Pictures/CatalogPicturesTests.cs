@@ -5,8 +5,6 @@ using Microsoft.Extensions.Options;
 
 namespace eShop.Catalog.Api.UnitTests.Pictures;
 
-// The lookup of an item's picture (ADR-0023), in a temporary content root: the pictures are in its pictures folder, and
-// secret.txt is beside that folder, outside it.
 public sealed class CatalogPicturesTests : IDisposable
 {
     private readonly DirectoryInfo _contentRoot = Directory.CreateTempSubdirectory("eShop.Catalog.Api.UnitTests-");
@@ -23,7 +21,6 @@ public sealed class CatalogPicturesTests : IDisposable
 
     public void Dispose() => _contentRoot.Delete(recursive: true);
 
-    // The committed setting is relative too, to the content root (ADR-0018 resolves the log file the same way).
     [Fact]
     public void Relative_folder_is_resolved_against_the_content_root()
     {
@@ -44,8 +41,6 @@ public sealed class CatalogPicturesTests : IDisposable
         Assert.NotNull(pictures.Find(Item("1.png")));
     }
 
-    // Audit D1: the legacy app served the file that the name pointed at, inside the folder or not. On Linux a
-    // backslash is part of a file name, so ..\secret.txt names a file in the folder, which does not exist either.
     [Theory]
     [InlineData("../secret.txt")]
     [InlineData(@"..\secret.txt")]
@@ -57,8 +52,6 @@ public sealed class CatalogPicturesTests : IDisposable
         Assert.Null(pictures.Find(Item(name)));
     }
 
-    // C:\Windows\win.ini in the evidence. A rooted name is refused on Windows. On Linux the provider trims the leading
-    // slash and looks the rest up inside the folder, where it is not.
     [Fact]
     public void Rooted_name_finds_nothing()
     {
@@ -67,7 +60,6 @@ public sealed class CatalogPicturesTests : IDisposable
         Assert.Null(pictures.Find(Item(Path.Combine(_contentRoot.FullName, "secret.txt"))));
     }
 
-    // Audit D7: the legacy app answered a missing file with a 500.
     [Theory]
     [InlineData("missing.png")]
     [InlineData("folder.png")]
@@ -79,7 +71,6 @@ public sealed class CatalogPicturesTests : IDisposable
         Assert.Null(pictures.Find(Item(name)));
     }
 
-    // Audit D8: the legacy MIME switch was case-sensitive, and sent 1.PNG as application/octet-stream.
     [Fact]
     public void Extension_case_does_not_change_the_content_type()
     {
@@ -88,7 +79,6 @@ public sealed class CatalogPicturesTests : IDisposable
         Assert.Equal("image/png", pictures.Find(Item("UPPER.PNG"))?.ContentType);
     }
 
-    // As the legacy app sent an extension that it did not know.
     [Fact]
     public void Unknown_extension_is_sent_as_octet_stream()
     {

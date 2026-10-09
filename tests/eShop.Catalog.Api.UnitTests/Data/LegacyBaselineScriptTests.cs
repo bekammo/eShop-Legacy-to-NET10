@@ -7,14 +7,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace eShop.Catalog.Api.UnitTests.Data;
 
-// docs/legacy/baseline.sql stands in for the InitialCreate migration on a legacy database (ADR-0012).
-// These checks keep it in step with EF Core without a database; the integration tests run it.
 public sealed partial class LegacyBaselineScriptTests
 {
     private static readonly string Script = LegacyFiles.ReadText("baseline.sql");
 
-    // EF Core matches the whole migration ID, timestamp included, so a regenerated InitialCreate must
-    // be reflected here.
     [Fact]
     public void Baseline_records_the_first_migration()
     {
@@ -33,9 +29,6 @@ public sealed partial class LegacyBaselineScriptTests
         Assert.Contains(Normalized(create), Normalized(Script), StringComparison.Ordinal);
     }
 
-    // sqlcmd splits batches on GO, runs its own commands (lines starting with a colon or !!, and
-    // QUIT, EXIT, RESET and ED), replaces $(name) with variables and runs with QUOTED_IDENTIFIER off.
-    // SqlClient does none of that.
     [Fact]
     public void Baseline_is_one_batch_that_sqlcmd_and_SqlClient_run_alike()
     {

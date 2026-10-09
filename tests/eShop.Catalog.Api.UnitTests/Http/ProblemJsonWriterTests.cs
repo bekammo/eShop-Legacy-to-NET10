@@ -8,8 +8,6 @@ using ProblemDetails = Microsoft.AspNetCore.Mvc.ProblemDetails;
 
 namespace eShop.Catalog.Api.UnitTests.Http;
 
-// The writer of every problem (ADR-0021), on requests without a host. Each request has an activity of its own, as
-// ASP.NET Core starts one for each request.
 public sealed class ProblemJsonWriterTests
 {
     [Fact]
@@ -28,8 +26,6 @@ public sealed class ProblemJsonWriterTests
         Assert.Equal(activity.Id, problem.GetProperty("traceId").GetString());
     }
 
-    // A problem that an endpoint keeps and returns again must not carry the trace ID of the request that it was
-    // written for first.
     [Fact]
     public async Task Problem_written_before_gets_the_trace_id_of_the_current_request()
     {
@@ -48,8 +44,6 @@ public sealed class ProblemJsonWriterTests
         Assert.Equal(second.Id, Body(request).GetProperty("traceId").GetString());
     }
 
-    // Writing for a client that has gone away must not throw: the exception handler would log the exception that it
-    // handles a second time.
     [Fact]
     public async Task Request_that_the_client_aborted_does_not_make_the_writer_throw()
     {
@@ -59,7 +53,6 @@ public sealed class ProblemJsonWriterTests
         await Writer().WriteAsync(Context(request, new ProblemDetails()));
     }
 
-    // As ASP.NET Core's writer, it applies what AddProblemDetails configures.
     [Fact]
     public async Task Customization_of_the_problem_details_options_applies()
     {

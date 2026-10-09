@@ -3,13 +3,11 @@ using Microsoft.Extensions.Configuration;
 
 namespace eShop.Catalog.Api.UnitTests.Logging;
 
-// Where the log file goes (ADR-0018): a relative path is resolved against the content root, as log4net resolved
-// its file against the app root, and not against the working directory.
 public sealed class LoggingServiceCollectionExtensionsTests
 {
     private const string FilePathKey = "Serilog:WriteTo:File:Args:path";
 
-    // Full, because resolving a path also expands a Windows short name, such as RUNNER~1, in the temporary folder.
+    // Full: the resolver's GetFullPath expands a Windows short name in TEMP (RUNNER~1), so expected paths must too.
     private static readonly string Temp = Path.GetFullPath(Path.GetTempPath());
 
     private static readonly string ContentRoot = Path.Combine(Temp, "content-root");
@@ -30,9 +28,6 @@ public sealed class LoggingServiceCollectionExtensionsTests
         Assert.Equal(path, Resolve(Settings(path))[FilePathKey]);
     }
 
-    // Serilog expands environment variables in the path. Expanded after the resolution, a variable that holds an
-    // absolute path would end up under the content root. The variable's name is the test's own, so no other test
-    // reads it.
     [Fact]
     public void Environment_variables_are_expanded_before_the_path_is_resolved()
     {
@@ -59,7 +54,6 @@ public sealed class LoggingServiceCollectionExtensionsTests
         Assert.Same(settings, Resolve(settings));
     }
 
-    // The levels are read from the result, and Serilog changes them when the settings are reloaded.
     [Fact]
     public void Resolved_configuration_reads_through_to_the_settings_and_passes_on_their_reloads()
     {
