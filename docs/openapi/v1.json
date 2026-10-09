@@ -270,6 +270,26 @@
           "required": true
         },
         "responses": {
+          "401": {
+            "description": "The request has no access token, or one that is not valid: badly signed, expired, or issued by or for another party.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The access token does not have the catalog:write scope.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "201": {
             "description": "The item, as GET /api/items/{id} gives it. The Location header holds its URL.",
             "content": {
@@ -290,7 +310,14 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "catalog:write"
+            ]
+          }
+        ]
       }
     },
     "/api/items/{id}": {
@@ -382,6 +409,26 @@
           "required": true
         },
         "responses": {
+          "401": {
+            "description": "The request has no access token, or one that is not valid: badly signed, expired, or issued by or for another party.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The access token does not have the catalog:write scope.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "204": {
             "description": "The item is updated."
           },
@@ -405,7 +452,14 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "catalog:write"
+            ]
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -429,6 +483,26 @@
           }
         ],
         "responses": {
+          "401": {
+            "description": "The request has no access token, or one that is not valid: badly signed, expired, or issued by or for another party.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The access token does not have the catalog:write scope.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "204": {
             "description": "The item is deleted."
           },
@@ -452,7 +526,14 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "Bearer": [
+              "catalog:write"
+            ]
+          }
+        ]
       }
     },
     "/api/types": {
@@ -894,6 +975,14 @@
       "Stream": {
         "type": "string",
         "format": "binary"
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "description": "An access token, a JWT, with the scope that the operation names.",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
       }
     }
   },

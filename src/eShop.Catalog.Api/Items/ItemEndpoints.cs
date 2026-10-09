@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using eShop.Catalog.Api.Authorization;
 using eShop.Catalog.Api.Catalog;
 using eShop.Catalog.Api.Pictures;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -16,10 +17,16 @@ internal static class ItemEndpoints
         items.MapGet("/{id}", GetItemAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
-        items.MapPost("", CreateItemAsync);
-        items.MapPut("/{id}", UpdateItemAsync)
+
+        // The writes need an access token with the catalog:write scope (ADR-0034). The reads stay anonymous.
+        var writes = items.MapGroup("")
+            .RequireAuthorization(CatalogScopes.Write)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+        writes.MapPost("", CreateItemAsync);
+        writes.MapPut("/{id}", UpdateItemAsync)
             .ProducesProblem(StatusCodes.Status404NotFound);
-        items.MapDelete("/{id}", DeleteItemAsync)
+        writes.MapDelete("/{id}", DeleteItemAsync)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
         return endpoints;
@@ -64,6 +71,8 @@ internal static class ItemEndpoints
     /// <param name="request">The item's fields.</param>
     /// <response code="201">The item, as GET /api/items/{id} gives it. The Location header holds its URL.</response>
     /// <response code="400">The body is missing or not an item's JSON, a field breaks its rule, or no brand or type has the ID given. The errors name each field at fault.</response>
+    /// <response code="401">The request has no access token, or one that is not valid: badly signed, expired, or issued by or for another party.</response>
+    /// <response code="403">The access token does not have the catalog:write scope.</response>
     internal static async Task<Results<Created<CatalogItemResponse>, ValidationProblem>> CreateItemAsync(
         CatalogItemRequest request, ICatalogService service, LinkGenerator links, HttpContext httpContext, CancellationToken cancellationToken)
     {
@@ -86,6 +95,8 @@ internal static class ItemEndpoints
     /// <param name="request">The item's new fields.</param>
     /// <response code="204">The item is updated.</response>
     /// <response code="400">The ID is not a 32-bit integer, the body is missing or not an item's JSON, a field breaks its rule, or no brand or type has the ID given.</response>
+    /// <response code="401">The request has no access token, or one that is not valid: badly signed, expired, or issued by or for another party.</response>
+    /// <response code="403">The access token does not have the catalog:write scope.</response>
     /// <response code="404">No item has this ID.</response>
     internal static async Task<Results<NoContent, NotFound, ValidationProblem>> UpdateItemAsync(
         int id, CatalogItemRequest request, ICatalogService service, CancellationToken cancellationToken)
@@ -103,6 +114,8 @@ internal static class ItemEndpoints
     /// <param name="id">The item's ID.</param>
     /// <response code="204">The item is deleted.</response>
     /// <response code="400">The ID is not a 32-bit integer.</response>
+    /// <response code="401">The request has no access token, or one that is not valid: badly signed, expired, or issued by or for another party.</response>
+    /// <response code="403">The access token does not have the catalog:write scope.</response>
     /// <response code="404">No item has this ID.</response>
     internal static async Task<Results<NoContent, NotFound>> DeleteItemAsync(int id, ICatalogService service, CancellationToken cancellationToken) =>
         await service.RemoveCatalogItemAsync(id, cancellationToken) ? TypedResults.NoContent() : TypedResults.NotFound();

@@ -43,6 +43,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0031](#adr-0031-docker-trait-and-published-test-results) | Docker trait and published test results | Accepted | 10.2 |
 | [ADR-0032](#adr-0032-cutover-and-rollback) | Cutover and rollback | Accepted | 11.1 |
 | [ADR-0033](#adr-0033-legacy-code-removed-at-cutover) | Legacy code removed at cutover | Accepted | 11.3 |
+| [ADR-0034](#adr-0034-write-endpoint-authorization-with-jwt-bearer-tokens) | Write-endpoint authorization with JWT bearer tokens | Accepted | 12.1 |
 
 ## Template
 
@@ -2935,3 +2936,118 @@ The comments of the repo-wide files that named the legacy folders or two solutio
 - Building and testing need only the .NET 10 SDK, and Docker for the tests with the Docker trait ([ADR-0031](#adr-0031-docker-trait-and-published-test-results)). Visual Studio and the .NET Framework targeting pack are no longer needed.
 - The repository no longer references the vulnerable legacy packages.
 - Running the legacy app, re-capturing `docs/legacy`, or checking a claim of the audit against the code needs a checkout of `legacy-final`.
+
+---
+
+## ADR-0034: Write-endpoint authorization with JWT bearer tokens
+
+- **Status:** Accepted
+- **Date:** 2026-10-09
+- **Plan stage:** 12.1
+
+### Context
+
+- [ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover) kept every endpoint anonymous through the migration, as the legacy app was ([audit D3](docs/legacy-audit.md#7-defects-and-risks)), as an accepted risk until this stage, and set this stage's scope. Until then, [ADR-0032](#adr-0032-cutover-and-rollback) lets the new API run only out of reach of untrusted clients.
+- `AddJwtBearer` reads the scheme's settings from the configuration section `Authentication:Schemes:Bearer`: the issuer, the audiences and the signing keys, or an `Authority`, the authorization server whose OpenID Connect metadata gives the issuer and the keys.
+- `dotnet user-jwts create`, run on a copy of the project in the SDK container, wrote that section for Development:
+  - in `appsettings.Development.json`: the issuer `dotnet-user-jwts`, and the URLs of the two launch profiles as the audiences
+  - in user secrets: a signing key for that issuer
+  - in the token: a `scope` claim, a string for one scope and an array for more
+- The access tokens of an OAuth 2.0 authorization server hold their scopes in one `scope` string, separated by spaces ([RFC 9068](https://www.rfc-editor.org/rfc/rfc9068)).
+- A probe of the options that the section binds showed that issuer and audience validation stay on whatever the section names. A section without audiences makes every token fail, rather than any token pass. A signing key is taken only for an issuer that the section names.
+- [ADR-0019](#adr-0019-request-logging-and-application-log-events) put the authentication and authorization middleware after the request logging, so that the requests that they reject are logged. Under [ADR-0021](#adr-0021-error-contract-problem-details), a middleware that sets only the status gets a problem body from the status code pages, if it runs inside them.
+
+### Decision
+
+**1. Authentication.** `AddCatalogAuthorization` (`Authorization/AuthorizationServiceCollectionExtensions.cs`) adds the JWT bearer scheme, `Bearer`, which as the only scheme is the default. It takes every setting from `Authentication:Schemes:Bearer`: no code names an issuer, an audience or a key. `Microsoft.AspNetCore.Authentication.JwtBearer` is 10.0.12, the runtime's version.
+
+**2. The policy.** `catalog:write`, named after its scope (`CatalogScopes.Write`), needs an authenticated user with a `scope` claim that holds `catalog:write`, alone or among other scopes separated by spaces. That accepts the claim of user-jwts and that of RFC 9068.
+
+**3. Where.** The item writes, `POST /api/items`, `PUT /api/items/{id}` and `DELETE /api/items/{id}`, are a route group that requires the policy. Every other endpoint stays anonymous:
+
+- the item and type reads, and the picture
+- `/api/brands`, its no-op `DELETE` included, which stays drop-in ([ADR-0002](#adr-0002-wire-contract-policy))
+- the retired `/api/files`, the health checks, the OpenAPI document and Swagger UI
+
+**4. The answers.**
+
+| Request | Answer |
+|---|---|
+| No token, or one that does not validate: badly signed, expired, or issued by or for another party | 401, with `WWW-Authenticate: Bearer`, whose `error_description` says why a token was refused ([RFC 6750](https://www.rfc-editor.org/rfc/rfc6750)) |
+| A valid token without the scope | 403 |
+
+Both are problems. `Program.cs` calls `UseAuthentication` and `UseAuthorization` right after `UseCatalogErrorHandling`, so they run:
+
+- inside the request logging, which logs the 401 or the 403 at Information, as a client's error
+- inside the status code pages, which give both a problem body
+- after routing, so that authorization knows the endpoint's policy
+
+**5. Configuration.**
+
+| Environment | `Authentication:Schemes:Bearer` |
+|---|---|
+| Development | `ValidIssuer` and `ValidAudiences` as user-jwts writes them, committed in `appsettings.Development.json`. The signing key is in each developer's user secrets, where `dotnet user-jwts create` puts it. |
+| Testing | An issuer, an audience and a key of the test run's own, which `CatalogApiFactory` adds as a configuration source |
+| Others | Nothing is committed. The deployment sets `Authority`, an HTTPS URL, and `ValidAudiences`. |
+
+A host whose section has no key and no authority validates no token: every write is a 401, and the reads still work.
+
+**6. OpenAPI.**
+
+- The document has the security scheme `Bearer`: HTTP, `bearer`, JWT.
+- An operation transformer gives each operation whose endpoint requires a policy a security requirement for `Bearer` that lists the policy, which is the scope. OpenAPI 3.1 allows such role names in the requirement of a scheme that is not OAuth 2.0.
+- The three writes document their 401 and 403 as problems ([ADR-0029](#adr-0029-describing-the-api-in-the-openapi-document)).
+
+Swagger UI then shows an Authorize button, and sends the token with those operations.
+
+**Tests**
+
+| Test | What it pins |
+|---|---|
+| `WriteAuthorizationTests.Write_without_a_token_is_a_401_problem_that_asks_for_a_bearer_token` (`POST`, `PUT`, `DELETE`) | 401, a problem, and `WWW-Authenticate: Bearer`. |
+| `WriteAuthorizationTests.Token_that_is_not_valid_is_a_401` | A token signed with another key, issued by another issuer, issued for another audience, or expired. |
+| `WriteAuthorizationTests.Token_without_the_write_scope_is_a_403_problem` (`POST`, `PUT`, `DELETE`) | A valid token with `catalog:read` only. |
+| `WriteAuthorizationTests.Token_with_the_write_scope_creates_updates_and_deletes` | The scope as a string, as an array, and among others in one string: 201, then 204 and 204. |
+| `RequestLoggingTests.Request_that_authorization_rejects_is_logged` | A `POST` without a token has its request event, with 401, at Information. |
+| `OpenApiDocumentTests.Only_the_item_writes_ask_for_a_bearer_token_with_the_write_scope` | The `Bearer` scheme, and a `catalog:write` requirement on the three writes and on no other operation. |
+| `OpenApiDocumentTests.Document_matches_the_committed_snapshot` | The scheme, the requirements, and the 401 and 403 of the writes, in `docs/openapi/v1.json`. |
+| `ItemWriteEndpointsTests`, `RequestCancellationTests` (amended) | They send a token with the scope. |
+
+The anonymous reads need no test of their own: the tests of each read endpoint, and the golden exchanges of `/api/brands`, its `DELETE` included, send no token.
+
+Each of these deliberate breaks failed the intended tests:
+
+- the writes without `RequireAuthorization`: the 401 and 403 cases of `WriteAuthorizationTests`, `Request_that_authorization_rejects_is_logged`, `Only_the_item_writes_ask_for_a_bearer_token_with_the_write_scope` and the snapshot
+- no `UseAuthentication` and `UseAuthorization` in `Program.cs`, so that `WebApplication` adds both before the app's middleware: every case of `WriteAuthorizationTests`, those with the scope included, and `Request_that_authorization_rejects_is_logged`
+- the scope claim compared whole: the RFC 9068 case of `Token_with_the_write_scope_creates_updates_and_deletes`
+- any scope claim enough: the three cases of `Token_without_the_write_scope_is_a_403_problem`
+- no security requirement on the operations: `Only_the_item_writes_ask_for_a_bearer_token_with_the_write_scope` and the snapshot
+
+**Verification by hand**, in the SDK container: the API in Development and mock mode, with the section that `appsettings.Development.json` commits, and a signing key and a token from `dotnet user-jwts create --scope catalog:write`.
+
+- `GET /api/items/1` and `DELETE /api/brands/1` without a token answered 200.
+- `POST /api/items` answered 401 without a token, with `WWW-Authenticate: Bearer`, and 401 with a token whose signature was damaged, with `error="invalid_token"` and the reason. With a `catalog:read` token it answered 403, and with the `catalog:write` token 201. Each error was a problem with its `traceId`.
+- `DELETE /api/items/12` with the `catalog:write` token answered 204.
+- The console showed a request event for each, the 401s and the 403 at Information.
+- `/swagger/index.html` answered 200, and the document had the `Bearer` scheme.
+- In Production, whose settings have no `Authentication:Schemes:Bearer` section, `GET /api/items/1` answered 200, and `POST /api/items` 401, without a token and with the Development token, which no key there validates.
+
+The `Authority` setting is not tested here: no authorization server runs in the tests. It is ASP.NET Core's documented setup.
+
+### Alternatives considered
+
+- **`RequireClaim("scope", "catalog:write")`**, as ASP.NET Core's user-jwts documentation shows it. It refuses the token of an authorization server that grants more than one scope, whose claim is one string.
+- **A fallback policy that requires a token everywhere**, with `AllowAnonymous` on the reads. A new endpoint would need a token by default. But every other endpoint would need the exception, and the fallback also applies where no endpoint matches: a route that matches nothing would be a 401 instead of a 404 problem, and Swagger UI, a middleware after authorization, would need a token.
+- **The issuer, the audience and the key in a typed options class**, as [ADR-0009](#adr-0009-configuration) reads every other setting. user-jwts writes the framework's section, and an authorization server needs only `Authority`. A class of our own would repeat the framework's binding.
+- **A host that refuses to start without a key or an authority.** It would also stop a host that only serves reads.
+
+### Consequences
+
+- The accepted risk of ADR-0004 ends. The API can run where untrusted clients reach it, and the restriction of ADR-0032 ends with it.
+- A client that writes items sends a token with `catalog:write` from the authorization server that the deployment trusts. Clients that only read see no change, and the golden exchanges still pass ([BC-017](docs/behavior-changes.md#bc-017-item-writes-need-an-access-token)).
+- Each developer runs `dotnet user-jwts create --project src/eShop.Catalog.Api --scope catalog:write` once, and again when the token expires after three months. The tool rewrites `appsettings.Development.json`, whose committed section matches its own, so the only change is the file's final newline, which is not committed.
+- ASP.NET Core logs why it refused a token at Information, below the `Microsoft.AspNetCore` override ([ADR-0019](#adr-0019-request-logging-and-application-log-events)). Setting `Serilog:MinimumLevel:Override:Microsoft.AspNetCore.Authentication` to `Information` logs it.
+- `Authentication:Schemes:Bearer` is an exception to [ADR-0009](#adr-0009-configuration): it is the framework's own section, not a typed options class, and the host starts without it.
+- Swagger UI stays Development only ([ADR-0028](#adr-0028-openapi-tooling-swagger-ui-in-development)): it is a tool for developers, although the writes it sends are no longer anonymous.
+- A new endpoint is anonymous unless its mapping requires a policy. `Only_the_item_writes_ask_for_a_bearer_token_with_the_write_scope` lists the endpoints that need a token, and has to name a new one.
+- No CORS, as before ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)): a browser app on another origin cannot call the writes until a later change allows its origin.

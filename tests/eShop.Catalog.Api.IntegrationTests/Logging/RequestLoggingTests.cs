@@ -89,6 +89,23 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
         Assert.StartsWith($"System.InvalidOperationException: {ThrowAfterEndpoints.Message}", LogFile.String(logEvent, "@x"), StringComparison.Ordinal);
     }
 
+    // Authorization runs inside the request logging (ADR-0019, ADR-0034), so a write without a token is logged with its
+    // 401, at Information, as a client's error.
+    [Fact]
+    public async Task Request_that_authorization_rejects_is_logged()
+    {
+        using var client = factory.CreateClient();
+        var traceId = ActivityTraceId.CreateRandom().ToHexString();
+
+        using var response = await client.SendAsync(Request("/api/items", traceId, HttpMethod.Post), CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var logEvent = await RequestEventAsync(factory.LogFilePath, traceId);
+        Assert.Equal("POST", LogFile.String(logEvent, "RequestMethod"));
+        Assert.Equal(401, logEvent.GetProperty("StatusCode").GetInt32());
+        Assert.Null(LogFile.String(logEvent, "@l"));
+    }
+
     // Probes call the health checks every few seconds. The host logs Debug events here, so that the events are written.
     [Theory]
     [InlineData("/health/live")]
@@ -111,9 +128,9 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
         Assert.Equal(path, LogFile.String(logEvent, "RequestPath"));
     }
 
-    private static HttpRequestMessage Request(string path, string traceId)
+    private static HttpRequestMessage Request(string path, string traceId, HttpMethod? method = null)
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var request = new HttpRequestMessage(method ?? HttpMethod.Get, path);
         request.Headers.Add("traceparent", $"00-{traceId}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
         request.Headers.UserAgent.ParseAdd("RequestLoggingTests/1.0");
         return request;
