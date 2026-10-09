@@ -1,24 +1,3 @@
-// Stage 1.2 characterization of the legacy eShopLegacyMVC app (see MIGRATION_PLAN.md and docs/legacy/README.md).
-//
-// Starts the built legacy app in IIS Express against a fresh LocalDB database and records:
-//   docs/legacy/schema.sql, schema.json     the schema the legacy app creates (EF6 + the sequence scripts)
-//   docs/legacy/seed-data.json              the rows and sequence values right after the first start
-//   docs/legacy/ef6-model.edmx              the EF6 model stored in __MigrationHistory
-//   docs/legacy/contract/*.json             golden HTTP exchanges for the wire contract, one file per endpoint group
-//   docs/legacy/evidence/*                  behaviour reachable only through the MVC UI, including the defects
-//   docs/legacy/capture-info.json           versions of everything involved in the capture
-//
-// Run from the repository root of a legacy-final checkout (Windows, IIS Express, SQL Server LocalDB, legacy app built with MSBuild):
-//
-//   dotnet run docs/legacy/capture/capture.cs -- [--build] [--reset] [--keep-db] [--port <n>]
-//
-//   --build    build eShopLegacyMVC.sln (Debug) with the MSBuild that vswhere finds, before capturing
-//   --reset    drop the legacy database first if it already exists; a capture always needs a fresh database
-//   --keep-db  keep the database afterwards (by default it is dropped, so the machine is left as it was)
-//   --port     IIS Express port (default 52429, the IISUrl port in eShopLegacyMVC.csproj)
-//
-// The legacy code and Web.config are used exactly as committed. Only the database named in Web.config is touched.
-
 #:package Microsoft.Data.SqlClient@6.1.1
 #:property PublishAot=false
 
@@ -107,8 +86,6 @@ var createdInFirstProcess = new List<int>();
 var iis = await IisExpress.StartAsync(appDir, options.Port);
 try
 {
-    // ---------------------------------------------------------------- contract: /api/brands
-    // The first request that touches the DbContext creates and seeds the database.
     await Contract("brands-get-all--accept-json", "List all brands, JSON requested. The first request creates and seeds the database.",
         "GET", "/api/brands", [("Accept", "application/json")]);
 
@@ -184,7 +161,6 @@ try
     await Contract("brands-delete--no-id", "DELETE on the collection route.",
         "DELETE", "/api/brands", [("Accept", "application/json")]);
 
-    // ---------------------------------------------------------------- contract: /api/files and /api
     await Contract("files-get", "BinaryFormatter payload of the brand list (retired in the new API).",
         "GET", "/api/files");
     await Contract("files-get--accept-json", "JSON requested; the action ignores content negotiation.",
@@ -199,7 +175,6 @@ try
     await Contract("api-unknown-controller", "An api/{controller} route for a controller that does not exist.",
         "GET", "/api/catalog", [("Accept", "application/json")]);
 
-    // ---------------------------------------------------------------- contract: /items/{id}/pic
     for (var id = 1; id <= 12; id++)
     {
         await Contract($"pic-get--item-{id:00}", $"Picture of seeded item {id}.",
@@ -230,7 +205,6 @@ try
         "POST", "/items/1/pic");
     WriteContract();
 
-    // ---------------------------------------------------------------- evidence through the MVC UI
     var createPage = await Http.SendAsync(browser, "GET", "/Catalog/Create");
     antiForgeryToken = Html.AntiForgeryToken(createPage.Text)
         ?? throw new InvalidOperationException("No anti-forgery token on /Catalog/Create.");
@@ -260,7 +234,6 @@ finally
     await iis.DisposeAsync();
 }
 
-// A restart gives the HiLo generator a fresh, empty block, so the next item skips the rest of the previous block.
 var idsBeforeRestart = createdInFirstProcess.ToList();
 var sequenceBeforeRestart = await db.ScalarAsync<long>("SELECT CAST(current_value AS bigint) FROM sys.sequences WHERE name = 'catalog_hilo'");
 iis = await IisExpress.StartAsync(appDir, options.Port);
@@ -301,8 +274,6 @@ if (!options.KeepDb)
 
 Console.WriteLine($"Done. Output written to {Path.GetRelativePath(repo, outDir)}.");
 return 0;
-
-// ==================================================================== contract and evidence helpers
 
 async Task<Exchange> Contract(string name, string description, string method, string path,
     (string Name, string Value)[]? headers = null, JsonNode? jsonBody = null)
@@ -574,8 +545,6 @@ async Task WriteLogSampleAsync()
     await using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
     stream.Seek(logStart, SeekOrigin.Begin);
     using var reader = new StreamReader(stream);
-    // Each event is "header line\nmessage\n\n" (see log4Net.xml). Keep the first two events of every
-    // level + logger + message kind, so the sample shows each log call site without thousands of repeated lines.
     var entries = Regex.Split((await reader.ReadToEndAsync()).Replace("\r\n", "\n"), @"\n\n(?=\d{4}-\d{2}-\d{2} )")
         .Where(e => e.Trim().Length > 0)
         .ToList();
@@ -636,8 +605,6 @@ async Task DropDatabaseAsync()
     Console.WriteLine($"Dropped database {quoted}.");
 }
 
-// ==================================================================== types
-
 sealed record Options(bool Build, bool Reset, bool KeepDb, int Port)
 {
     public static Options Parse(string[] args)
@@ -660,7 +627,6 @@ sealed record Options(bool Build, bool Reset, bool KeepDb, int Port)
 
 static class Forms
 {
-    // Field order and names follow Views/Catalog/Create.cshtml.
     public static IEnumerable<(string Name, string Value)> Item(string name, string price = "19.50", string brandId = "2", string typeId = "1",
         string description = "Characterization item", string stock = "10", string restock = "5", string maxStock = "100") =>
     [
@@ -674,7 +640,6 @@ static class Forms
         ("MaxStockThreshold", maxStock),
     ];
 
-    // The fields Views/Catalog/Edit.cshtml renders, filled from a database row.
     public static IEnumerable<(string Name, string Value)> EditFields(JsonNode row) =>
     [
         ("Id", row["Id"]!.ToString()),
@@ -692,7 +657,6 @@ static class Forms
 
 sealed record Exchange(int Status, JsonObject Request, JsonObject Response, string Text);
 
-// One contract file per endpoint group; an exchange belongs to the first group whose prefix its name starts with.
 sealed record ContractGroup(string File, string Prefix, string Description)
 {
     public JsonObject Exchanges { get; } = new();
@@ -869,12 +833,12 @@ static class Body
 
 static class Html
 {
-    // Error titles can contain physical paths of the capture machine; they are replaced before anything is stored.
+    // Every text that Html returns for the capture files goes through Clean, which removes the machine name and user
+    // paths. Not AntiForgeryToken, which is posted back exactly as the page gave it.
     public static List<(string Value, string Replacement)> Redactions { get; } = [];
     public static string? Title(string html) =>
         Regex.Match(html, "<title>(.*?)</title>", RegexOptions.Singleline | RegexOptions.IgnoreCase) is { Success: true } m ? Clean(m.Groups[1].Value) : null;
 
-    // The ASP.NET yellow screen shows "Exception Details: <type>: <message>" for local requests.
     public static string? ExceptionDetails(string html) =>
         Regex.Match(html, @"Exception Details:\s*</b>(.*?)<br", RegexOptions.Singleline | RegexOptions.IgnoreCase) is { Success: true } m ? Clean(m.Groups[1].Value) : null;
 
