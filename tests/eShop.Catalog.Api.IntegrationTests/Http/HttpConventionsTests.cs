@@ -11,16 +11,12 @@ using Microsoft.Extensions.Logging;
 
 namespace eShop.Catalog.Api.IntegrationTests.Http;
 
-// The conventions that every endpoint shares (ADR-0020, ADR-0021), on endpoints of the test's own. The host has the
-// API's AddCatalogHttp and UseCatalogErrorHandling, in Program.cs's order, and nothing else: no database and no log.
-// ErrorHandlingTests checks that Program.cs uses them, and from Stage 7.2 the golden exchanges check the endpoints.
 public sealed class HttpConventionsTests
 {
     private const string Detail = "GET /gone has been retired.";
 
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // The Accept headers of the golden exchanges: none, JSON, any, a browser's, and three that leave JSON out.
     public static TheoryData<string?> AcceptHeaders =>
     [
         (string?)null,
@@ -80,8 +76,6 @@ public sealed class HttpConventionsTests
         Assert.Equal(["GET"], response.Content.Headers.Allow);
     }
 
-    // In Development, ASP.NET Core throws for a parameter that does not bind, and the exception handler would answer
-    // 500.
     [Theory]
     [MemberData(nameof(EnvironmentNames))]
     public async Task Parameter_that_does_not_bind_is_a_400_problem_in_every_environment(string environment)
@@ -105,7 +99,6 @@ public sealed class HttpConventionsTests
         Assert.Equal("""{"pageSize":["The field pageSize must be between 1 and 100."]}""", problem.GetProperty("errors").GetRawText());
     }
 
-    // The client gets no exception type, message or stack trace, not even in Development (audit D19).
     [Theory]
     [MemberData(nameof(EnvironmentNames))]
     public async Task Exception_is_a_500_problem_that_does_not_show_the_exception(string environment)
@@ -119,7 +112,6 @@ public sealed class HttpConventionsTests
         Assert.Equal(["type", "title", "status", "traceId"], problem.EnumerateObject().Select(static member => member.Name));
     }
 
-    // Two endpoints match /conflict, so routing throws. It runs inside the error handling, which answers.
     [Fact]
     public async Task Exception_in_routing_is_a_500_problem()
     {
@@ -179,8 +171,8 @@ public sealed class HttpConventionsTests
         return await client.SendAsync(request, CancellationToken);
     }
 
-    // The members of RFC 9457 that every problem has, and the trace ID. This host logs nothing, so ASP.NET Core starts
-    // no activity, and the trace ID is the request's TraceIdentifier: ErrorHandlingTests checks the W3C form.
+    // traceId is only checked as non-empty: this host has no logging provider, so ASP.NET Core starts no Activity
+    // and the trace ID is the TraceIdentifier, not the W3C form.
     private static async Task<JsonElement> AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status, string type, string title)
     {
         Assert.Equal(status, response.StatusCode);

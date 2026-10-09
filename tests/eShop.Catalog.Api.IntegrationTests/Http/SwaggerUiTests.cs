@@ -3,14 +3,10 @@ using Microsoft.AspNetCore.Hosting;
 
 namespace eShop.Catalog.Api.IntegrationTests.Http;
 
-// Swagger UI at /swagger, over the OpenAPI document that the API serves at /openapi/v1.json, in Development only
-// (ADR-0028).
 public sealed class SwaggerUiTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // /swagger redirects to /swagger/index.html, and the client follows. The UI reads its settings, with the URL of the
-    // document that it shows, from /swagger/index.js.
     [Fact]
     public async Task Swagger_UI_shows_the_served_document_in_Development()
     {

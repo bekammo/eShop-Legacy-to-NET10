@@ -12,37 +12,28 @@ using Serilog.Events;
 
 namespace eShop.Catalog.Api.IntegrationTests.Logging;
 
-// Serilog in place of log4net (ADR-0018): the committed sinks, the log file's limits, and what the host writes.
 public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private const int MiB = 1024 * 1024;
 
     private string ContentRoot => factory.Services.GetRequiredService<IHostEnvironment>().ContentRootPath;
 
-    // The committed pictures folder, as an absolute path.
     private string PicturesFolder => CatalogPictures.Root(CommittedSettings()["Catalog:PicturesPath"]!, ContentRoot);
 
-    // Only the committed file, as in ConfigurationTests: an override must not fail the test.
     [Fact]
     public void Committed_settings_log_from_Information_to_the_console_and_to_the_log4net_file()
     {
         var serilog = CommittedSettings().GetSection("Serilog");
 
         Assert.Equal("Information", serilog["MinimumLevel:Default"]);
-        // ASP.NET Core's own request events give way to the request event (ADR-0019). EF Core logs the SQL of every
-        // command at Information, and the legacy app logged no SQL.
         Assert.Equal([("Microsoft.AspNetCore", "Warning"), ("Microsoft.EntityFrameworkCore.Database.Command", "Warning")],
             serilog.GetSection("MinimumLevel:Override").GetChildren().Select(static level => (level.Key, level.Value)));
-        // The console is written on a background thread, which makes the logging thread wait rather than drop the event
-        // when 10,000 events are queued (ADR-0027). The file is written on the logging thread.
         Assert.Equal("Async", serilog["WriteTo:Console:Name"]);
         Assert.True(serilog.GetValue<bool>("WriteTo:Console:Args:blockWhenFull"));
         Assert.Null(serilog["WriteTo:Console:Args:bufferSize"]);
         Assert.Equal("Console", serilog["WriteTo:Console:Args:configure:Console:Name"]);
         Assert.Equal("File", serilog["WriteTo:File:Name"]);
         Assert.Equal("FromLogContext", Assert.Single(serilog.GetSection("Enrich").GetChildren()).Value);
-        // log4net's file and limits: logFiles\myapp.log, rollingStyle Size, maximumFileSize 10MB,
-        // maxSizeRollBackups 5 plus the active file. No rolling by date.
         var file = serilog.GetSection("WriteTo:File:Args");
         Assert.Equal("logFiles/myapp.log", file["path"]);
         Assert.True(file.GetValue<bool>("rollOnFileSizeLimit"));
@@ -52,22 +43,22 @@ public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IC
         Assert.Equal("Serilog.Formatting.Compact.CompactJsonFormatter, Serilog.Formatting.Compact", file["formatter"]);
     }
 
-    // The committed file sink, alone and in a directory of the test's own, written past its seventh file.
     [Fact]
     public async Task Log_file_rolls_at_10_MiB_and_keeps_the_6_newest_files()
     {
         var directory = Directory.CreateTempSubdirectory("eShop.Catalog.Api.IntegrationTests-");
         try
         {
-            // Small enough events to tell 10 MB (10,000,000 bytes) from log4net's 10MB (10 MiB).
+            // Each event must stay well under 485,760 bytes (10 MiB - 10 MB), or a 10 MB limit would pass the range
+            // check too.
             var payload = new string('x', 64 * 1024);
             var logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(CommittedFileSinkOnly(Path.Combine(directory.FullName, "myapp.log")))
                 .CreateLogger();
             await using (logger)
             {
-                // Two events into the seventh file: the first one rolls to it, the second one is written to it. At
-                // most eight files' worth, so that a sink that does not roll fails the test rather than hanging it.
+                // The loop ends on the event that rolls into the seventh file; the call after it writes that file's
+                // second event. The bound makes a sink that never rolls fail the test rather than hang it.
                 var seventhFile = Path.Combine(directory.FullName, "myapp_006.log");
                 for (var events = 0; !File.Exists(seventhFile) && events < 8 * 10 * MiB / payload.Length; events++)
                 {
@@ -80,8 +71,6 @@ public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IC
             var files = directory.GetFiles().OrderBy(static file => file.Name, StringComparer.Ordinal).ToArray();
             Assert.Equal(["myapp_001.log", "myapp_002.log", "myapp_003.log", "myapp_004.log", "myapp_005.log", "myapp_006.log"],
                 files.Select(static file => file.Name));
-            // A file takes events while it is below the limit, so a full one ends less than one event above it. Every
-            // event has the same length: the payload, and a timestamp of fixed width.
             var eventLength = (await File.ReadAllLinesAsync(files[0].FullName, TestContext.Current.CancellationToken))[0].Length + Environment.NewLine.Length;
             Assert.All(files[..^1], file => Assert.InRange(file.Length, 10 * MiB, (10 * MiB) + eventLength - 1));
             Assert.Equal(2, (await File.ReadAllLinesAsync(files[^1].FullName, TestContext.Current.CancellationToken)).Length);
@@ -110,12 +99,9 @@ public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IC
         Assert.Equal(activity.SpanId.ToHexString(), logEvent.GetProperty("@sp").GetString());
         Assert.Equal(typeof(LoggingTests).FullName, logEvent.GetProperty("SourceContext").GetString());
         Assert.Equal("clef", logEvent.GetProperty("Scenario").GetString());
-        // CLEF leaves out the level when it is Information.
         Assert.False(logEvent.TryGetProperty("@l", out _));
     }
 
-    // Each host owns its logger. With the static Log.Logger set by every host, the loggers that a host creates
-    // would write to the sinks of the last host to start, and the first host to stop would close them.
     [Fact]
     public async Task Each_host_writes_to_its_own_sinks_and_leaves_the_static_logger_silent()
     {
@@ -146,9 +132,6 @@ public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IC
         }
     }
 
-    // log4net resolved its file against the app root. The test host runs from the test's output folder, which is
-    // its working directory, with the content root in a directory of its own. The pictures folder, which the committed
-    // settings name relative to the content root too, is given as an absolute path (ADR-0023).
     [Fact]
     public async Task Relative_log_file_path_is_resolved_against_the_content_root()
     {
@@ -183,7 +166,6 @@ public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IC
             .AddJsonFile("appsettings.json", optional: false)
             .Build();
 
-    // The committed Serilog settings without the console sink, which would print every event, writing to this path.
     private IConfigurationRoot CommittedFileSinkOnly(string path) =>
         new ConfigurationBuilder()
             .AddInMemoryCollection(CommittedSettings().AsEnumerable()
@@ -195,7 +177,6 @@ public sealed partial class LoggingTests(MockModeCatalogApiFactory factory) : IC
     private static bool HasProbe(JsonElement logEvent, string probe) =>
         logEvent.TryGetProperty("Probe", out var value) && value.GetString() == probe;
 
-    // Which of the probes a log file holds, if it exists.
     private static List<string> ProbesIn(string path, string[] probes) =>
         File.Exists(path) ? [.. probes.Where(probe => LogFile.Events(path).Any(logEvent => HasProbe(logEvent, probe)))] : [];
 }

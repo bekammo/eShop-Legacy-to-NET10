@@ -6,8 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// The database that the migrations create (CatalogApiFactory migrates it) against the schema and the
-// reference data that the legacy app creates (docs/legacy/schema.json, seed-data.json).
 [Trait("Category", "Docker")]
 public sealed class MigrationTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
@@ -54,8 +52,6 @@ public sealed class MigrationTests(CatalogApiFactory factory) : IClassFixture<Ca
             await SqlServerSchema.SequenceFactsAsync(connection, TestContext.Current.CancellationToken));
     }
 
-    // Table triggers, views, procedures and other objects in sys.objects have no facts of their own,
-    // and neither have schemas, user-defined types or database-level DDL triggers.
     [Fact]
     public async Task Database_has_no_objects_beyond_the_legacy_schema()
     {
@@ -65,8 +61,6 @@ public sealed class MigrationTests(CatalogApiFactory factory) : IClassFixture<Ca
         Assert.Empty(await SqlServerSchema.ObjectsOutsideSysObjectsAsync(connection, TestContext.Current.CancellationToken));
     }
 
-    // The test login's default schema is dbo, so this cannot see the history table being left in a
-    // login's default schema; CatalogDbContextRegistrationTests covers that.
     [Fact]
     public async Task Migrations_history_table_is_in_dbo_as_ef_core_creates_it()
     {

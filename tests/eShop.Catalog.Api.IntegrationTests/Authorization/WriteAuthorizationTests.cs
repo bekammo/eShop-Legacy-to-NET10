@@ -6,9 +6,6 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace eShop.Catalog.Api.IntegrationTests.Authorization;
 
-// The item writes need an access token with the catalog:write scope (ADR-0034), in mock mode, where nothing else stands
-// between a request and the catalog. The reads stay anonymous: the tests of each read endpoint, and the golden exchanges
-// of /api/brands, send no token.
 public sealed class WriteAuthorizationTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
@@ -65,8 +62,6 @@ public sealed class WriteAuthorizationTests(MockModeCatalogApiFactory factory) :
         await AssertProblemAsync(response, HttpStatusCode.Forbidden);
     }
 
-    // The scope claim as dotnet user-jwts writes it, a string for one scope and an array for more, and as an authorization
-    // server writes it, one string that separates the scopes with spaces (RFC 9068).
     public static TheoryData<object> WriteScopes => ["catalog:write", new[] { "catalog:read", "catalog:write" }, "catalog:read catalog:write"];
 
     [Theory]
@@ -86,7 +81,6 @@ public sealed class WriteAuthorizationTests(MockModeCatalogApiFactory factory) :
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
     }
 
-    // A valid item, so that the request would succeed but for its token.
     private static HttpRequestMessage Request(string method, string path, AuthenticationHeaderValue? token)
     {
         var request = new HttpRequestMessage(new HttpMethod(method), path);
@@ -109,8 +103,6 @@ public sealed class WriteAuthorizationTests(MockModeCatalogApiFactory factory) :
         return request;
     }
 
-    // Authentication's challenge and forbid set only the status. The status code pages give it the problem body
-    // (ADR-0021).
     private static async Task AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status)
     {
         Assert.Equal(status, response.StatusCode);

@@ -13,22 +13,15 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Catalog.Api.IntegrationTests.Http;
 
-// A client that goes away cancels the database command that its request is waiting for (ADR-0027): each endpoint passes
-// the request's RequestAborted to EF Core, which passes it to SqlClient. SqlClient reports the cancelled command as a
-// SqlException, and the request still ends as ASP.NET Core ends an aborted request: a 499, which is not an Error
-// (ADR-0019).
 [Trait("Category", "Docker")]
 public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
     private const string RequestLoggingMiddleware = "Serilog.AspNetCore.RequestLoggingMiddleware";
 
-    // How long the first command waits on the server before it runs, and how long the test waits for the command and
-    // for its wait to start. A request that ignores the client's going away ends by itself after it.
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
 
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // Every endpoint that reaches the database. The test holds the first command that each one sends.
     [Theory]
     [InlineData("GET", "/api/brands")]
     [InlineData("GET", "/api/brands/1")]
@@ -45,7 +38,7 @@ public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClass
     {
         var firstCommand = new SlowFirstCommand();
         var logFile = Path.Combine(Path.GetDirectoryName(factory.LogFilePath)!, $"{Guid.NewGuid():N}.log");
-        // Debug, so that the readiness probe's request event is written too.
+        // The Debug minimum level is for /health/ready: its request event is Debug, and the test waits for it.
         await using var host = factory.WithWebHostBuilder(builder =>
             CatalogApiFactory.UseLogFile(builder, logFile)
                 .ConfigureAppConfiguration(static (_, configuration) =>
@@ -62,14 +55,11 @@ public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClass
         await WaitUntilTheServerRunsTheCommandAsync(session);
         await goingAway.CancelAsync();
 
-        // The test server cancels RequestAborted as the client cancels, so the command's token is cancelled by now.
         Assert.True(commandToken.IsCancellationRequested);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sending);
         var requestEvent = await LogFile.WaitForEventAsync(logFile, logEvent =>
             LogFile.String(logEvent, "@tr") == traceId && LogFile.String(logEvent, "SourceContext") == RequestLoggingMiddleware);
         Assert.Equal(StatusCodes.Status499ClientClosedRequest, requestEvent.GetProperty("StatusCode").GetInt32());
-        // The request event is written last, so an Error of the request, such as the exception handler's, is in the
-        // file by now.
         Assert.DoesNotContain(LogFile.Events(logFile), static logEvent => LogFile.String(logEvent, "@l") is "Error" or "Fatal");
     }
 
@@ -78,11 +68,9 @@ public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClass
         var request = new HttpRequestMessage(new HttpMethod(method), path);
         request.Headers.Add("traceparent", $"00-{traceId}-{ActivitySpanId.CreateRandom().ToHexString()}-01");
 
-        // A token for the item writes (ADR-0034), which the other endpoints ignore.
         request.Headers.Authorization = AccessTokens.Writer;
         if (method is "POST" or "PUT")
         {
-            // A valid item, so that the request reaches the database.
             request.Content = JsonContent.Create(new JsonObject
             {
                 ["Name"] = "Test mug",
@@ -99,9 +87,8 @@ public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClass
         return request;
     }
 
-    // Until SQL Server runs the WAITFOR of the first command, on that command's session. SqlClient cancels a command on
-    // the server only once it has sent it: a token cancelled while it is still sending the command leaves the command to
-    // run to its end.
+    // SqlClient cancels a command on the server only once it has sent it: cancelling earlier lets the command run
+    // to its end, so the test waits until the server is running the WAITFOR.
     private async Task WaitUntilTheServerRunsTheCommandAsync(int session)
     {
         await using var connection = new SqlConnection(factory.ConnectionString);
@@ -116,13 +103,10 @@ public sealed class RequestCancellationTests(CatalogApiFactory factory) : IClass
         }
     }
 
-    // Puts a WAITFOR before the request's first command, so that the command is still running on the server when the
-    // test cancels, as when a client goes away during a slow query. The other commands run as they are.
     private sealed class SlowFirstCommand : DbCommandInterceptor
     {
         private readonly TaskCompletionSource<(CancellationToken Token, int Session)> _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // The token that EF Core gives the first command, and the server session that runs it.
         public Task<(CancellationToken Token, int Session)> Started => _started.Task;
 
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(

@@ -8,23 +8,16 @@ using Microsoft.AspNetCore.WebUtilities;
 
 namespace eShop.Catalog.Api.IntegrationTests.Http;
 
-// The OpenAPI document that the API serves at /openapi/v1.json (ADR-0020), against the committed snapshot
-// docs/openapi/v1.json, so that every change to the contract of an endpoint shows in that file's diff.
 public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private const string SnapshotInRepository = "docs/openapi/v1.json";
 
-    // The copy that the test project puts in its output.
     private static readonly string Snapshot = Path.Combine(AppContext.BaseDirectory, "OpenApi", "v1.json");
 
-    // Where the test writes the served document when it differs.
     private static readonly string Received = Path.ChangeExtension(Snapshot, ".received.json");
 
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // On a difference, the served document is written beside the snapshot's copy, in the form of the snapshot, so
-    // that an intended change is accepted by copying that file over the snapshot. The file of an earlier run goes
-    // first, so that a stale one cannot be copied by mistake.
     [Fact]
     public async Task Document_matches_the_committed_snapshot()
     {
@@ -36,7 +29,6 @@ public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IC
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
         var served = JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!.AsObject();
-        // The URL of the host that served the document, which differs from host to host.
         served.Remove("servers");
         if (!JsonNode.DeepEquals(served, JsonNode.Parse(await File.ReadAllTextAsync(Snapshot, CancellationToken))))
         {
@@ -48,9 +40,6 @@ public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IC
         }
     }
 
-    // Every operation says what it does, and what its parameters, its body and its responses are (ADR-0029). The
-    // generator takes that from the handler's XML comments, and skips the comments of a private handler without a
-    // warning. A response that nothing describes has the name of its status, such as "Not Found".
     [Fact]
     public async Task Every_operation_is_described()
     {
@@ -68,8 +57,6 @@ public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IC
         });
     }
 
-    // Every error is a problem (ADR-0021), and the document says so: application/problem+json, with the schema of a
-    // problem, or of a validation problem, which have the traceId that ProblemJsonWriter adds (ADR-0029).
     [Fact]
     public async Task Every_error_response_is_documented_as_a_problem()
     {
@@ -90,8 +77,6 @@ public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IC
             Assert.Equal("string", (string?)document["components"]!["schemas"]![problem]!["properties"]!["traceId"]!["type"]));
     }
 
-    // Swagger UI and generated clients learn from the document which operations need a token, and of which scope
-    // (ADR-0034): the item writes, and nothing else.
     [Fact]
     public async Task Only_the_item_writes_ask_for_a_bearer_token_with_the_write_scope()
     {
@@ -107,8 +92,6 @@ public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IC
             Assert.Equal("""[{"Bearer":["catalog:write"]}]""", operation.Operation["security"]!.ToJsonString()));
     }
 
-    // The document describes the contract, which is public, so it is not a Development-only feature. Swagger UI is
-    // (ADR-0028).
     [Theory]
     [InlineData("Development")]
     [InlineData("Production")]
@@ -128,7 +111,6 @@ public sealed class OpenApiDocumentTests(MockModeCatalogApiFactory factory) : IC
         return JsonNode.Parse(await client.GetStringAsync("/openapi/v1.json", CancellationToken))!.AsObject();
     }
 
-    // Each operation of the document, named by its method and path, such as "GET /api/brands/{id}".
     private static IEnumerable<(string Name, JsonObject Operation)> Operations(JsonObject document) =>
         document["paths"]!.AsObject().SelectMany(path => path.Value!.AsObject().Select(operation =>
             ($"{operation.Key.ToUpperInvariant()} {path.Key}", operation.Value!.AsObject())));

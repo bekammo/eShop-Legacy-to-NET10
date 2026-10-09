@@ -3,8 +3,6 @@ using Microsoft.Data.SqlClient;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// Every schema check against docs/legacy/schema.json in one call, for tests that build a database
-// some other way than CatalogApiFactory does. MigrationTests makes the same checks one by one.
 internal static class LegacySchemaAssert
 {
     public static async Task HasTheLegacySchemaAsync(SqlConnection connection, CancellationToken cancellationToken)

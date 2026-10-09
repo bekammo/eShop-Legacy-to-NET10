@@ -9,13 +9,10 @@ using Microsoft.Extensions.Options;
 
 namespace eShop.Catalog.Api.IntegrationTests.Http;
 
-// The error contract in the app that Program.cs builds (ADR-0021). HttpConventionsTests covers the cases that need
-// endpoints of their own.
 public sealed class ErrorHandlingTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // The trace ID is the caller's, from its traceparent header, and the request's log events carry it too.
     [Fact]
     public async Task Route_that_matches_nothing_is_a_404_problem_with_the_trace_id_of_the_request()
     {
@@ -49,8 +46,7 @@ public sealed class ErrorHandlingTests(MockModeCatalogApiFactory factory) : ICla
         Assert.Matches($"^00-{traceId}-", problem.GetProperty("traceId").GetString());
     }
 
-    // Kestrel names itself in a Server header unless told not to (audit D19). The test server sends none either way,
-    // so the setting is checked instead.
+    // TestServer never sends a Server header, so a response check would always pass: the Kestrel option is checked.
     [Fact]
     public void Kestrel_sends_no_Server_header()
     {

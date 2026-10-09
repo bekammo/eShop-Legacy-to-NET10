@@ -4,12 +4,8 @@ using Microsoft.Data.SqlClient;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// The schema of a live SQL Server database, as schema facts. The queries follow the ones that
-// captured docs/legacy/schema.json (docs/legacy/capture/capture.cs), so both sides describe the
-// schema the same way.
 internal static class SqlServerSchema
 {
-    // EF Core's own table, like EF6's __MigrationHistory on the legacy side, is not compared.
     private const string HistoryTable = "__EFMigrationsHistory";
 
     public static async Task<IReadOnlyList<string>> TablesAsync(SqlConnection connection, CancellationToken cancellationToken)
@@ -22,8 +18,6 @@ internal static class SqlServerSchema
         return SchemaFacts.Sorted(rows.Select(r => (string)r[0]));
     }
 
-    // The whole schema in one list, the history tables included: each table's facts, prefixed with
-    // the table, then the sequences and the objects outside sys.objects. Object counts are separate.
     public static async Task<IReadOnlyList<string>> SnapshotAsync(SqlConnection connection, CancellationToken cancellationToken)
     {
         var tables = await QueryAsync(
@@ -112,7 +106,6 @@ internal static class SqlServerSchema
         {
             var columns = foreignKeyColumns[(int)fk[0]].ToList();
 
-            // sys.foreign_keys says NO_ACTION, SET_NULL and so on; schema.json uses spaces.
             facts.Add(SchemaFacts.ForeignKey(
                 (string)fk[1],
                 columns.Select(r => (string)r[1]),
@@ -149,8 +142,8 @@ internal static class SqlServerSchema
             (string)r[0], (string)r[1], (long)r[2], (long)r[3], (long)r[4], (long)r[5], (bool)r[6], (bool)r[7], r[8] as int?)));
     }
 
-    // Counted with the capture's condition for schema.json's objectCounts, which also counts tables
-    // marked as system objects. EF6 can mark its history table that way; the captured one is not.
+    // Must match capture.cs's condition for schema.json's objectCounts, which also counts tables marked is_ms_shipped,
+    // as EF6 can mark its history table.
     public static async Task<IReadOnlyList<string>> ObjectCountFactsAsync(SqlConnection connection, CancellationToken cancellationToken)
     {
         var rows = await QueryAsync(
@@ -162,10 +155,6 @@ internal static class SqlServerSchema
         return SchemaFacts.Sorted(rows.Select(r => SchemaFacts.ObjectCount((string)r[0], (int)r[1])));
     }
 
-    // Objects that sys.objects does not list, and that neither schema has: schemas of its own
-    // (schema_id 5 to 16383; below are dbo, guest, INFORMATION_SCHEMA and sys, above the fixed-role
-    // schemas), user-defined types and database-level DDL triggers. Users, permissions and statistics
-    // are not compared.
     public static async Task<IReadOnlyList<string>> ObjectsOutsideSysObjectsAsync(SqlConnection connection, CancellationToken cancellationToken)
     {
         var rows = await QueryAsync(
@@ -178,7 +167,6 @@ internal static class SqlServerSchema
         return SchemaFacts.Sorted(rows.Select(r => (string)r[0]));
     }
 
-    // The same format as StoreType() in docs/legacy/capture/capture.cs.
     private static string StoreType(string type, int maxLength, int precision, int scale) => type switch
     {
         "nvarchar" or "nchar" => $"{type}({(maxLength == -1 ? "max" : (maxLength / 2).ToString(CultureInfo.InvariantCulture))})",

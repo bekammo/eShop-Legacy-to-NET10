@@ -9,14 +9,8 @@ using Testcontainers.MsSql;
 
 namespace eShop.Catalog.Api.IntegrationTests;
 
-// One SQL Server container for the whole test assembly (ADR-0007). Each test class, or each test that needs one, gets a
-// database of its own in it, so they never share data and can run in parallel. The first test that asks for a database
-// starts the container, so a run without the tests of the Docker trait needs no Docker (ADR-0031). Building the
-// container already needs Docker, so that waits too.
 public sealed class SqlServerFixture : IAsyncDisposable
 {
-    // The trait of every test class that reaches SQL Server. The Docker-free run leaves those classes out with
-    // --filter-not-trait "Category=Docker".
     private const string TraitName = "Category";
     private const string TraitValue = "Docker";
 
@@ -30,8 +24,6 @@ public sealed class SqlServerFixture : IAsyncDisposable
         }
     }
 
-    // A connection string for a new database with a unique name. The database does not exist yet:
-    // the caller creates it, for example with Migrate() or IRelationalDatabaseCreator.CreateAsync().
     public async Task<string> NewDatabaseAsync(string prefix)
     {
         var container = await ContainerAsync();
@@ -41,8 +33,6 @@ public sealed class SqlServerFixture : IAsyncDisposable
         }.ConnectionString;
     }
 
-    // Runs a script with the image's own sqlcmd, as an operator would: -b makes an error end the run
-    // with exit code 1, and -C trusts the container's self-signed certificate.
     public async Task<ExecResult> RunSqlcmdAsync(string database, string script, CancellationToken cancellationToken)
     {
         var container = await ContainerAsync();
@@ -53,9 +43,6 @@ public sealed class SqlServerFixture : IAsyncDisposable
             cancellationToken);
     }
 
-    // A test that reaches SQL Server without the trait would make the Docker-free run fail on a machine without
-    // Docker, so it fails here, in every run. Before a test runs, as when its class fixture starts, the test class has
-    // the traits.
     private Task<MsSqlContainer> ContainerAsync()
     {
         var traits = TestContext.Current.Test?.Traits ?? TestContext.Current.TestClass?.Traits;
@@ -69,7 +56,8 @@ public sealed class SqlServerFixture : IAsyncDisposable
         return _container.Value;
     }
 
-    // Not tied to the token of the test that happens to start the container first: every later test waits for it too.
+    // No cancellation token: the container start is shared, and if the first test's token cancelled it, every later
+    // test would await the same cancelled task.
     private static async Task<MsSqlContainer> StartAsync()
     {
         var container = new MsSqlBuilder(SqlServerImage.Name).Build();

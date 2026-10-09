@@ -3,12 +3,11 @@ using System.Text.Json;
 
 namespace eShop.Catalog.Api.IntegrationTests.Logging;
 
-// Reads the CLEF log file of a test host (ADR-0018): one JSON object per line.
 internal static class LogFile
 {
     private static readonly TimeSpan WaitTimeout = TimeSpan.FromSeconds(10);
 
-    // The events of a log file, which its host may still hold open for writing.
+    // FileShare.ReadWrite: the host still holds the file open for writing, so File.ReadAllLines would fail on Windows.
     public static List<JsonElement> Events(string path)
     {
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
@@ -23,8 +22,8 @@ internal static class LogFile
         return events;
     }
 
-    // The first event that matches, once the host has written it. The request event is written when the request
-    // completes, which can be after the client has the response. A line that the host is still writing is read again.
+    // Callers wait here rather than read Events: the request event can be written after the client has the response.
+    // The empty catch is deliberate: a line the host is still writing does not parse yet, and is read again.
     public static async Task<JsonElement> WaitForEventAsync(string path, Func<JsonElement, bool> match)
     {
         var waited = Stopwatch.StartNew();
@@ -50,7 +49,6 @@ internal static class LogFile
     public static string? String(JsonElement logEvent, string property) =>
         logEvent.TryGetProperty(property, out var value) ? value.GetString() : null;
 
-    // The name of the event, such as the method name of a [LoggerMessage] event.
     public static string? EventName(JsonElement logEvent) =>
         logEvent.TryGetProperty("EventId", out var eventId) && eventId.TryGetProperty("Name", out var name) ? name.GetString() : null;
 }

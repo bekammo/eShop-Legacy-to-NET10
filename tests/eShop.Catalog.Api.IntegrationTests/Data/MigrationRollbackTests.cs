@@ -6,8 +6,6 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// The Down side of the migrations, on a database of its own: a rollback must leave nothing behind
-// that stops the migrations from being applied again (ADR-0011).
 [Trait("Category", "Docker")]
 public sealed class MigrationRollbackTests(SqlServerFixture sqlServer)
 {
@@ -28,8 +26,6 @@ public sealed class MigrationRollbackTests(SqlServerFixture sqlServer)
         Assert.Empty(await SqlServerSchema.SequenceFactsAsync(connection, cancellationToken));
         Assert.Empty(await context.Database.GetAppliedMigrationsAsync(cancellationToken));
 
-        // This process still holds HiLo IDs from the dropped sequence, so the seeder would refuse them
-        // (ADR-0013): the migrations are applied again as a new process would apply them.
         await using (var again = CatalogDatabase.CreateContextAsInANewProcess(connectionString))
         {
             await again.Database.MigrateAsync(cancellationToken);

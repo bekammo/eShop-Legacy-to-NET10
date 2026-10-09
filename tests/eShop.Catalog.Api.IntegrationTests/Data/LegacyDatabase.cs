@@ -7,13 +7,8 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace eShop.Catalog.Api.IntegrationTests.Data;
 
-// Legacy databases for the Stage 4.3 baseline tests, and the baseline itself.
 internal static class LegacyDatabase
 {
-    // What the legacy app leaves behind on its first start (docs/legacy): the schema from schema.sql,
-    // the rows from seed-data.json, EF6's history row with the model in ef6-model.edmx, and every
-    // sequence drawn as far as the legacy seeding drew it. The database is created as EF6 and EF Core
-    // create theirs, with READ_COMMITTED_SNAPSHOT on.
     public static async Task<string> CreateAsync(SqlServerFixture sqlServer, CancellationToken cancellationToken)
     {
         var connectionString = await CreateEmptyAsync(sqlServer, cancellationToken);
@@ -64,7 +59,6 @@ internal static class LegacyDatabase
         return connectionString;
     }
 
-    // A database that exists but has nothing in it, created the same way.
     public static async Task<string> CreateEmptyAsync(SqlServerFixture sqlServer, CancellationToken cancellationToken)
     {
         var connectionString = await sqlServer.NewDatabaseAsync("legacy");
@@ -73,15 +67,14 @@ internal static class LegacyDatabase
         return connectionString;
     }
 
-    // Runs docs/legacy/baseline.sql as sqlcmd does by default, with QUOTED_IDENTIFIER off.
+    // QUOTED_IDENTIFIER off, as under sqlcmd's defaults; SqlClient turns it on, and the tests would then run
+    // baseline.sql under other rules than the documented sqlcmd run.
     public static async Task BaselineAsync(SqlConnection connection, CancellationToken cancellationToken)
     {
         await ExecuteAsync(connection, "SET QUOTED_IDENTIFIER OFF;", cancellationToken);
         await ExecuteAsync(connection, LegacyFiles.ReadText("baseline.sql"), cancellationToken);
     }
 
-    // A connection that changes its session (EXECUTE AS, SET options) must not be pooled, so that the
-    // change ends with it instead of reaching the next user of the pooled connection.
     public static async Task<SqlConnection> OpenAsync(string connectionString, CancellationToken cancellationToken, bool pooling = true)
     {
         var connection = new SqlConnection(new SqlConnectionStringBuilder(connectionString) { Pooling = pooling }.ConnectionString);
@@ -110,7 +103,6 @@ internal static class LegacyDatabase
         return (T)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
-    // EF6 stores its model gzip-compressed. The capture decompressed it into ef6-model.edmx.
     private static byte[] Ef6Model()
     {
         using var compressed = new MemoryStream();
@@ -122,7 +114,6 @@ internal static class LegacyDatabase
         return compressed.ToArray();
     }
 
-    // Draws values as the legacy seeding did, until the sequence's current value is the recorded one.
     private static async Task DrawUntilAsync(SqlConnection connection, string sequence, long currentValue, CancellationToken cancellationToken)
     {
         for (var draws = 0; draws < 100; draws++)

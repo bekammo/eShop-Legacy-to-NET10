@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace eShop.Catalog.Api.IntegrationTests.Health;
 
-// /health/ready (ADR-0013): ready only when the catalog database can be reached and has every migration.
 [Trait("Category", "Docker")]
 public sealed class ReadinessEndpointTests(CatalogApiFactory factory, SqlServerFixture sqlServer) : IClassFixture<CatalogApiFactory>
 {
@@ -31,7 +30,6 @@ public sealed class ReadinessEndpointTests(CatalogApiFactory factory, SqlServerF
         await AssertUnhealthyAsync(missingDatabase);
     }
 
-    // A deployment that started the new build before applying its migrations script.
     [Fact]
     public async Task Get_returns_503_Unhealthy_when_migrations_are_missing()
     {
@@ -41,7 +39,6 @@ public sealed class ReadinessEndpointTests(CatalogApiFactory factory, SqlServerF
         await AssertUnhealthyAsync(unmigrated);
     }
 
-    // The body is the status only: no database name, server or exception.
     private static async Task AssertUnhealthyAsync(WebApplicationFactory<Program> host)
     {
         using var client = host.CreateClient();

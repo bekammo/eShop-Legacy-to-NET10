@@ -8,9 +8,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace eShop.Catalog.Api.IntegrationTests.Logging;
 
-// One event per request, in place of the legacy Application_BeginRequest event and its requestinfo and activityid
-// properties (ADR-0019). Each request carries a W3C traceparent header, as from a calling service, so its trace ID
-// is known and finds its events.
 public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : IClassFixture<MockModeCatalogApiFactory>
 {
     private const string RequestLoggingMiddleware = "Serilog.AspNetCore.RequestLoggingMiddleware";
@@ -19,7 +16,6 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
 
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
 
-    // The route matches nothing, which no later endpoint can change: a 404 is an Information request event too.
     [Fact]
     public async Task Request_is_logged_once_with_its_trace_id_query_string_and_user_agent()
     {
@@ -37,16 +33,12 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
         Assert.Equal(JsonValueKind.Number, logEvent.GetProperty("Elapsed").ValueKind);
         Assert.Equal("?pageSize=10", LogFile.String(logEvent, "QueryString"));
         Assert.Equal("RequestLoggingTests/1.0", LogFile.String(logEvent, "UserAgent"));
-        // Information, which CLEF leaves out.
         Assert.Null(LogFile.String(logEvent, "@l"));
-        // ASP.NET Core logs "Request starting" before the request runs, so it would be in the file by now.
         Assert.Equal([RequestLoggingMiddleware], LogFile.Events(factory.LogFilePath)
             .Where(other => LogFile.String(other, "@tr") == traceId)
             .Select(static other => LogFile.String(other, "SourceContext")));
     }
 
-    // The exception handler, inside the request logging, logs the exception and answers 500 (ADR-0021). The request
-    // event has that status, so it is an Error too, but not the exception a second time.
     [Fact]
     public async Task Request_that_throws_is_logged_at_Error_and_its_exception_once()
     {
@@ -70,8 +62,6 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
         Assert.StartsWith($"System.InvalidOperationException: {ThrowAfterEndpoints.Message}", LogFile.String(exceptionEvent, "@x"), StringComparison.Ordinal);
     }
 
-    // Once the response has started, the exception handler cannot answer with a problem: it logs the exception and
-    // lets it go on, and the request event logs it too, as a request that threw (ADR-0019).
     [Fact]
     public async Task Request_that_throws_after_the_response_started_is_logged_with_its_exception()
     {
@@ -89,8 +79,6 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
         Assert.StartsWith($"System.InvalidOperationException: {ThrowAfterEndpoints.Message}", LogFile.String(logEvent, "@x"), StringComparison.Ordinal);
     }
 
-    // Authorization runs inside the request logging (ADR-0019, ADR-0034), so a write without a token is logged with its
-    // 401, at Information, as a client's error.
     [Fact]
     public async Task Request_that_authorization_rejects_is_logged()
     {
@@ -106,7 +94,6 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
         Assert.Null(LogFile.String(logEvent, "@l"));
     }
 
-    // Probes call the health checks every few seconds. The host logs Debug events here, so that the events are written.
     [Theory]
     [InlineData("/health/live")]
     [InlineData("/health/ready")]
@@ -140,7 +127,6 @@ public sealed class RequestLoggingTests(MockModeCatalogApiFactory factory) : ICl
         LogFile.WaitForEventAsync(logFile, logEvent =>
             LogFile.String(logEvent, "@tr") == traceId && LogFile.String(logEvent, "SourceContext") == RequestLoggingMiddleware);
 
-    // A file beside the factory's own, which the factory deletes with its directory.
     private string LogFilePath() =>
         Path.Combine(Path.GetDirectoryName(factory.LogFilePath)!, $"{Guid.NewGuid():N}.log");
 }

@@ -5,20 +5,16 @@ using eShop.Catalog.Api.Tests.Legacy;
 
 namespace eShop.Catalog.Api.IntegrationTests.Contract;
 
-// One exchange of docs/legacy/contract: a request to the legacy app, and the response that it got
-// (docs/legacy/README.md, "Golden exchange format").
 internal sealed class GoldenExchange(string name, JsonObject exchange)
 {
     public string Name { get; } = name;
 
     public int Status => Response["status"]!.GetValue<int>();
 
-    // empty, json, xml, html or binary.
     public string BodyKind => Response["body"]!["kind"]!.GetValue<string>();
 
     public JsonNode? Json => Response["body"]!["json"];
 
-    // A binary body is recorded as its length and its SHA-256 (rule 9).
     public long BodyLength => Response["body"]!["length"]!.GetValue<long>();
 
     public string BodySha256 => Response["body"]!["sha256"]!.GetValue<string>();
@@ -27,7 +23,6 @@ internal sealed class GoldenExchange(string name, JsonObject exchange)
 
     private JsonObject Response => exchange["response"]!.AsObject();
 
-    // The exchanges of the files, by name, which is unique across the files.
     public static IReadOnlyDictionary<string, GoldenExchange> Load(IEnumerable<string> files) =>
         files
             .SelectMany(static file => LegacyFiles.ReadJson(Path.Combine("contract", file))["exchanges"]!.AsObject())
@@ -37,8 +32,6 @@ internal sealed class GoldenExchange(string name, JsonObject exchange)
 
     public string? ResponseHeader(string header) => Response["headers"]![header]?.GetValue<string>();
 
-    // The request as it was recorded: the method, the path as it is, exactly the recorded headers, and the body (rule 2).
-    // Without the header named, if one is.
     public HttpRequestMessage CreateRequest(string? without = null)
     {
         var request = new HttpRequestMessage(new HttpMethod(Request["method"]!.GetValue<string>()), Request["path"]!.GetValue<string>());

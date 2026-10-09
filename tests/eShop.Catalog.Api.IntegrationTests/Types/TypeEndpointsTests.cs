@@ -3,7 +3,6 @@ using System.Text.Json.Nodes;
 
 namespace eShop.Catalog.Api.IntegrationTests.Types;
 
-// GET /api/types (ADR-0024): the legacy app's item types, which its forms offered as a dropdown.
 [Trait("Category", "Docker")]
 public sealed class TypeEndpointsTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {

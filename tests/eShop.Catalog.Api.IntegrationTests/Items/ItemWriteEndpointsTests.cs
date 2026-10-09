@@ -7,7 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace eShop.Catalog.Api.IntegrationTests.Items;
 
-// Creating, updating and deleting items (ADR-0025, ADR-0026), on a database of the class's own, which the writes change.
 [Trait("Category", "Docker")]
 public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassFixture<CatalogApiFactory>
 {
@@ -30,7 +29,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
     }
 
-    // The legacy create replaced a posted ID, and took a posted picture name (audit D1, D2). The request has neither.
     [Fact]
     public async Task Posted_ID_and_picture_name_are_ignored()
     {
@@ -49,8 +47,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         Assert.Equal(".NET Bot Black Hoodie", (string)JsonNode.Parse(await client.GetStringAsync("/api/items/1", CancellationToken))!["Name"]!);
     }
 
-    // The rules (create-item-validation), each broken alone. null removes the field, which must then be reported as
-    // required, and not only by the check of the brand and the type.
     [Theory]
     [InlineData("Name", null)]
     [InlineData("Name", "\"\"")]
@@ -103,7 +99,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
-    // Audit D10: the legacy app answered with a 500, from the foreign key.
     [Theory]
     [InlineData("CatalogBrandId")]
     [InlineData("CatalogTypeId")]
@@ -128,16 +123,12 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
-    // The legacy app's limit, httpRuntime's default. The test server does not apply Kestrel's limits, so the setting is
-    // checked.
     [Fact]
     public void Request_body_is_limited_to_the_legacy_4_MB()
     {
         Assert.Equal(4 * 1024 * 1024, factory.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value.Limits.MaxRequestBodySize);
     }
 
-    // A full replacement: every field is the request's, OnReorder included, and a posted ID and picture name change
-    // nothing: the item keeps its ID and its picture (ADR-0026).
     [Fact]
     public async Task Update_writes_every_field_and_keeps_the_ID_and_the_picture()
     {
@@ -174,8 +165,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         Assert.Equal(HttpStatusCode.OK, picture.StatusCode);
     }
 
-    // Audit D2: the legacy edit wrote defaults over the fields that a post left out. A missing field is a 400, and the
-    // item does not change.
     [Fact]
     public async Task Update_without_a_required_field_is_a_400_and_changes_nothing()
     {
@@ -200,7 +189,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         await AssertValidationProblemAsync(response, "CatalogBrandId");
     }
 
-    // The legacy delete removed the row, and its picture route answered 404 afterwards (delete-item).
     [Fact]
     public async Task Delete_removes_the_item_and_its_picture()
     {
@@ -216,7 +204,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         Assert.Equal(HttpStatusCode.NotFound, picture.StatusCode);
     }
 
-    // Audit D11 (unknown-item-writes): the legacy edit and delete of item 999 answered 500.
     [Theory]
     [InlineData("PUT", "999", HttpStatusCode.NotFound)]
     [InlineData("DELETE", "999", HttpStatusCode.NotFound)]
@@ -235,7 +222,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         Assert.Equal(status, response.StatusCode);
     }
 
-    // A client with a token that has the catalog:write scope (ADR-0034), which WriteAuthorizationTests checks.
     private HttpClient CreateClient()
     {
         var client = factory.CreateClient();
@@ -250,7 +236,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         return (int)JsonNode.Parse(await response.Content.ReadAsStringAsync(CancellationToken))!["Id"]!;
     }
 
-    // A valid item, with one field changed, or removed when the value is null.
     private static JsonObject ValidBody(string? field = null, string? value = null)
     {
         var body = new JsonObject
@@ -280,7 +265,6 @@ public sealed class ItemWriteEndpointsTests(CatalogApiFactory factory) : IClassF
         return body;
     }
 
-    // The problem's errors, which name the field.
     private static async Task<JsonNode> AssertValidationProblemAsync(HttpResponseMessage response, string field)
     {
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
