@@ -1,12 +1,8 @@
 namespace eShop.Catalog.Api.Tests.Legacy;
 
-// States a schema as one line per column, key, index, foreign key, check constraint or sequence, so
-// that schema.json, the EF Core model and a live database can be compared under the same rules
-// (docs/legacy/README.md, "Schema"). Column order is not compared, so a table's facts are sorted.
 internal static class SchemaFacts
 {
-    // A default or a computed column is compared by its presence: SQL Server rewrites the expression.
-    // The collation appears only when it differs from the database default.
+    // Defaults and computed columns are compared by presence only: SQL Server rewrites their expressions (0 as ((0))).
     public static string Column(
         string name, string storeType, bool nullable, (long Seed, long Increment)? identity,
         string? collation, bool hasDefault, bool computed) =>
@@ -39,12 +35,10 @@ internal static class SchemaFacts
 
     public static string CheckConstraint(string name) => $"check constraint {name}";
 
-    // cacheSize is null when the sequence uses the server's default cache size.
     public static string Sequence(string name, string type, long start, long increment, long min, long max, bool cycle, bool cached, int? cacheSize) =>
         $"sequence {name} {type} start {start} increment {increment} min {min} max {max}{(cycle ? " cycle" : " no cycle")}" +
         (!cached ? " no cache" : cacheSize is { } size ? $" cache {size}" : " cache");
 
-    // How many schema objects of one type (sys.objects type_desc) the database has.
     public static string ObjectCount(string type, int count) => $"{count} {type}";
 
     public static IReadOnlyList<string> Sorted(IEnumerable<string> facts) => [.. facts.Order(StringComparer.Ordinal)];
@@ -55,5 +49,4 @@ internal static class SchemaFacts
         string.Join(", ", columns.Select(c => c.Descending ? $"{c.Name} desc" : c.Name));
 }
 
-// A key or index column, in key order.
 internal readonly record struct KeyColumn(string Name, bool Descending);

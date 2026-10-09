@@ -2,11 +2,8 @@ using System.Text.Json.Nodes;
 
 namespace eShop.Catalog.Api.Tests.Legacy;
 
-// The schema the legacy app creates, from docs/legacy/schema.json (Stage 1.2), as schema facts.
 internal static class LegacySchema
 {
-    // What the new schema must reproduce. __MigrationHistory (EF6's own table) and the unused brand
-    // and type sequences are not compared (docs/legacy/README.md, "Schema").
     public static readonly IReadOnlyList<string> Tables = ["dbo.Catalog", "dbo.CatalogBrand", "dbo.CatalogType"];
     public const string ItemIdSequence = "dbo.catalog_hilo";
 
@@ -78,23 +75,17 @@ internal static class LegacySchema
             (int?)json["cacheSize"]);
     }
 
-    // The object counts a database migrated by the new API must have: the legacy counts, less the
-    // objects the comparison leaves out, plus EF Core's history table. This catches objects that
-    // the other facts do not describe, such as triggers, views or procedures.
     public static IReadOnlyList<string> ObjectCountFacts()
     {
         var counts = Schema["objectCounts"]!.AsObject().ToDictionary(p => p.Key, p => (int)p.Value!);
 
-        // The unused catalog_brand_hilo and catalog_type_hilo.
         counts["SEQUENCE_OBJECT"] -= 2;
 
-        // EF6's __MigrationHistory and its primary key give way to EF Core's __EFMigrationsHistory
-        // and its primary key, so USER_TABLE and PRIMARY_KEY_CONSTRAINT stay as they are.
+        // USER_TABLE and PRIMARY_KEY_CONSTRAINT stay unchanged: EF Core's history table and key replace EF6's
+        // one for one.
         return SchemaFacts.Sorted(counts.Where(c => c.Value > 0).Select(c => SchemaFacts.ObjectCount(c.Key, c.Value)));
     }
 
-    // The object counts of a legacy database after the Stage 4.3 baseline: every legacy object
-    // stays, and EF Core's history table and its primary key are added.
     public static IReadOnlyList<string> AdoptedObjectCountFacts()
     {
         var counts = Schema["objectCounts"]!.AsObject().ToDictionary(p => p.Key, p => (int)p.Value!);
@@ -103,8 +94,6 @@ internal static class LegacySchema
         return SchemaFacts.Sorted(counts.Select(c => SchemaFacts.ObjectCount(c.Key, c.Value)));
     }
 
-    // schema.json lists check constraints only as a count. The legacy schema has none, so the tables
-    // have no check-constraint facts; a capture that found some would need them listed per table.
     private static JsonNode ReadSchema()
     {
         var schema = LegacyFiles.ReadJson("schema.json");
