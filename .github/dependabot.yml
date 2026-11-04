@@ -1,0 +1,35 @@
+# Dependency update pull requests (ADR-0035). CI gates them like any other pull request.
+# Dependabot reads this file from main, so a change here takes effect after its merge.
+
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    # A new major version of these needs a new target framework.
+    ignore:
+      - dependency-name: Microsoft.AspNetCore.*
+        update-types: [version-update:semver-major]
+      - dependency-name: Microsoft.EntityFrameworkCore.*
+        update-types: [version-update:semver-major]
+      - dependency-name: dotnet-ef
+        update-types: [version-update:semver-major]
+    groups:
+      # These share one version, so a pull request for only some of them leaves them out of step.
+      aspnetcore-efcore:
+        patterns:
+          - Microsoft.AspNetCore.*
+          - Microsoft.EntityFrameworkCore.*
+          - dotnet-ef
+      # The extensions have to match the test platform version that xunit.v3 brings (ADR-0007).
+      test-platform:
+        patterns:
+          - xunit.v3
+          - Microsoft.Testing.*
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

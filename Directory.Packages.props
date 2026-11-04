@@ -15,7 +15,7 @@
 
   <!--
     Data access (ADR-0010) and migrations (ADR-0011). EF Core packages share one version, and
-    dotnet-tools.json pins the dotnet-ef tool to it.
+    .config/dotnet-tools.json pins the dotnet-ef tool to it.
   -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
