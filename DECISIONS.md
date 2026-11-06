@@ -44,6 +44,7 @@ These are the decisions behind the .NET 10 migration described in [MIGRATION_PLA
 | [ADR-0032](#adr-0032-cutover-and-rollback) | Cutover and rollback | Accepted | 11.1 |
 | [ADR-0033](#adr-0033-legacy-code-removed-at-cutover) | Legacy code removed at cutover | Accepted | 11.3 |
 | [ADR-0034](#adr-0034-write-endpoint-authorization-with-jwt-bearer-tokens) | Write-endpoint authorization with JWT bearer tokens | Accepted | 12.1 |
+| [ADR-0035](#adr-0035-automated-dependency-updates) | Automated dependency updates | Accepted | None |
 
 ## Template
 
@@ -3051,3 +3052,36 @@ The `Authority` setting is not tested here: no authorization server runs in the 
 - Swagger UI stays Development only ([ADR-0028](#adr-0028-openapi-tooling-swagger-ui-in-development)): it is a tool for developers, although the writes it sends are no longer anonymous.
 - A new endpoint is anonymous unless its mapping requires a policy. `Only_the_item_writes_ask_for_a_bearer_token_with_the_write_scope` lists the endpoints that need a token, and has to name a new one.
 - No CORS, as before ([ADR-0004](#adr-0004-write-endpoints-stay-anonymous-until-after-cutover)): a browser app on another origin cannot call the writes until a later change allows its origin.
+
+---
+
+## ADR-0035: Automated dependency updates
+
+- **Status:** Accepted
+- **Date:** 2026-11-04
+- **Plan stage:** None, after the last stage
+
+### Context
+
+- Package, tool and action versions are pinned ([ADR-0006](#adr-0006-solution-structure-and-build-conventions), [ADR-0008](#adr-0008-continuous-integration)), so nothing moves them unless someone does. The "Vulnerable packages" job reports an advisory, and does not fix it.
+- Some versions have to move together: the EF Core packages and `dotnet-ef` ([ADR-0011](#adr-0011-ef-core-migration-strategy)), the ASP.NET Core packages and the runtime, and the test platform extensions and `xunit.v3` ([ADR-0007](#adr-0007-test-strategy)).
+- Dependabot's NuGet updater starts from the solution in the configured directory, and reads `.slnx` ([`DiscoveryWorker`](https://github.com/dependabot/dependabot-core/blob/main/nuget/helpers/lib/NuGetUpdater/NuGetUpdater.Core/Discover/DiscoveryWorker.cs)). It looks for the tool manifest only at `.config/dotnet-tools.json` ([`MSBuildHelper`](https://github.com/dependabot/dependabot-core/blob/main/nuget/helpers/lib/NuGetUpdater/NuGetUpdater.Core/Utilities/MSBuildHelper.cs)). The manifest was in the repository root, where `dotnet-ef` would have stayed behind the EF Core packages.
+
+### Decision
+
+1. **Dependabot opens weekly pull requests** for NuGet packages, the local tools and the GitHub Actions, configured in [`.github/dependabot.yml`](.github/dependabot.yml). CI gates them like any other pull request.
+2. **The tool manifest moves to `.config/dotnet-tools.json`.** The dotnet CLI finds it there too, so the commands do not change. ADRs accepted before this one name the old path.
+3. **Versions that move together share a group**, and so one pull request: `aspnetcore-efcore` and `test-platform`.
+4. **No major versions for the ASP.NET Core and EF Core packages and `dotnet-ef`.** These follow the runtime, so a major version belongs in a change of the target framework.
+
+### Alternatives considered
+
+- **Renovate.** It would read more file types, but needs an app installed on the repository, and Dependabot needs only a file.
+- **The `docker-compose` ecosystem.** It would change `compose.yaml` alone, and `ComposeFileTests` requires the same image as `SqlServerImage.Name`, so every such pull request would fail.
+- **The `dotnet-sdk` ecosystem.** `global.json` sets a minimum that rolls forward to the latest feature band, so there is no pinned version to keep current.
+
+### Consequences
+
+- The action SHAs that [ADR-0008](#adr-0008-continuous-integration) leaves to deliberate commits now arrive as pull requests. Merging one is still the deliberate step.
+- Three pins stay manual: the runner image, the SQL Server image, and the `Microsoft.Data.SqlClient` version in `docs/legacy/capture/capture.cs`, which is a `#:package` directive that Dependabot does not read.
+- Moving to the next .NET version stays a manual change, because of the ignored major versions.

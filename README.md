@@ -39,9 +39,10 @@ The plan and its checklist are in [MIGRATION_PLAN.md](MIGRATION_PLAN.md). The ch
 
 ```
 .github/workflows/ci.yml     CI: build, tests, vulnerable-package check
+.github/dependabot.yml       Weekly dependency update pull requests
 eShop.Catalog.slnx           The solution (.NET 10, built with the dotnet CLI)
 global.json                  .NET SDK and test runner selection
-dotnet-tools.json            Local .NET tools (dotnet-ef, ReportGenerator)
+.config/dotnet-tools.json    Local .NET tools (dotnet-ef, ReportGenerator)
 compose.yaml                 SQL Server in a container, for local development
 Directory.Build.props        Build settings for the solution
 Directory.Packages.props     Central package versions for the solution
@@ -268,7 +269,7 @@ SQL Server sets the `sa` password only on its first start, when it creates its s
 
 ## Database migrations
 
-The schema is created and changed by EF Core migrations in `src/eShop.Catalog.Api/Data/Migrations` ([ADR-0011](DECISIONS.md#adr-0011-ef-core-migration-strategy)). The `dotnet-ef` tool is pinned in [dotnet-tools.json](dotnet-tools.json). Restore it once per clone:
+The schema is created and changed by EF Core migrations in `src/eShop.Catalog.Api/Data/Migrations` ([ADR-0011](DECISIONS.md#adr-0011-ef-core-migration-strategy)). The `dotnet-ef` tool is pinned in [.config/dotnet-tools.json](.config/dotnet-tools.json). Restore it once per clone:
 
 ```bash
 dotnet tool restore
@@ -351,7 +352,7 @@ rm -rf TestResults/coverage
 dotnet test --solution eShop.Catalog.slnx --coverage --results-directory TestResults/coverage
 ```
 
-Then merge the files into one HTML report, `TestResults/coverage/report/index.html`, with ReportGenerator, a local tool pinned in [dotnet-tools.json](dotnet-tools.json) (`dotnet tool restore` installs it):
+Then merge the files into one HTML report, `TestResults/coverage/report/index.html`, with ReportGenerator, a local tool pinned in [.config/dotnet-tools.json](.config/dotnet-tools.json) (`dotnet tool restore` installs it):
 
 ```bash
 dotnet reportgenerator -reports:"TestResults/coverage/*.cobertura.xml" -targetdir:TestResults/coverage/report
@@ -369,6 +370,8 @@ When a change alters the contract of an endpoint, `OpenApiDocumentTests.Document
 - **Vulnerable packages.** Fails when any direct or transitive package has a known vulnerability, at any severity, or when the vulnerability data cannot be fetched. An advisory accepted with `NuGetAuditSuppress` does not fail it.
 
 GitHub disables the weekly run after 60 days without repository activity. Re-enable it from the Actions tab.
+
+Dependabot opens weekly pull requests for the NuGet packages, the local tools and the actions ([ADR-0035](DECISIONS.md#adr-0035-automated-dependency-updates)). The SQL Server image and the next major .NET version stay manual upgrades.
 
 ## The legacy app
 
